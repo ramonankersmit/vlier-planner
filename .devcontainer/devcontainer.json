@@ -1,0 +1,37 @@
+{
+  "name": "StuPlan Dev",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+  "postCreateCommand": "pip3 install -r backend/requirements.txt && cd frontend && npm install || true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.vscode-typescript-next",
+        "github.copilot",
+        "github.copilot-chat"
+      ]
+    }
+  },
+  "portsAttributes": {
+    "8000": {
+      "label": "FastAPI"
+    },
+    "5173": {
+      "label": "Vite"
+    }
+  },
+  "forwardPorts": [
+    8000,
+    5173
+  ]
+}
