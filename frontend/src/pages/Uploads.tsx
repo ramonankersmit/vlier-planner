@@ -1,7 +1,7 @@
 import React from "react";
 import { Info, FileText, RefreshCw, Archive, Trash2, XCircle } from "lucide-react";
 import type { DocMeta } from "../data/sampleDocs";
-import { sampleDocsInitial } from "../data/sampleDocs";
+import { useAppStore } from "../app/store";
 
 type Filters = {
   vak: string;
@@ -25,15 +25,15 @@ function useMetadata(docs: DocMeta[]) {
 }
 
 export default function Uploads() {
-  // Mock: lokale staat (later koppelen we dit aan globale store/backend)
-  const [docs, setDocs] = React.useState<DocMeta[]>(sampleDocsInitial);
+  // >>> docs en acties uit store <<<
+  const { docs, removeDoc /* addDoc, replaceDoc, setDocs */ } = useAppStore();
+
   const [filters, setFilters] = React.useState<Filters>({
     vak: "",
     niveau: "",
     leerjaar: "",
     periode: "",
   });
-
   const meta = useMetadata(docs);
   const reset = () => setFilters({ vak: "", niveau: "", leerjaar: "", periode: "" });
 
@@ -47,8 +47,6 @@ export default function Uploads() {
   });
 
   const [detailDoc, setDetailDoc] = React.useState<DocMeta | null>(null);
-
-  const removeDoc = (id: string) => setDocs((list) => list.filter((x) => x.fileId !== id));
 
   return (
     <div className="space-y-4">
@@ -198,17 +196,10 @@ export default function Uploads() {
               <div>{d.beginWeek}</div>
               <div>{d.eindWeek}</div>
               <div className="flex gap-2 col-span-2">
-                <button
-                  title={`Bron: ${d.bestand}`}
-                  className="rounded-lg border bg-white p-1"
-                >
+                <button title={`Bron: ${d.bestand}`} className="rounded-lg border bg-white p-1">
                   <FileText size={16} />
                 </button>
-                <button
-                  onClick={() => setDetailDoc(d)}
-                  title="Meta-details"
-                  className="rounded-lg border bg-white p-1"
-                >
+                <button onClick={() => setDetailDoc(d)} title="Meta-details" className="rounded-lg border bg-white p-1">
                   <Info size={16} />
                 </button>
                 <button title="Vervang" className="rounded-lg border bg-white p-1">
@@ -236,21 +227,14 @@ export default function Uploads() {
           <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Metadata — {detailDoc.bestand}</h2>
-              <button onClick={() => setDetailDoc(null)} className="text-gray-500">
-                ✕
-              </button>
+              <button onClick={() => setDetailDoc(null)} className="text-gray-500">✕</button>
             </div>
             <div className="text-sm whitespace-pre-wrap">
-              Vak: {detailDoc.vak}
-              {"\n"}
-              Niveau: {detailDoc.niveau}
-              {"\n"}
-              Leerjaar: {detailDoc.leerjaar}
-              {"\n"}
-              Periode: {detailDoc.periode}
-              {"\n"}
-              Bereik: week {detailDoc.beginWeek} – {detailDoc.eindWeek}
-              {"\n\n"}
+              Vak: {detailDoc.vak}{"\n"}
+              Niveau: {detailDoc.niveau}{"\n"}
+              Leerjaar: {detailDoc.leerjaar}{"\n"}
+              Periode: {detailDoc.periode}{"\n"}
+              Bereik: week {detailDoc.beginWeek} – {detailDoc.eindWeek}{"\n\n"}
               Let op: in de echte app voedt deze metadata de filters en views (Weekoverzicht/Matrix/Agenda).
             </div>
           </div>

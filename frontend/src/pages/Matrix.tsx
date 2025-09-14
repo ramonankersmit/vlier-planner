@@ -2,10 +2,13 @@ import React from "react";
 import { FileText, CalendarClock } from "lucide-react";
 import { useAppStore } from "../app/store";
 import { sampleWeeks, sampleByWeek, formatRange } from "../data/sampleWeeks";
-import { sampleDocsInitial } from "../data/sampleDocs";
 
 export default function Matrix() {
-  const { mijnVakken, doneMap, toggleDone } = useAppStore();
+  // Store-selectors met veilige fallbacks
+  const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
+  const doneMap = useAppStore((s) => s.doneMap) ?? {};
+  const toggleDone = useAppStore((s) => s.toggleDone);
+  const docs = useAppStore((s) => s.docs) ?? [];
 
   // UI-Controls (lokaal): aantal weken en window over de sampleWeeks
   const [startIdx, setStartIdx] = React.useState(0);
@@ -19,7 +22,7 @@ export default function Matrix() {
 
   const prev = () => setStartIdx((i) => Math.max(0, i - 1));
   const next = () => setStartIdx((i) => Math.min(maxStart, i + 1));
-  const goThisWeek = () => setStartIdx(0); // in echte app kun je hier dynamisch de huidige week indexeren
+  const goThisWeek = () => setStartIdx(0); // in echte app: indexeren op basis van 'vandaag'
 
   return (
     <div>
@@ -99,15 +102,13 @@ export default function Matrix() {
           <tbody>
             {mijnVakken.map((vak) => (
               <tr key={vak} className="border-t">
-                <td className="px-4 py-2 font-medium whitespace-nowrap">
-                  {vak}
-                </td>
+                <td className="px-4 py-2 font-medium whitespace-nowrap">{vak}</td>
                 {weeks.map((w) => {
                   const d = (sampleByWeek[w.nr] || {})[vak] || {};
                   const key = `${w.nr}:${vak}`;
                   const isDone = !!doneMap[key];
                   const hasHw = d?.huiswerk && d.huiswerk !== "—";
-                  const doc = sampleDocsInitial.find((dd) => dd.vak === vak);
+                  const doc = docs.find ? docs.find((dd) => dd.vak === vak) : undefined;
 
                   return (
                     <td key={key} className="px-4 py-2 align-top">

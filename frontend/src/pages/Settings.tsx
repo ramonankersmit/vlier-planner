@@ -1,12 +1,13 @@
 import React from "react";
 import { useAppStore } from "../app/store";
-import { sampleDocsInitial, allVakkenFromDocs } from "../data/sampleDocs";
 
 export default function Settings() {
-  const { mijnVakken, setMijnVakken } = useAppStore();
+  const { docs, mijnVakken, setMijnVakken } = useAppStore();
 
-  // Afleidbare lijst met alle vakken (in MVP nog uit sampleDocs; later uit backend/uploads)
-  const allVakken = React.useMemo(() => allVakkenFromDocs(sampleDocsInitial), []);
+  const allVakken = React.useMemo(
+    () => Array.from(new Set(docs.map((d) => d.vak))).sort(),
+    [docs]
+  );
 
   const toggle = (vak: string) => {
     if (mijnVakken.includes(vak)) {
@@ -49,7 +50,7 @@ export default function Settings() {
         </div>
 
         <div className="mt-4 text-xs text-gray-500">
-          Tip: je kunt dit later koppelen aan de geüploade documenten, zodat nieuwe vakken automatisch verschijnen.
+          Deze lijst volgt automatisch de geüploade documenten.
         </div>
       </div>
     </div>

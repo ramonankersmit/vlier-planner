@@ -2,7 +2,6 @@ import React from "react";
 import { CalendarClock, FileText } from "lucide-react";
 import { useAppStore } from "../app/store";
 import { sampleWeeks, sampleByWeek, formatHumanDate } from "../data/sampleWeeks";
-import { sampleDocsInitial } from "../data/sampleDocs";
 
 type Item = {
   id: string;
@@ -15,7 +14,9 @@ type Item = {
 };
 
 export default function Agenda() {
-  const { mijnVakken } = useAppStore();
+  // Store-selectors met veilige fallbacks
+  const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
+  const docs = useAppStore((s) => s.docs) ?? [];
 
   // filters / navigatie
   const [vak, setVak] = React.useState<string>("ALLE");
@@ -26,7 +27,7 @@ export default function Agenda() {
   const clampedFrom = Math.min(fromIdx, maxFrom);
   const weeks = sampleWeeks.slice(clampedFrom, clampedFrom + dur);
 
-  const goThisWeek = () => setFromIdx(0); // in echte app: index calc op basis van echte 'vandaag'
+  const goThisWeek = () => setFromIdx(0);
   const prev = () => setFromIdx((i) => Math.max(0, i - 1));
   const next = () => setFromIdx((i) => Math.min(maxFrom, i + 1));
 
@@ -39,7 +40,7 @@ export default function Agenda() {
       if (!d?.deadlines || d.deadlines === "—") return [];
       const type: Item["type"] =
         String(d.deadlines).toLowerCase().includes("toets") ? "Toets" : "Deadline";
-      const doc = sampleDocsInitial.find((dd) => dd.vak === vakNaam);
+      const doc = docs.find ? docs.find((dd) => dd.vak === vakNaam) : undefined;
       return [
         {
           id: `${vakNaam}-${w.nr}`,
@@ -81,10 +82,7 @@ export default function Agenda() {
         <select
           className="rounded-md border px-2 py-1 text-sm"
           value={dur}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            setDur(n);
-          }}
+          onChange={(e) => setDur(Number(e.target.value))}
         >
           {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>
