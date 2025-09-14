@@ -1,15 +1,37 @@
-* text=auto eol=lf
+# === Line endings ===
+# Standaard: normaliseer als text en commit met LF
+*           text=auto eol=lf
 
-*.bat text eol=crlf
-*.cmd text eol=crlf
-*.ps1 text eol=crlf
+# Windows batch/shell scripts: CRLF behouden waar nodig
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
 
-*.js  text eol=lf
-*.jsx text eol=lf
-*.ts  text eol=lf
-*.tsx text eol=lf
-*.json text eol=lf
-*.css text eol=lf
-*.html text eol=lf
-*.md  text eol=lf
-*.py  text eol=lf
+# Code & web assets expliciet LF
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.json      text eol=lf
+*.css       text eol=lf
+*.scss      text eol=lf
+*.html      text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.py        text eol=lf
+*.toml      text eol=lf
+
+# Binaries nooit converteren
+*.png       -text
+*.jpg       -text
+*.jpeg      -text
+*.gif       -text
+*.webp      -text
+*.ico       -text
+*.pdf       -text
+*.docx      -text
+*.pptx      -text
+*.zip       -text
+*.woff      -text
+*.woff2     -text
