@@ -67,3 +67,15 @@ export const useAppStore = create<State>((set, get) => ({
   leerjaarWO: "4",
   setLeerjaarWO: (j) => set({ leerjaarWO: j }),
 }));
+
+export async function hydrateDocsFromApi() {
+  const { setDocs } = useAppStore.getState();
+  try {
+    const { apiListDocs } = await import("../lib/api");
+    const docs = await apiListDocs();
+    setDocs(docs as any);
+  } catch (e) {
+    console.warn("Kon docs niet hydrateren:", e);
+  }
+}
+

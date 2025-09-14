@@ -2,6 +2,7 @@ import React from "react";
 import { Info, FileText, RefreshCw, Archive, Trash2, XCircle } from "lucide-react";
 import type { DocMeta } from "../data/sampleDocs";
 import { useAppStore } from "../app/store";
+import { apiUploadDoc, apiDeleteDoc } from "../lib/api";
 
 type Filters = {
   vak: string;
@@ -12,7 +13,7 @@ type Filters = {
 
 function useMetadata(docs: DocMeta[]) {
   const vakken = Array.from(new Set(docs.map((d) => d.vak))).sort();
-  const niveaus = Array.from(new Set(docs.map((d) => d.niveau))).sort();
+  const niveaus = Array.from(new Set(docs.map((d) => d.niveau))).sort() as string[];
   const leerjaren = Array.from(new Set(docs.map((d) => d.leerjaar))).sort();
   const periodes = Array.from(new Set(docs.map((d) => d.periode))).sort((a, b) => a - b);
   const beginWeeks = docs.map((d) => d.beginWeek);
@@ -25,42 +26,82 @@ function useMetadata(docs: DocMeta[]) {
 }
 
 export default function Uploads() {
-  // >>> docs en acties uit store <<<
-  const { docs, removeDoc /* addDoc, replaceDoc, setDocs */ } = useAppStore();
+  // Globale docs + acties uit de store
+  const { docs, addDoc, removeDoc /* replaceDoc, setDocs */ } = useAppStore();
 
+  // Lokale UI state
   const [filters, setFilters] = React.useState<Filters>({
     vak: "",
     niveau: "",
     leerjaar: "",
     periode: "",
   });
+  const [detailDoc, setDetailDoc] = React.useState<DocMeta | null>(null);
+  const [isUploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
   const meta = useMetadata(docs);
-  const reset = () => setFilters({ vak: "", niveau: "", leerjaar: "", periode: "" });
+
+  const reset = () =>
+    setFilters({
+      vak: "",
+      niveau: "",
+      leerjaar: "",
+      periode: "",
+    });
 
   const filtered = docs.filter((d) => {
     const byVak =
       !filters.vak || d.vak.toLowerCase().includes(filters.vak.trim().toLowerCase());
-    const byNiv = !filters.niveau || d.niveau === filters.niveau;
+    const byNiv = !filters.niveau || d.niveau === (filters.niveau as any);
     const byLeer = !filters.leerjaar || d.leerjaar === filters.leerjaar;
     const byPer = !filters.periode || String(d.periode) === filters.periode;
     return byVak && byNiv && byLeer && byPer;
   });
 
-  const [detailDoc, setDetailDoc] = React.useState<DocMeta | null>(null);
+  async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploading(true);
+      setError(null);
+      const meta = await apiUploadDoc(file);
+      // Voeg direct toe aan globale store → Settings/Agenda/Matrix volgen automatisch
+      addDoc(meta as any);
+    } catch (e: any) {
+      setError(e?.message || "Upload mislukt");
+    } finally {
+      setUploading(false);
+      ev.target.value = "";
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await apiDeleteDoc(id);
+      removeDoc(id); // verwijder uit globale store
+    } catch (e: any) {
+      console.warn(e);
+      setError(e?.message || "Verwijderen mislukt");
+    }
+  }
 
   return (
     <div className="space-y-4">
       <div className="text-lg font-semibold">Uploads &amp; Documentbeheer</div>
 
-      {/* Dropzone (stub) */}
+      {/* Uploadblok */}
       <div className="rounded-2xl border bg-white p-4">
         <div className="mb-1 font-medium">Bestanden uploaden</div>
-        <div className="text-sm text-gray-600">
-          Sleep je <strong>PDF/DOCX</strong> hierheen of klik om te kiezen. (MVP-stub)
+        <div className="text-sm text-gray-600 mb-2">
+          Kies een <strong>PDF</strong> of <strong>DOCX</strong>. Metadata wordt automatisch herkend.
         </div>
+        <input type="file" accept=".pdf,.docx" onChange={handleUpload} />
+        {isUploading && <div className="mt-2 text-sm text-gray-500">Bezig met uploaden…</div>}
+        {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
       </div>
 
-      {/* Metadata blokken */}
+      {/* Metadata-overzicht */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-2xl border bg-white p-3">
           <div className="text-xs text-gray-500 mb-1">Beschikbare vakken</div>
@@ -202,14 +243,14 @@ export default function Uploads() {
                 <button onClick={() => setDetailDoc(d)} title="Meta-details" className="rounded-lg border bg-white p-1">
                   <Info size={16} />
                 </button>
-                <button title="Vervang" className="rounded-lg border bg-white p-1">
+                <button title="Vervang (nog niet actief)" className="rounded-lg border bg-white p-1">
                   <RefreshCw size={16} />
                 </button>
-                <button title="Archiveer" className="rounded-lg border bg-white p-1">
+                <button title="Archiveer (nog niet actief)" className="rounded-lg border bg-white p-1">
                   <Archive size={16} />
                 </button>
                 <button
-                  onClick={() => removeDoc(d.fileId)}
+                  onClick={() => handleDelete(d.fileId)}
                   title="Verwijder"
                   className="rounded-lg border bg-white p-1 text-red-600"
                 >
@@ -227,15 +268,24 @@ export default function Uploads() {
           <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Metadata — {detailDoc.bestand}</h2>
-              <button onClick={() => setDetailDoc(null)} className="text-gray-500">✕</button>
+              <button onClick={() => setDetailDoc(null)} className="text-gray-500" aria-label="Sluiten">
+                ✕
+              </button>
             </div>
             <div className="text-sm whitespace-pre-wrap">
-              Vak: {detailDoc.vak}{"\n"}
-              Niveau: {detailDoc.niveau}{"\n"}
-              Leerjaar: {detailDoc.leerjaar}{"\n"}
-              Periode: {detailDoc.periode}{"\n"}
-              Bereik: week {detailDoc.beginWeek} – {detailDoc.eindWeek}{"\n\n"}
-              Let op: in de echte app voedt deze metadata de filters en views (Weekoverzicht/Matrix/Agenda).
+              Vak: {detailDoc.vak}
+              {"\n"}
+              Niveau: {detailDoc.niveau}
+              {"\n"}
+              Leerjaar: {detailDoc.leerjaar}
+              {"\n"}
+              Periode: {detailDoc.periode}
+              {"\n"}
+              Bereik: week {detailDoc.beginWeek} – {detailDoc.eindWeek}
+              {"\n"}
+              Schooljaar: {detailDoc.schooljaar || "—"}
+              {"\n\n"}
+              Let op: deze metadata voedt de filters en views (Weekoverzicht/Matrix/Agenda).
             </div>
           </div>
         </div>
