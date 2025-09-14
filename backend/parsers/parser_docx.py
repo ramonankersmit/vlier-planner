@@ -19,7 +19,18 @@ RE_WEEK_SOLO = re.compile(r"\b(?:wk|week)\s*(\d{1,2})\b", re.I)
 RE_NUM_PURE = re.compile(r"^\s*(\d{1,2})\s*$")  # hele cel is een getal
 
 # Schooljaar
-RE_SCHOOLYEAR = re.compile(r"(20\d{2})\s*[/\-]\s*(20\d{2})")
+# Herken zowel 4-cijferige als 2-cijferige jaartallen (bijv. "2025/2026" of "25-26")
+RE_SCHOOLYEAR = re.compile(r"((?:20)?\d{2})\s*[/\-]\s*((?:20)?\d{2})")
+
+
+def _format_schooljaar(a: str, b: str) -> str:
+    """Converteer twee-delige matches naar formaat YYYY/YYYY."""
+    ai, bi = int(a), int(b)
+    if ai < 100:
+        ai += 2000
+    if bi < 100:
+        bi += 2000
+    return f"{ai}/{bi}"
 
 def _clean(s: str) -> str:
     return (s or "").strip()
@@ -84,7 +95,7 @@ def _parse_schooljaar_from_filename(filename: str) -> Optional[str]:
     base = filename.rsplit(".", 1)[0]
     m = RE_SCHOOLYEAR.search(base)
     if m:
-        return f"{m.group(1)}/{m.group(2)}"
+        return _format_schooljaar(m.group(1), m.group(2))
     return None
 
 def _parse_schooljaar_from_doc(doc: Document) -> Optional[str]:
@@ -100,7 +111,7 @@ def _parse_schooljaar_from_doc(doc: Document) -> Optional[str]:
     blob = " | ".join(t for t in texts if t)
     m = RE_SCHOOLYEAR.search(blob)
     if m:
-        return f"{m.group(1)}/{m.group(2)}"
+        return _format_schooljaar(m.group(1), m.group(2))
     return None
 
 def _parse_footer_meta(doc: Document) -> Tuple[str, str, int, Optional[str]]:
@@ -130,7 +141,7 @@ def _parse_footer_meta(doc: Document) -> Tuple[str, str, int, Optional[str]]:
             periode = int(m.group(1))
         m = RE_SCHOOLYEAR.search(full)
         if m:
-            schooljaar = f"{m.group(1)}/{m.group(2)}"
+            schooljaar = _format_schooljaar(m.group(1), m.group(2))
     except Exception:
         pass
     return niveau, leerjaar, periode, schooljaar
@@ -194,7 +205,8 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
         if 1 <= v <= 53:
             weeks.append(v)
 
-    return weeks
+    # Verwijder dubbelen en sorteer
+    return sorted(set(weeks))
 
 def _table_rows_texts(tbl) -> List[List[str]]:
     """Converteer een docx-table naar matrix van celteksten, robuust genoeg voor merges."""
