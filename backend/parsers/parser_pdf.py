@@ -1,6 +1,12 @@
 import pdfplumber
 import re
-from models import DocMeta  # <-- absolute import
+from models import DocMeta
+
+RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ\s\-\&]+?)\s*\]")
+RE_AFTER_DASH = re.compile(r"Studiewijzer\s*[-–]\s*(.+)", re.I)
+RE_WEEK_PAIR = re.compile(r"\b(\d{1,2})\s*[/\-]\s*(\d{1,2})\b")
+RE_WEEK_SOLO = re.compile(r"\b(?:wk|week)\s*(\d{1,2})\b", re.I)
+
 
 def extract_meta_from_pdf(path: str, filename: str) -> DocMeta:
     vak = "Onbekend"
@@ -10,11 +16,42 @@ def extract_meta_from_pdf(path: str, filename: str) -> DocMeta:
     schooljaar = None
     begin_week, eind_week = 36, 41
 
+    def weeks_from_text(txt: str):
+        weeks = []
+        for a, b in RE_WEEK_PAIR.findall(txt):
+            for x in (a, b):
+                v = int(x)
+                if 1 <= v <= 53:
+                    weeks.append(v)
+        for x in RE_WEEK_SOLO.findall(txt):
+            v = int(x)
+            if 1 <= v <= 53:
+                weeks.append(v)
+        if not weeks:
+            has_year = bool(re.search(r"20\d{2}", txt))
+            nums = [int(n) for n in re.findall(r"\b(\d{1,2})\b", txt)]
+            nums = [n for n in nums if 1 <= n <= 53]
+            if nums:
+                hi = [n for n in nums if n >= 30]
+                weeks.extend(hi if hi else (nums if not has_year else []))
+        return weeks
+
     with pdfplumber.open(path) as pdf:
         first_text = (pdf.pages[0].extract_text() or "") if pdf.pages else ""
-        m = re.search(r"Studiewijzer\s*[-–]\s*(.+)", first_text, re.I)
+
+        m = RE_ANY_BRACKET_VAK.search(first_text)
         if m:
             vak = m.group(1).strip()
+        else:
+            m = RE_AFTER_DASH.search(first_text)
+            if m:
+                vak = m.group(1).strip()
+            else:
+                base = filename.rsplit(".", 1)[0]
+                part = base.split("_")[0]
+                part = re.sub(r"\d+", "", part).replace("-", " ").strip()
+                if part:
+                    vak = part
 
         m = re.search(r"(20\d{2}/20\d{2})", first_text)
         if m:
@@ -35,9 +72,11 @@ def extract_meta_from_pdf(path: str, filename: str) -> DocMeta:
         weeks = []
         for page in pdf.pages:
             txt = page.extract_text() or ""
-            weeks += [int(x) for x in re.findall(r"Week\s+(\d{1,2})", txt)]
+            weeks += weeks_from_text(txt)
         if weeks:
-            begin_week, eind_week = min(weeks), max(weeks)
+            hi = [w for w in weeks if w >= 30]
+            use = hi if hi else weeks
+            begin_week, eind_week = min(use), max(use)
 
     file_id = re.sub(r"[^a-zA-Z0-9]+", "-", filename)[:40]
     return DocMeta(
