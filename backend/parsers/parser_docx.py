@@ -48,6 +48,7 @@ def _parse_vak_from_filename(filename: str) -> Optional[str]:
     base = filename.rsplit(".", 1)[0]
     part = base.split("_")[0]
     part = re.sub(r"\d+", "", part)  # verwijder cijfers
+    part = re.sub(r"(?i)studiewijzer|periode", "", part)  # verwijder generieke woorden
     part = part.replace("-", " ").strip()
     return part or None
 
@@ -158,6 +159,10 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
     - Puur getal als hele cel
     """
     text = (txt or "").strip().replace("\n", " ")
+
+    # Verwijder datums zoals 25-08-2025 zodat RE_WEEK_PAIR hieronder
+    # niet per ongeluk dagen/maanden als weken herkent.
+    text = re.sub(r"\b\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}\b", " ", text)
 
     weeks: List[int] = []
 

@@ -17,19 +17,23 @@ def extract_meta_from_pdf(path: str, filename: str) -> DocMeta:
     begin_week, eind_week = 36, 41
 
     def weeks_from_text(txt: str):
+        # Verwijder datums (bijv. 25-08-2025) zodat we geen dag/maand als week
+        # interpreteren.
+        clean = re.sub(r"\b\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}\b", " ", txt)
+
         weeks = []
-        for a, b in RE_WEEK_PAIR.findall(txt):
+        for a, b in RE_WEEK_PAIR.findall(clean):
             for x in (a, b):
                 v = int(x)
                 if 1 <= v <= 53:
                     weeks.append(v)
-        for x in RE_WEEK_SOLO.findall(txt):
+        for x in RE_WEEK_SOLO.findall(clean):
             v = int(x)
             if 1 <= v <= 53:
                 weeks.append(v)
         if not weeks:
-            has_year = bool(re.search(r"20\d{2}", txt))
-            nums = [int(n) for n in re.findall(r"\b(\d{1,2})\b", txt)]
+            has_year = bool(re.search(r"20\d{2}", clean))
+            nums = [int(n) for n in re.findall(r"\b(\d{1,2})\b", clean)]
             nums = [n for n in nums if 1 <= n <= 53]
             if nums:
                 hi = [n for n in nums if n >= 30]
