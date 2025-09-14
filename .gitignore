@@ -3,6 +3,8 @@ node_modules/
 dist/
 build/
 .vite
+# Uploads opslag (niet committen)
+backend/storage/uploads/
 # Python
 __pycache__/
 .venv/
