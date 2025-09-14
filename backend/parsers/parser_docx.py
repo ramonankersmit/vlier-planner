@@ -1,7 +1,7 @@
 from docx import Document
-from typing import Optional, List, Tuple, Iterable
+from typing import Optional, List, Tuple, Iterable, Dict
 import re
-from models import DocMeta  # importeer uit models
+from models import DocMeta, DocRow  # importeer uit models
 
 # ---------------------------
 # Regex patronen & helpers
@@ -169,29 +169,29 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
     m0 = RE_WEEK_LEADING.match(text)
     if m0:
         a = int(m0.group(1))
-        if 1 <= a <= 52:
+        if 1 <= a <= 53:
             weeks.append(a)
         if m0.group(2):
             b = int(m0.group(2))
-            if 1 <= b <= 52:
+            if 1 <= b <= 53:
                 weeks.append(b)
 
     for x in RE_WEEK_SOLO.findall(text):
         v = int(x)
-        if 1 <= v <= 52:
+        if 1 <= v <= 53:
             weeks.append(v)
 
     for a, b in RE_WEEK_PAIR.findall(text):
         va, vb = int(a), int(b)
-        if 1 <= va <= 52:
+        if 1 <= va <= 53:
             weeks.append(va)
-        if 1 <= vb <= 52:
+        if 1 <= vb <= 53:
             weeks.append(vb)
 
     m2 = RE_NUM_PURE.match(text)
     if m2:
         v = int(m2.group(1))
-        if 1 <= v <= 52:
+        if 1 <= v <= 53:
             weeks.append(v)
 
     return weeks
@@ -268,3 +268,256 @@ def extract_meta_from_docx(path: str, filename: str) -> Optional[DocMeta]:
         eindWeek=eind_week,
         schooljaar=schooljaar,
     )
+
+
+# -------------------------------------------------
+# Nieuwe API: rij-niveau parsing
+# -------------------------------------------------
+
+from datetime import date
+
+# Header keyword sets
+DATE_HEADER_KEYWORDS = ("datum", "weekdatum", "date", "start", "begin")
+LES_HEADER_KEYWORDS = ("les", "lesnr", "lesnummer")
+ONDERWERP_HEADERS = ("onderwerp", "thema", "hoofdstuk", "chapter", "topic", "lesstof")
+LEERDOEL_HEADERS = ("leerdoelen", "doelen")
+HUISWERK_HEADERS = ("huiswerk", "maken", "leren")
+OPDRACHT_HEADERS = ("opdracht",)
+INLEVER_HEADERS = ("inleverdatum", "deadline", "inleveren voor")
+TOETS_HEADERS = (
+    "toets",
+    "so",
+    "pw",
+    "se",
+    "proefwerk",
+    "tentamen",
+    "praktische opdracht",
+    "presentatie",
+    "deadlines",
+)
+BRON_HEADERS = ("bron", "bronnen", "links", "link", "boek")
+NOTITIE_HEADERS = ("opmerking", "notitie", "remarks")
+KLAS_HEADERS = ("klas", "groep")
+LOCATIE_HEADERS = ("locatie", "lokaal")
+
+MONTHS_NL = {
+    "januari": 1,
+    "februari": 2,
+    "maart": 3,
+    "april": 4,
+    "mei": 5,
+    "juni": 6,
+    "juli": 7,
+    "augustus": 8,
+    "september": 9,
+    "oktober": 10,
+    "november": 11,
+    "december": 12,
+}
+
+
+def normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def split_bullets(text: str) -> Optional[List[str]]:
+    if not text:
+        return None
+    parts = re.split(r"[\n\r\u2022\-\–\*]+", text)
+    items = [normalize_text(p) for p in parts if normalize_text(p)]
+    return items or None
+
+
+def find_header_idx(headers: List[str], keywords: Iterable[str]) -> Optional[int]:
+    norm = [normalize_text(h).lower() for h in headers]
+    for i, h in enumerate(norm):
+        for kw in keywords:
+            if kw.lower() in h:
+                return i
+    return None
+
+
+def parse_week_cell(text: str) -> List[int]:
+    return _weeks_from_week_cell(text)
+
+
+def parse_date_cell(text: str, schooljaar: Optional[str]) -> Optional[str]:
+    if not text:
+        return None
+    t = normalize_text(text)
+    m = re.search(r"(\d{1,2})[\-/](\d{1,2})[\-/](\d{2,4})", t)
+    if m:
+        d, mth, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if y < 100:
+            y += 2000
+        return f"{y:04d}-{mth:02d}-{d:02d}"
+    m = re.search(r"(\d{1,2})[\-/](\d{1,2})", t)
+    if m:
+        d, mth = int(m.group(1)), int(m.group(2))
+        year = None
+        if schooljaar:
+            try:
+                a, b = schooljaar.split("/")
+                a, b = int(a), int(b)
+                year = a if mth >= 8 else b
+            except Exception:
+                pass
+        if year is None:
+            year = date.today().year
+        return f"{year:04d}-{mth:02d}-{d:02d}"
+    m = re.search(r"(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?", t, re.I)
+    if m:
+        d = int(m.group(1))
+        mn = MONTHS_NL.get(m.group(2).lower())
+        if mn:
+            y = m.group(3)
+            if y:
+                year = int(y)
+            else:
+                year = None
+                if schooljaar:
+                    try:
+                        a, b = [int(x) for x in schooljaar.split("/")]
+                        year = a if mn >= 8 else b
+                    except Exception:
+                        pass
+                if year is None:
+                    year = date.today().year
+            return f"{year:04d}-{mn:02d}-{d:02d}"
+    return None
+
+
+def find_urls(text: str) -> Optional[List[Dict[str, str]]]:
+    if not text:
+        return None
+    urls = re.findall(r"https?://\S+", text)
+    out: List[Dict[str, str]] = []
+    for url in urls:
+        title = url.split("/")[-1] or url
+        out.append({"type": "link", "title": title, "url": url})
+    return out or None
+
+
+def parse_toets_cell(text: str) -> Optional[Dict[str, Optional[str]]]:
+    if not text or not normalize_text(text):
+        return None
+    t = text.lower()
+    ttype = None
+    for kw in ("so", "pw", "se"):
+        if re.search(rf"\b{kw}\b", t):
+            ttype = kw.upper()
+            break
+    if not ttype:
+        for kw in ("proefwerk", "tentamen", "praktische opdracht", "presentatie", "toets"):
+            if kw in t:
+                ttype = kw
+                break
+    weight = None
+    m = re.search(r"weging\s*(\d+)", t)
+    if m:
+        weight = m.group(1)
+    else:
+        m = re.search(r"(\d+)\s*(?:x|%)", t)
+        if m:
+            weight = m.group(1)
+    herk = "onbekend"
+    if "herkans" in t:
+        if "nee" in t or "niet" in t:
+            herk = "nee"
+        elif "ja" in t:
+            herk = "ja"
+    return {"type": ttype or normalize_text(text), "weging": weight, "herkansing": herk}
+
+
+def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
+    doc = Document(path)
+    schooljaar = _parse_schooljaar_from_doc(doc) or _parse_schooljaar_from_filename(filename)
+    results: List[DocRow] = []
+
+    for tbl in doc.tables:
+        rows = _table_rows_texts(tbl)
+        if len(rows) < 2:
+            continue
+        headers = rows[0]
+        week_col = _find_week_column(headers)
+        date_col = None if week_col is not None else find_header_idx(headers, DATE_HEADER_KEYWORDS)
+        les_col = find_header_idx(headers, LES_HEADER_KEYWORDS)
+        ond_col = find_header_idx(headers, ONDERWERP_HEADERS)
+        leer_col = find_header_idx(headers, LEERDOEL_HEADERS)
+        hw_col = find_header_idx(headers, HUISWERK_HEADERS)
+        opd_col = find_header_idx(headers, OPDRACHT_HEADERS)
+        inl_col = find_header_idx(headers, INLEVER_HEADERS)
+        toets_col = find_header_idx(headers, TOETS_HEADERS)
+        bron_col = find_header_idx(headers, BRON_HEADERS)
+        not_col = find_header_idx(headers, NOTITIE_HEADERS)
+        klas_col = find_header_idx(headers, KLAS_HEADERS)
+        loc_col = find_header_idx(headers, LOCATIE_HEADERS)
+
+        for r in rows[1:]:
+            weeks: List[int] = []
+            if week_col is not None and week_col < len(r):
+                weeks = parse_week_cell(r[week_col])
+            elif date_col is not None and date_col < len(r):
+                iso = parse_date_cell(r[date_col], schooljaar)
+                if iso:
+                    try:
+                        wk = date.fromisoformat(iso).isocalendar().week
+                        if 1 <= wk <= 53:
+                            weeks = [wk]
+                    except Exception:
+                        pass
+            if not weeks:
+                continue
+
+            datum = None
+            if date_col is not None and date_col < len(r):
+                datum = parse_date_cell(r[date_col], schooljaar)
+
+            base: Dict[str, Optional[str]] = {}
+            base_list: Dict[str, Optional[List[str]]] = {}
+            base_dict: Dict[str, Optional[Dict[str, Optional[str]]]] = {}
+
+            if les_col is not None and les_col < len(r):
+                base["les"] = normalize_text(r[les_col]) or None
+            if ond_col is not None and ond_col < len(r):
+                base["onderwerp"] = normalize_text(r[ond_col]) or None
+            if leer_col is not None and leer_col < len(r):
+                base_list["leerdoelen"] = split_bullets(r[leer_col])
+            if hw_col is not None and hw_col < len(r):
+                base["huiswerk"] = normalize_text(r[hw_col]) or None
+            if opd_col is not None and opd_col < len(r):
+                base["opdracht"] = normalize_text(r[opd_col]) or None
+            if inl_col is not None and inl_col < len(r):
+                base["inleverdatum"] = parse_date_cell(r[inl_col], schooljaar)
+            if toets_col is not None and toets_col < len(r):
+                base_dict["toets"] = parse_toets_cell(r[toets_col])
+            if bron_col is not None and bron_col < len(r):
+                base_list["bronnen"] = find_urls(r[bron_col])
+            if not_col is not None and not_col < len(r):
+                base["notities"] = normalize_text(r[not_col]) or None
+            if klas_col is not None and klas_col < len(r):
+                base["klas_of_groep"] = normalize_text(r[klas_col]) or None
+            if loc_col is not None and loc_col < len(r):
+                base["locatie"] = normalize_text(r[loc_col]) or None
+
+            for w in weeks:
+                if not (1 <= w <= 53):
+                    continue
+                dr = DocRow(
+                    week=w,
+                    datum=datum,
+                    les=base.get("les"),
+                    onderwerp=base.get("onderwerp"),
+                    leerdoelen=base_list.get("leerdoelen"),
+                    huiswerk=base.get("huiswerk"),
+                    opdracht=base.get("opdracht"),
+                    inleverdatum=base.get("inleverdatum"),
+                    toets=base_dict.get("toets"),
+                    bronnen=base_list.get("bronnen"),
+                    notities=base.get("notities"),
+                    klas_of_groep=base.get("klas_of_groep"),
+                    locatie=base.get("locatie"),
+                )
+                results.append(dr)
+
+    return results

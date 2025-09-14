@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal, Optional, List, Dict
 from pydantic import BaseModel
 
 # Gebruik een eenduidige naam
@@ -23,3 +23,19 @@ class WeekItem(BaseModel):
     deadlines: Optional[str] = None
     opmerkingen: Optional[str] = None
     date: Optional[str] = None        # ISO "YYYY-MM-DD"
+
+
+class DocRow(BaseModel):
+    week: Optional[int]
+    datum: Optional[str]
+    les: Optional[str]
+    onderwerp: Optional[str]
+    leerdoelen: Optional[List[str]]
+    huiswerk: Optional[str]
+    opdracht: Optional[str]
+    inleverdatum: Optional[str]
+    toets: Optional[Dict[str, Optional[str]]]
+    bronnen: Optional[List[Dict[str, str]]]
+    notities: Optional[str]
+    klas_of_groep: Optional[str]
+    locatie: Optional[str]

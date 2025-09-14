@@ -17,9 +17,18 @@ for p in (REPO_ROOT, BACKEND_DIR):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
-from backend.parsers.parser_docx import extract_meta_from_docx
-from backend.parsers.parser_pdf import extract_meta_from_pdf
-from models import DocMeta  # wordt gevonden via BACKEND_DIR op sys.path
+from backend.parsers.parser_docx import (
+    extract_meta_from_docx,
+    extract_rows_from_docx,
+)
+try:
+    from backend.parsers.parser_pdf import (
+        extract_meta_from_pdf,
+        extract_rows_from_pdf,
+    )
+except Exception:  # pragma: no cover - pdf libs kunnen ontbreken
+    extract_meta_from_pdf = extract_rows_from_pdf = None  # type: ignore
+from models import DocMeta, DocRow  # wordt gevonden via BACKEND_DIR op sys.path
 
 
 def parse_file(path: Path) -> DocMeta:
@@ -45,6 +54,7 @@ def main():
     parser = argparse.ArgumentParser(description="Studiewijzer parse demo (PDF/DOCX).")
     parser.add_argument("path", type=str, help="Pad naar bestand of directory")
     parser.add_argument("--json", type=str, default=None, help="Schrijf resultaten naar JSON-bestand")
+    parser.add_argument("--rows", action="store_true", help="Geef ook rijen terug als JSON")
     args = parser.parse_args()
 
     src = Path(args.path).resolve()
@@ -55,27 +65,54 @@ def main():
     files = [src] if src.is_file() else [p for p in src.rglob("*") if p.suffix.lower() in {".pdf", ".docx"}]
 
     results = []
-    for f in files:
-        try:
-            meta = parse_file(f)
-            print_result(meta)
-            # DocMeta -> dict (werkt voor dataclass / pydantic; zo niet, fallback op __dict__)
-            as_dict = getattr(meta, "model_dump", None)
-            results.append(as_dict() if callable(as_dict) else getattr(meta, "__dict__", dict(meta)))
-        except Exception as e:
-            logging.warning("Kon niet parsen: %s (%s)", f, e)
-            results.append({"path": str(f), "error": str(e)})
+    if args.rows:
+        for f in files:
+            try:
+                if f.suffix.lower() == ".docx":
+                    meta = extract_meta_from_docx(str(f), f.name)
+                    rows = extract_rows_from_docx(str(f), f.name)
+                else:
+                    if extract_meta_from_pdf is None or extract_rows_from_pdf is None:
+                        raise RuntimeError("PDF-ondersteuning ontbreekt (pdfplumber niet geïnstalleerd)")
+                    meta = extract_meta_from_pdf(str(f), f.name)
+                    rows = extract_rows_from_pdf(str(f), f.name)
+                m_dump = meta.model_dump() if hasattr(meta, "model_dump") else dict(meta)
+                r_dump = [r.model_dump() if hasattr(r, "model_dump") else dict(r) for r in rows]
+                results.append({"meta": m_dump, "rows": r_dump})
+            except Exception as e:
+                logging.warning("Kon niet parsen: %s (%s)", f, e)
+                results.append({"path": str(f), "error": str(e)})
+        out_json = json.dumps(results, ensure_ascii=False, indent=2)
+        if args.json:
+            out_path = Path(args.json).resolve()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with out_path.open("w", encoding="utf-8") as f:
+                f.write(out_json)
+            print(f"JSON weggeschreven naar: {out_path}")
+        else:
+            print(out_json)
+        return
+    else:
+        for f in files:
+            try:
+                meta = parse_file(f)
+                print_result(meta)
+                as_dict = getattr(meta, "model_dump", None)
+                results.append(as_dict() if callable(as_dict) else getattr(meta, "__dict__", dict(meta)))
+            except Exception as e:
+                logging.warning("Kon niet parsen: %s (%s)", f, e)
+                results.append({"path": str(f), "error": str(e)})
 
-    print("\n— Samenvatting —")
-    ok = sum(1 for r in results if "error" not in r)
-    print(f"Totaal: {len(files)}  ✓ Geslaagd: {ok}  ✗ Gefaald: {len(files) - ok}")
+        print("\n— Samenvatting —")
+        ok = sum(1 for r in results if "error" not in r)
+        print(f"Totaal: {len(files)}  ✓ Geslaagd: {ok}  ✗ Gefaald: {len(files) - ok}")
 
-    if args.json:
-        out_path = Path(args.json).resolve()
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        with out_path.open("w", encoding="utf-8") as f:
-            json.dump(results, f, ensure_ascii=False, indent=2)
-        print(f"\nJSON weggeschreven naar: {out_path}")
+        if args.json:
+            out_path = Path(args.json).resolve()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with out_path.open("w", encoding="utf-8") as f:
+                json.dump(results, f, ensure_ascii=False, indent=2)
+            print(f"\nJSON weggeschreven naar: {out_path}")
 
 
 if __name__ == "__main__":
