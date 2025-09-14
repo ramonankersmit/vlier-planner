@@ -2,10 +2,11 @@
 node_modules/
 dist/
 build/
+.vite
 # Python
 __pycache__/
 .venv/
-.env
+.env*
 # OS
 .DS_Store
 Thumbs.db
