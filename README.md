@@ -1,13 +1,20 @@
-# StuPlan (MVP)
+# Vlier Planner
 
-Een super-simpele planner: upload studiewijzers (.pdf/.docx) en krijg per week wat je moet doen per vak.
+Een eenvoudige planner voor studiewijzers van het voortgezet onderwijs. Upload een \*.pdf of \*.docx en krijg een weekoverzicht met lesstof, huiswerk en deadlines per vak.
+
+## Functionaliteit
+- FastAPI-backend met parsers voor PDF en DOCX.
+- React + Vite + Tailwind frontend voor het tonen en filteren van weken.
+- Upload, lijst en verwijder studiewijzers via de API.
+- Tijdelijke opslag op schijf en in-memory index (MVP).
 
 ## Projectstructuur
 ```
-stuplan-mvp/
-  backend/          FastAPI-backend met parser (.pdf/.docx -> gestandaardiseerde taken)
-  frontend/         React + Vite + Tailwind UI (weekoverzicht + filters)
-  .devcontainer/    Codespaces ontwikkelomgeving (Python 3.11 + Node 20)
+vlier-planner/
+  backend/      FastAPI-backend (parsen + API)
+  frontend/     React/Vite/Tailwind frontend
+  samples/      Voorbeeldbestanden
+  tools/        Hulpscripts
 ```
 
 ## Snel starten (lokaal)
@@ -28,30 +35,14 @@ npm run dev
 ```
 
 ## Gebruik
-1. Start backend (poort 8000).
-2. Start frontend (poort 5173).
-3. Upload een ZIP of losse bestanden (.pdf/.docx). Je krijgt een weekweergave met taken per vak.
-4. Exporteer naar CSV/iCal via de UI-knoppen (placeholder in MVP).
+1. Start de backend (poort 8000).
+2. Start de frontend (poort 5173).
+3. Upload een studiewijzer (.pdf/.docx).
+4. Bekijk taken per week en verwijder documenten indien gewenst.
 
-## Deploy naar GitHub
-```bash
-git init
-git add .
-git commit -m "Init StuPlan MVP"
-git branch -M main
-git remote add origin https://github.com/<jouw-user>/stuplan-mvp.git
-git push -u origin main
-```
-
-## Codespaces (GitHub)
-- Open de repo in **Codespaces**; de **.devcontainer** installeert Python 3.11 en Node 20.
-- Terminal 1: `cd backend && uvicorn app:app --host 0.0.0.0 --port 8000`
-- Terminal 2: `cd frontend && npm run dev -- --host`
-
-## Uitbreiding met ChatGPT “coding” (Codex/Assistants)
-- Voeg een **.github/ISSUE_TEMPLATE** toe en gebruik ChatGPT om parsingregels te verfijnen (prompt in `backend/parser/PROMPTS.md`).
-- Koppel de repo in ChatGPT (upload/links) en vraag gerichte refactors.
-- Alternatief: gebruik **GitHub Copilot Chat** in Codespaces voor inline aanpassingen.
+## Ontwikkeling
+- De repository bevat een `.devcontainer` voor gebruik in GitHub Codespaces (Python 3.11 en Node 20).
+- Exporteer naar CSV/iCal is nog niet geïmplementeerd.
 
 ## Licentie
 MIT
