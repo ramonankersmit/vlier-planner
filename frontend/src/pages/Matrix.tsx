@@ -1,3 +1,149 @@
+import React from "react";
+import { FileText, CalendarClock } from "lucide-react";
+import { useAppStore } from "../app/store";
+import { sampleWeeks, sampleByWeek, formatRange } from "../data/sampleWeeks";
+import { sampleDocsInitial } from "../data/sampleDocs";
+
 export default function Matrix() {
-  return <div>Matrix — placeholder</div>;
+  const { mijnVakken, doneMap, toggleDone } = useAppStore();
+
+  // UI-Controls (lokaal): aantal weken en window over de sampleWeeks
+  const [startIdx, setStartIdx] = React.useState(0);
+  const [count, setCount] = React.useState(3); // 1–6
+  const [niveau, setNiveau] = React.useState<"HAVO" | "VWO" | "ALLE">("VWO");
+  const [leerjaar, setLeerjaar] = React.useState("4");
+
+  const maxStart = Math.max(0, sampleWeeks.length - count);
+  const clampedStart = Math.min(startIdx, maxStart);
+  const weeks = sampleWeeks.slice(clampedStart, clampedStart + count);
+
+  const prev = () => setStartIdx((i) => Math.max(0, i - 1));
+  const next = () => setStartIdx((i) => Math.min(maxStart, i + 1));
+  const goThisWeek = () => setStartIdx(0); // in echte app kun je hier dynamisch de huidige week indexeren
+
+  return (
+    <div>
+      {/* Balk bovenin: Deze week, pijlen, range, selects */}
+      <div className="mb-4 flex flex-wrap gap-2 items-center">
+        <button
+          onClick={goThisWeek}
+          className="rounded-md border px-2 py-1 text-sm"
+          title="Deze week"
+        >
+          <CalendarClock size={16} />
+        </button>
+        <button onClick={prev} className="rounded-md border px-2 py-1 text-sm">
+          ◀
+        </button>
+        <span className="text-sm text-gray-800">
+          Week {weeks[0]?.nr}
+          {weeks.length > 1 ? `–${weeks[weeks.length - 1].nr}` : ""}
+        </span>
+        <button onClick={next} className="rounded-md border px-2 py-1 text-sm">
+          ▶
+        </button>
+
+        <select
+          className="rounded-md border px-2 py-1 text-sm"
+          value={count}
+          onChange={(e) => setCount(Number(e.target.value))}
+        >
+          {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
+            <option key={n} value={n}>
+              {n} {n > 1 ? "weken" : "week"}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="rounded-md border px-2 py-1 text-sm"
+          value={niveau}
+          onChange={(e) => setNiveau(e.target.value as any)}
+        >
+          <option value="ALLE">Alle niveaus</option>
+          <option value="HAVO">HAVO</option>
+          <option value="VWO">VWO</option>
+        </select>
+
+        <select
+          className="rounded-md border px-2 py-1 text-sm"
+          value={leerjaar}
+          onChange={(e) => setLeerjaar(e.target.value)}
+        >
+          {["1", "2", "3", "4", "5", "6"].map((j) => (
+            <option key={j} value={j}>
+              Leerjaar {j}
+            </option>
+          ))}
+        </select>
+
+        <div className="text-sm text-gray-600 ml-auto">
+          Huiswerk afvinken per cel · Bron openen via icoon
+        </div>
+      </div>
+
+      {/* Tabel */}
+      <div className="overflow-auto rounded-2xl border bg-white">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-2 text-left whitespace-nowrap">Vak</th>
+              {weeks.map((w) => (
+                <th key={w.nr} className="px-4 py-2 text-left">
+                  <div className="font-medium">Week {w.nr}</div>
+                  <div className="text-xs text-gray-500">{formatRange(w)}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {mijnVakken.map((vak) => (
+              <tr key={vak} className="border-t">
+                <td className="px-4 py-2 font-medium whitespace-nowrap">
+                  {vak}
+                </td>
+                {weeks.map((w) => {
+                  const d = (sampleByWeek[w.nr] || {})[vak] || {};
+                  const key = `${w.nr}:${vak}`;
+                  const isDone = !!doneMap[key];
+                  const hasHw = d?.huiswerk && d.huiswerk !== "—";
+                  const doc = sampleDocsInitial.find((dd) => dd.vak === vak);
+
+                  return (
+                    <td key={key} className="px-4 py-2 align-top">
+                      <div className="flex items-center gap-2">
+                        {/* checkbox alleen bij huiswerk */}
+                        {hasHw && (
+                          <input
+                            aria-label={`Huiswerk ${vak} week ${w.nr}`}
+                            type="checkbox"
+                            checked={isDone}
+                            onChange={() => toggleDone(key)}
+                          />
+                        )}
+                        <span
+                          className={`truncate flex-1 ${
+                            hasHw && isDone ? "line-through text-gray-400" : ""
+                          }`}
+                          title={`${d.huiswerk || "—"} | ${d.deadlines || "—"}`}
+                        >
+                          {d.huiswerk || d.deadlines || "—"}
+                        </span>
+                        <button
+                          title={doc ? `Bron: ${doc.bestand}` : "Toon bron"}
+                          className="text-gray-600"
+                        >
+                          <FileText size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
