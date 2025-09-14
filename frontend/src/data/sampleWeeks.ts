@@ -10,6 +10,7 @@ export const sampleWeeks: Week[] = [
 ];
 
 export const formatRange = (w: Week) => `${w.start} – ${w.end}`;
+
 export const formatHumanDate = (iso?: string) => {
   if (!iso) return "";
   const d = new Date(iso);
@@ -20,6 +21,28 @@ export const formatHumanDate = (iso?: string) => {
     month: "short",
     year: "numeric",
   }).format(d);
+};
+
+/** Bepaal index van ‘huidige’ week op basis van today (in lokale tijd). */
+export const calcCurrentWeekIdx = (today: Date = new Date()): number => {
+  const t = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  // vind eerste week waarvan start <= today <= end; anders dichtstbijzijnde
+  let bestIdx = 0;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < sampleWeeks.length; i++) {
+    const w = sampleWeeks[i];
+    const s = new Date(w.start).getTime();
+    const e = new Date(w.end).getTime();
+    const inRange = t >= s && t <= e;
+    if (inRange) return i;
+    // afstand tot start en eind — kies dichtstbijzijnde
+    const dist = Math.min(Math.abs(t - s), Math.abs(t - e));
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
 };
 
 // Sleutel op vaknaam (niet fileId)

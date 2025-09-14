@@ -1,16 +1,14 @@
 import React from "react";
 import { FileText, CalendarClock } from "lucide-react";
 import { useAppStore } from "../app/store";
-import { sampleWeeks, sampleByWeek, formatRange } from "../data/sampleWeeks";
+import { sampleWeeks, sampleByWeek, formatRange, calcCurrentWeekIdx } from "../data/sampleWeeks";
 
 export default function Matrix() {
-  // Store-selectors met veilige fallbacks
   const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
   const doneMap = useAppStore((s) => s.doneMap) ?? {};
   const toggleDone = useAppStore((s) => s.toggleDone);
   const docs = useAppStore((s) => s.docs) ?? [];
 
-  // UI-Controls (lokaal): aantal weken en window over de sampleWeeks
   const [startIdx, setStartIdx] = React.useState(0);
   const [count, setCount] = React.useState(3); // 1–6
   const [niveau, setNiveau] = React.useState<"HAVO" | "VWO" | "ALLE">("VWO");
@@ -22,27 +20,34 @@ export default function Matrix() {
 
   const prev = () => setStartIdx((i) => Math.max(0, i - 1));
   const next = () => setStartIdx((i) => Math.min(maxStart, i + 1));
-  const goThisWeek = () => setStartIdx(0); // in echte app: indexeren op basis van 'vandaag'
+
+  const goThisWeek = () => {
+    const cur = calcCurrentWeekIdx();
+    // probeer cur zichtbaar te maken met zelfde window-grootte
+    let s = cur - Math.floor(count / 2);
+    s = Math.max(0, Math.min(s, Math.max(0, sampleWeeks.length - count)));
+    setStartIdx(s);
+  };
 
   return (
     <div>
-      {/* Balk bovenin: Deze week, pijlen, range, selects */}
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
           onClick={goThisWeek}
           className="rounded-md border px-2 py-1 text-sm"
-          title="Deze week"
+          title="Spring naar huidige week"
+          aria-label="Deze week"
         >
           <CalendarClock size={16} />
         </button>
-        <button onClick={prev} className="rounded-md border px-2 py-1 text-sm">
+        <button onClick={prev} className="rounded-md border px-2 py-1 text-sm" title="Vorige">
           ◀
         </button>
         <span className="text-sm text-gray-800">
           Week {weeks[0]?.nr}
           {weeks.length > 1 ? `–${weeks[weeks.length - 1].nr}` : ""}
         </span>
-        <button onClick={next} className="rounded-md border px-2 py-1 text-sm">
+        <button onClick={next} className="rounded-md border px-2 py-1 text-sm" title="Volgende">
           ▶
         </button>
 
@@ -50,6 +55,8 @@ export default function Matrix() {
           className="rounded-md border px-2 py-1 text-sm"
           value={count}
           onChange={(e) => setCount(Number(e.target.value))}
+          aria-label="Aantal weken tonen"
+          title="Aantal weken tonen"
         >
           {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>
@@ -62,6 +69,8 @@ export default function Matrix() {
           className="rounded-md border px-2 py-1 text-sm"
           value={niveau}
           onChange={(e) => setNiveau(e.target.value as any)}
+          aria-label="Filter niveau"
+          title="Filter op niveau"
         >
           <option value="ALLE">Alle niveaus</option>
           <option value="HAVO">HAVO</option>
@@ -72,6 +81,8 @@ export default function Matrix() {
           className="rounded-md border px-2 py-1 text-sm"
           value={leerjaar}
           onChange={(e) => setLeerjaar(e.target.value)}
+          aria-label="Filter leerjaar"
+          title="Filter op leerjaar"
         >
           {["1", "2", "3", "4", "5", "6"].map((j) => (
             <option key={j} value={j}>
@@ -85,7 +96,6 @@ export default function Matrix() {
         </div>
       </div>
 
-      {/* Tabel */}
       <div className="overflow-auto rounded-2xl border bg-white">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50">
@@ -112,14 +122,14 @@ export default function Matrix() {
 
                   return (
                     <td key={key} className="px-4 py-2 align-top">
-                      <div className="flex items-center gap-2">
-                        {/* checkbox alleen bij huiswerk */}
+                      <div className="flex items-center gap-2 min-w-[14rem]">
                         {hasHw && (
                           <input
                             aria-label={`Huiswerk ${vak} week ${w.nr}`}
                             type="checkbox"
                             checked={isDone}
                             onChange={() => toggleDone(key)}
+                            title="Markeer huiswerk gereed"
                           />
                         )}
                         <span
@@ -132,6 +142,7 @@ export default function Matrix() {
                         </span>
                         <button
                           title={doc ? `Bron: ${doc.bestand}` : "Toon bron"}
+                          aria-label={doc ? `Bron: ${doc.bestand}` : `Toon bron ${vak}`}
                           className="text-gray-600"
                         >
                           <FileText size={14} />

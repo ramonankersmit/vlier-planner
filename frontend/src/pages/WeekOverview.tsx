@@ -1,6 +1,7 @@
+import React from "react";
 import { Info, FileText, CheckSquare, CalendarClock } from "lucide-react";
 import { useAppStore } from "../app/store";
-import { sampleWeeks, sampleByWeek, formatRange } from "../data/sampleWeeks";
+import { sampleWeeks, sampleByWeek, formatRange, calcCurrentWeekIdx } from "../data/sampleWeeks";
 
 function Card({
   vak,
@@ -23,34 +24,36 @@ function Card({
         <div className="font-semibold">{vak}</div>
         <div className="flex gap-2">
           {d?.deadlines && d.deadlines !== "—" && (
-            <CheckSquare size={16} className="text-amber-600" title="Toets/Deadline" />
+            <CheckSquare size={16} className="text-amber-600" title="Toets/Deadline aanwezig" />
           )}
           {(d?.lesstof || d?.opmerkingen) && (
-            <button onClick={() => setOpen(true)} title="Extra info">
+            <button onClick={() => setOpen(true)} title="Toon details (lesstof/opmerkingen)" aria-label={`Details ${vak}`}>
               <Info size={16} className="text-gray-600" />
             </button>
           )}
-          <button title="Toon bron">
+          <button title="Toon brondocument" aria-label={`Bron ${vak}`}>
             <FileText size={16} className="text-gray-600" />
           </button>
         </div>
       </div>
 
       {hasHw ? (
-        <div className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm">
           <input
             aria-label={`Huiswerk ${vak}`}
             type="checkbox"
             checked={isDone}
             onChange={onToggle}
           />
-          <div className={isDone ? "line-through text-gray-400" : ""}>{d.huiswerk}</div>
-        </div>
+          <span className={isDone ? "line-through text-gray-400" : ""}>{d.huiswerk}</span>
+        </label>
       ) : (
         <div className="text-sm text-gray-500">Geen huiswerk</div>
       )}
 
-      <div className="text-sm text-gray-700">{d?.deadlines || "Geen toets/deadline"}</div>
+      <div className="text-sm text-gray-700" title={d?.date || ""}>
+        {d?.deadlines || "Geen toets/deadline"}
+      </div>
 
       {/* simpele modal */}
       {open && (
@@ -60,9 +63,7 @@ function Card({
               <h2 className="text-lg font-semibold">
                 {vak} – Week {weekNr}
               </h2>
-              <button onClick={() => setOpen(false)} className="text-gray-500">
-                ✕
-              </button>
+              <button onClick={() => setOpen(false)} className="text-gray-500" aria-label="Sluiten">✕</button>
             </div>
             <div className="text-sm whitespace-pre-wrap">
               Lesstof: {d?.lesstof || "—"}
@@ -75,8 +76,6 @@ function Card({
     </div>
   );
 }
-
-import React from "react";
 
 export default function WeekOverview() {
   const {
@@ -92,6 +91,7 @@ export default function WeekOverview() {
   } = useAppStore();
 
   const week = sampleWeeks[weekIdxWO];
+  const goThisWeek = () => setWeekIdxWO(calcCurrentWeekIdx());
 
   return (
     <div>
@@ -101,15 +101,17 @@ export default function WeekOverview() {
 
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
-          onClick={() => setWeekIdxWO(0)}
+          onClick={goThisWeek}
           className="rounded-md border px-2 py-1 text-sm"
-          title="Deze week"
+          title="Spring naar deze week"
+          aria-label="Deze week"
         >
           <CalendarClock size={16} />
         </button>
         <button
           onClick={() => setWeekIdxWO(Math.max(0, weekIdxWO - 1))}
           className="rounded-md border px-2 py-1 text-sm"
+          title="Vorige week"
         >
           ◀
         </button>
@@ -117,6 +119,7 @@ export default function WeekOverview() {
         <button
           onClick={() => setWeekIdxWO(Math.min(sampleWeeks.length - 1, weekIdxWO + 1))}
           className="rounded-md border px-2 py-1 text-sm"
+          title="Volgende week"
         >
           ▶
         </button>
@@ -125,6 +128,8 @@ export default function WeekOverview() {
           className="rounded-md border px-2 py-1 text-sm"
           value={niveauWO}
           onChange={(e) => setNiveauWO(e.target.value as any)}
+          aria-label="Filter niveau"
+          title="Filter op niveau"
         >
           <option value="ALLE">Alle niveaus</option>
           <option value="HAVO">HAVO</option>
@@ -135,6 +140,8 @@ export default function WeekOverview() {
           className="rounded-md border px-2 py-1 text-sm"
           value={leerjaarWO}
           onChange={(e) => setLeerjaarWO(e.target.value)}
+          aria-label="Filter leerjaar"
+          title="Filter op leerjaar"
         >
           {["1", "2", "3", "4", "5", "6"].map((j) => (
             <option key={j} value={j}>

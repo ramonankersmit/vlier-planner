@@ -1,7 +1,7 @@
 import React from "react";
 import { CalendarClock, FileText } from "lucide-react";
 import { useAppStore } from "../app/store";
-import { sampleWeeks, sampleByWeek, formatHumanDate } from "../data/sampleWeeks";
+import { sampleWeeks, sampleByWeek, formatHumanDate, calcCurrentWeekIdx } from "../data/sampleWeeks";
 
 type Item = {
   id: string;
@@ -14,11 +14,9 @@ type Item = {
 };
 
 export default function Agenda() {
-  // Store-selectors met veilige fallbacks
   const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
   const docs = useAppStore((s) => s.docs) ?? [];
 
-  // filters / navigatie
   const [vak, setVak] = React.useState<string>("ALLE");
   const [fromIdx, setFromIdx] = React.useState(0);
   const [dur, setDur] = React.useState(3); // 1..6
@@ -27,11 +25,15 @@ export default function Agenda() {
   const clampedFrom = Math.min(fromIdx, maxFrom);
   const weeks = sampleWeeks.slice(clampedFrom, clampedFrom + dur);
 
-  const goThisWeek = () => setFromIdx(0);
   const prev = () => setFromIdx((i) => Math.max(0, i - 1));
   const next = () => setFromIdx((i) => Math.min(maxFrom, i + 1));
+  const goThisWeek = () => {
+    const cur = calcCurrentWeekIdx();
+    let s = cur - Math.floor(dur / 2);
+    s = Math.max(0, Math.min(s, Math.max(0, sampleWeeks.length - dur)));
+    setFromIdx(s);
+  };
 
-  // Bouw de items vanuit de sample data, gefilterd op zichtbare vakken en gekozen vak
   const items: Item[] = weeks.flatMap((w) => {
     const perVak = sampleByWeek[w.nr] || {};
     return Object.entries(perVak).flatMap(([vakNaam, d]: any) => {
@@ -59,23 +61,23 @@ export default function Agenda() {
     <div>
       <div className="text-lg font-semibold mb-3">Agenda &amp; Deadlines</div>
 
-      {/* Filter/navigatiebalk */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
           onClick={goThisWeek}
           className="rounded-md border px-2 py-1 text-sm"
-          title="Deze week"
+          title="Spring naar huidige week"
+          aria-label="Deze week"
         >
           <CalendarClock size={16} />
         </button>
-        <button onClick={prev} className="rounded-md border px-2 py-1 text-sm">
+        <button onClick={prev} className="rounded-md border px-2 py-1 text-sm" title="Vorige">
           ◀
         </button>
         <span className="text-sm text-gray-800">
           Week {weeks[0]?.nr}
           {weeks.length > 1 ? `–${weeks[weeks.length - 1].nr}` : ""}
         </span>
-        <button onClick={next} className="rounded-md border px-2 py-1 text-sm">
+        <button onClick={next} className="rounded-md border px-2 py-1 text-sm" title="Volgende">
           ▶
         </button>
 
@@ -83,6 +85,8 @@ export default function Agenda() {
           className="rounded-md border px-2 py-1 text-sm"
           value={dur}
           onChange={(e) => setDur(Number(e.target.value))}
+          aria-label="Aantal weken tonen"
+          title="Aantal weken tonen"
         >
           {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>
@@ -95,6 +99,8 @@ export default function Agenda() {
           className="rounded-md border px-2 py-1 text-sm"
           value={vak}
           onChange={(e) => setVak(e.target.value)}
+          aria-label="Filter vak"
+          title="Filter op vak"
         >
           <option value="ALLE">Alle vakken</option>
           {mijnVakken.map((v) => (
@@ -105,7 +111,6 @@ export default function Agenda() {
         </select>
       </div>
 
-      {/* Tabel */}
       <div className="overflow-auto rounded-2xl border bg-white">
         {items.length === 0 ? (
           <div className="p-6 text-sm text-gray-600">Geen deadlines in deze periode.</div>
@@ -144,6 +149,7 @@ export default function Agenda() {
                       <button
                         className="rounded-lg border bg-white p-1"
                         title={it.src ? `Bron: ${it.src}` : "Toon bron"}
+                        aria-label={it.src ? `Bron: ${it.src}` : `Toon bron ${it.vak}`}
                       >
                         <FileText size={16} />
                       </button>
