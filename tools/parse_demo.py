@@ -21,13 +21,10 @@ from backend.parsers.parser_docx import (
     extract_meta_from_docx,
     extract_rows_from_docx,
 )
-try:
-    from backend.parsers.parser_pdf import (
-        extract_meta_from_pdf,
-        extract_rows_from_pdf,
-    )
-except Exception:  # pragma: no cover - pdf libs kunnen ontbreken
-    extract_meta_from_pdf = extract_rows_from_pdf = None  # type: ignore
+from backend.parsers.parser_pdf import (
+    extract_meta_from_pdf,
+    extract_rows_from_pdf,
+)
 from models import DocMeta, DocRow  # wordt gevonden via BACKEND_DIR op sys.path
 
 
@@ -54,7 +51,7 @@ def main():
     parser = argparse.ArgumentParser(description="Studiewijzer parse demo (PDF/DOCX).")
     parser.add_argument("path", type=str, help="Pad naar bestand of directory")
     parser.add_argument("--json", type=str, default=None, help="Schrijf resultaten naar JSON-bestand")
-    parser.add_argument("--rows", action="store_true", help="Geef ook rijen terug als JSON")
+    parser.add_argument("--rows", "--row", dest="rows", action="store_true", help="Geef ook rijen terug als JSON")
     args = parser.parse_args()
 
     src = Path(args.path).resolve()
@@ -72,8 +69,6 @@ def main():
                     meta = extract_meta_from_docx(str(f), f.name)
                     rows = extract_rows_from_docx(str(f), f.name)
                 else:
-                    if extract_meta_from_pdf is None or extract_rows_from_pdf is None:
-                        raise RuntimeError("PDF-ondersteuning ontbreekt (pdfplumber niet geïnstalleerd)")
                     meta = extract_meta_from_pdf(str(f), f.name)
                     rows = extract_rows_from_pdf(str(f), f.name)
                 m_dump = meta.model_dump() if hasattr(meta, "model_dump") else dict(meta)
