@@ -1,6 +1,7 @@
 import pdfplumber
 import re
-from models import DocMeta
+from typing import List
+from models import DocMeta, DocRow
 
 RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ\s\-\&]+?)\s*\]")
 RE_AFTER_DASH = re.compile(r"Studiewijzer\s*[-–]\s*(.+)", re.I)
@@ -26,16 +27,16 @@ def extract_meta_from_pdf(path: str, filename: str) -> DocMeta:
         for a, b in RE_WEEK_PAIR.findall(clean):
             for x in (a, b):
                 v = int(x)
-                if 1 <= v <= 52:
+                if 1 <= v <= 53:
                     weeks.append(v)
         for x in RE_WEEK_SOLO.findall(clean):
             v = int(x)
-            if 1 <= v <= 52:
+            if 1 <= v <= 53:
                 weeks.append(v)
         if not weeks:
             has_year = bool(re.search(r"20\d{2}", clean))
             nums = [int(n) for n in re.findall(r"\b(\d{1,2})\b", clean)]
-            nums = [n for n in nums if 1 <= n <= 52]
+            nums = [n for n in nums if 1 <= n <= 53]
             if nums and not has_year:
                 weeks.extend(nums)
         return weeks
@@ -92,3 +93,33 @@ def extract_meta_from_pdf(path: str, filename: str) -> DocMeta:
         eindWeek=eind_week,
         schooljaar=schooljaar
     )
+
+
+RE_WEEK_LEADING = re.compile(r"^\s*(\d{1,2})(?:\s*[/\-]\s*(\d{1,2}))?")
+
+
+def _normalize(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def extract_rows_from_pdf(path: str, filename: str) -> List[DocRow]:
+    rows: List[DocRow] = []
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            txt = page.extract_text() or ""
+            for line in txt.splitlines():
+                m = RE_WEEK_LEADING.match(line)
+                if not m:
+                    continue
+                weeks: List[int] = []
+                a = int(m.group(1))
+                if 1 <= a <= 53:
+                    weeks.append(a)
+                if m.group(2):
+                    b = int(m.group(2))
+                    if 1 <= b <= 53:
+                        weeks.append(b)
+                rest = _normalize(line[m.end():])
+                for w in weeks:
+                    rows.append(DocRow(week=w, onderwerp=rest or None))
+    return rows
