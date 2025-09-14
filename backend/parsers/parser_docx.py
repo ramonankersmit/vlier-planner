@@ -169,29 +169,29 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
     m0 = RE_WEEK_LEADING.match(text)
     if m0:
         a = int(m0.group(1))
-        if 1 <= a <= 53:
+        if 1 <= a <= 52:
             weeks.append(a)
         if m0.group(2):
             b = int(m0.group(2))
-            if 1 <= b <= 53:
+            if 1 <= b <= 52:
                 weeks.append(b)
 
     for x in RE_WEEK_SOLO.findall(text):
         v = int(x)
-        if 1 <= v <= 53:
+        if 1 <= v <= 52:
             weeks.append(v)
 
     for a, b in RE_WEEK_PAIR.findall(text):
         va, vb = int(a), int(b)
-        if 1 <= va <= 53:
+        if 1 <= va <= 52:
             weeks.append(va)
-        if 1 <= vb <= 53:
+        if 1 <= vb <= 52:
             weeks.append(vb)
 
     m2 = RE_NUM_PURE.match(text)
     if m2:
         v = int(m2.group(1))
-        if 1 <= v <= 53:
+        if 1 <= v <= 52:
             weeks.append(v)
 
     return weeks
@@ -210,7 +210,7 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
     - Verzamel ALLE weeknummers uit die kolom (over alle tabellen).
     - Neem min/max.
     """
-    begin_w, eind_w = 36, 41
+    begin_w, eind_w = 0, 0
     all_weeks: List[int] = []
 
     try:
