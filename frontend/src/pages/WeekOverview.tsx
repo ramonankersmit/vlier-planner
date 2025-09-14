@@ -55,7 +55,6 @@ function Card({
         {d?.deadlines || "Geen toets/deadline"}
       </div>
 
-      {/* simpele modal */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
@@ -88,9 +87,19 @@ export default function WeekOverview() {
     setNiveauWO,
     leerjaarWO,
     setLeerjaarWO,
+    docs,
   } = useAppStore();
 
-  const week = sampleWeeks[weekIdxWO];
+  const hasUploads = (docs?.length ?? 0) > 0;
+
+  // >>> Spring automatisch naar huidige week bij eerste load
+  React.useEffect(() => {
+    const idx = calcCurrentWeekIdx();
+    if (idx !== weekIdxWO) setWeekIdxWO(idx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const week = sampleWeeks[weekIdxWO] ?? sampleWeeks[0];
   const goThisWeek = () => setWeekIdxWO(calcCurrentWeekIdx());
 
   return (
@@ -151,23 +160,29 @@ export default function WeekOverview() {
         </select>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {mijnVakken.map((vak) => {
-          const d = sampleByWeek[week.nr]?.[vak];
-          const key = `${week.nr}:${vak}`;
-          const isDone = !!doneMap[key];
-          return (
-            <Card
-              key={vak}
-              vak={vak}
-              weekNr={week.nr}
-              d={d}
-              isDone={isDone}
-              onToggle={() => toggleDone(key)}
-            />
-          );
-        })}
-      </div>
+      {!hasUploads ? (
+        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+          Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {mijnVakken.map((vak) => {
+            const d = sampleByWeek[week.nr]?.[vak];
+            const key = `${week.nr}:${vak}`;
+            const isDone = !!doneMap[key];
+            return (
+              <Card
+                key={vak}
+                vak={vak}
+                weekNr={week.nr}
+                d={d}
+                isDone={isDone}
+                onToggle={() => toggleDone(key)}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

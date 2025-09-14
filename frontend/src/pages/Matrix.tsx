@@ -9,6 +9,8 @@ export default function Matrix() {
   const toggleDone = useAppStore((s) => s.toggleDone);
   const docs = useAppStore((s) => s.docs) ?? [];
 
+  const hasUploads = (docs?.length ?? 0) > 0;
+
   const [startIdx, setStartIdx] = React.useState(0);
   const [count, setCount] = React.useState(3); // 1–6
   const [niveau, setNiveau] = React.useState<"HAVO" | "VWO" | "ALLE">("VWO");
@@ -20,14 +22,22 @@ export default function Matrix() {
 
   const prev = () => setStartIdx((i) => Math.max(0, i - 1));
   const next = () => setStartIdx((i) => Math.min(maxStart, i + 1));
-
   const goThisWeek = () => {
     const cur = calcCurrentWeekIdx();
-    // probeer cur zichtbaar te maken met zelfde window-grootte
     let s = cur - Math.floor(count / 2);
     s = Math.max(0, Math.min(s, Math.max(0, sampleWeeks.length - count)));
     setStartIdx(s);
   };
+
+  // >>> Eerste load: centreer venster rond huidige week
+  React.useEffect(() => {
+    const cur = calcCurrentWeekIdx();
+    let s = cur - Math.floor(count / 2);
+    s = Math.max(0, Math.min(s, Math.max(0, sampleWeeks.length - count)));
+    setStartIdx(s);
+    // we doen dit één keer bij mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>
@@ -96,66 +106,72 @@ export default function Matrix() {
         </div>
       </div>
 
-      <div className="overflow-auto rounded-2xl border bg-white">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-2 text-left whitespace-nowrap">Vak</th>
-              {weeks.map((w) => (
-                <th key={w.nr} className="px-4 py-2 text-left">
-                  <div className="font-medium">Week {w.nr}</div>
-                  <div className="text-xs text-gray-500">{formatRange(w)}</div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {mijnVakken.map((vak) => (
-              <tr key={vak} className="border-t">
-                <td className="px-4 py-2 font-medium whitespace-nowrap">{vak}</td>
-                {weeks.map((w) => {
-                  const d = (sampleByWeek[w.nr] || {})[vak] || {};
-                  const key = `${w.nr}:${vak}`;
-                  const isDone = !!doneMap[key];
-                  const hasHw = d?.huiswerk && d.huiswerk !== "—";
-                  const doc = docs.find ? docs.find((dd) => dd.vak === vak) : undefined;
-
-                  return (
-                    <td key={key} className="px-4 py-2 align-top">
-                      <div className="flex items-center gap-2 min-w-[14rem]">
-                        {hasHw && (
-                          <input
-                            aria-label={`Huiswerk ${vak} week ${w.nr}`}
-                            type="checkbox"
-                            checked={isDone}
-                            onChange={() => toggleDone(key)}
-                            title="Markeer huiswerk gereed"
-                          />
-                        )}
-                        <span
-                          className={`truncate flex-1 ${
-                            hasHw && isDone ? "line-through text-gray-400" : ""
-                          }`}
-                          title={`${d.huiswerk || "—"} | ${d.deadlines || "—"}`}
-                        >
-                          {d.huiswerk || d.deadlines || "—"}
-                        </span>
-                        <button
-                          title={doc ? `Bron: ${doc.bestand}` : "Toon bron"}
-                          aria-label={doc ? `Bron: ${doc.bestand}` : `Toon bron ${vak}`}
-                          className="text-gray-600"
-                        >
-                          <FileText size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  );
-                })}
+      {!hasUploads ? (
+        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+          Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
+        </div>
+      ) : (
+        <div className="overflow-auto rounded-2xl border bg-white">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left whitespace-nowrap">Vak</th>
+                {weeks.map((w) => (
+                  <th key={w.nr} className="px-4 py-2 text-left">
+                    <div className="font-medium">Week {w.nr}</div>
+                    <div className="text-xs text-gray-500">{formatRange(w)}</div>
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {mijnVakken.map((vak) => (
+                <tr key={vak} className="border-t">
+                  <td className="px-4 py-2 font-medium whitespace-nowrap">{vak}</td>
+                  {weeks.map((w) => {
+                    const d = (sampleByWeek[w.nr] || {})[vak] || {};
+                    const key = `${w.nr}:${vak}`;
+                    const isDone = !!doneMap[key];
+                    const hasHw = d?.huiswerk && d.huiswerk !== "—";
+                    const doc = docs.find ? docs.find((dd) => dd.vak === vak) : undefined;
+
+                    return (
+                      <td key={key} className="px-4 py-2 align-top">
+                        <div className="flex items-center gap-2 min-w-[14rem]">
+                          {hasHw && (
+                            <input
+                              aria-label={`Huiswerk ${vak} week ${w.nr}`}
+                              type="checkbox"
+                              checked={isDone}
+                              onChange={() => toggleDone(key)}
+                              title="Markeer huiswerk gereed"
+                            />
+                          )}
+                          <span
+                            className={`truncate flex-1 ${
+                              hasHw && isDone ? "line-through text-gray-400" : ""
+                            }`}
+                            title={`${d.huiswerk || "—"} | ${d.deadlines || "—"}`}
+                          >
+                            {d.huiswerk || d.deadlines || "—"}
+                          </span>
+                          <button
+                            title={doc ? `Bron: ${doc.bestand}` : "Toon bron"}
+                            aria-label={doc ? `Bron: ${doc.bestand}` : `Toon bron ${vak}`}
+                            className="text-gray-600"
+                          >
+                            <FileText size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

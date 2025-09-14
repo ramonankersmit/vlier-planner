@@ -1,5 +1,20 @@
 import { create } from "zustand";
-import { sampleDocsInitial, type DocMeta } from "../data/sampleDocs";
+
+/**
+ * Houd deze DocMeta shape in sync met de backend (app.py).
+ * We gebruiken hier geen sample data meer; de app hydrate via de API.
+ */
+export type DocMeta = {
+  fileId: string;
+  bestand: string;
+  vak: string;
+  niveau: "HAVO" | "VWO";
+  leerjaar: string;      // "1".."6"
+  periode: number;       // 1..4
+  beginWeek: number;
+  eindWeek: number;
+  schooljaar?: string | null;
+};
 
 type State = {
   // ==== documenten (globaal) ====
@@ -17,7 +32,7 @@ type State = {
   doneMap: Record<string, boolean>;
   toggleDone: (key: string) => void;
 
-  // ==== weekoverzicht ====
+  // ==== weekoverzicht (UI state) ====
   weekIdxWO: number;
   setWeekIdxWO: (n: number) => void;
   niveauWO: "HAVO" | "VWO" | "ALLE";
@@ -29,11 +44,13 @@ type State = {
 const uniqSorted = (arr: string[]) => Array.from(new Set(arr)).sort();
 
 export const useAppStore = create<State>((set, get) => ({
+  // ----------------------------
   // documenten
-  docs: sampleDocsInitial,
+  // ----------------------------
+  docs: [], // start leeg; wordt gehydrate via API
   setDocs: (d) => {
     set({ docs: d });
-    // sync mijnVakken met beschikbare vakken
+    // sync Mijn Vakken met beschikbare vakken uit docs
     const mk = uniqSorted(d.map((x) => x.vak));
     set({ mijnVakken: mk });
   },
@@ -50,16 +67,22 @@ export const useAppStore = create<State>((set, get) => ({
     get().setDocs(next);
   },
 
+  // ----------------------------
   // instellingen
-  mijnVakken: uniqSorted(sampleDocsInitial.map((d) => d.vak)),
+  // ----------------------------
+  mijnVakken: [], // start leeg; wordt gezet bij setDocs()
   setMijnVakken: (v) => set({ mijnVakken: v }),
 
+  // ----------------------------
   // done-map
+  // ----------------------------
   doneMap: {},
   toggleDone: (key) =>
     set((s) => ({ doneMap: { ...s.doneMap, [key]: !s.doneMap[key] } })),
 
-  // weekoverzicht
+  // ----------------------------
+  // weekoverzicht (UI state)
+  // ----------------------------
   weekIdxWO: 0,
   setWeekIdxWO: (n) => set({ weekIdxWO: n }),
   niveauWO: "VWO",
@@ -68,14 +91,16 @@ export const useAppStore = create<State>((set, get) => ({
   setLeerjaarWO: (j) => set({ leerjaarWO: j }),
 }));
 
+/**
+ * Helper om bij app-start de docs uit de backend te laden.
+ * (Dynamische import voorkomt bundling/circular issues.)
+ */
 export async function hydrateDocsFromApi() {
-  const { setDocs } = useAppStore.getState();
   try {
     const { apiListDocs } = await import("../lib/api");
     const docs = await apiListDocs();
-    setDocs(docs as any);
+    useAppStore.getState().setDocs(docs as DocMeta[]);
   } catch (e) {
     console.warn("Kon docs niet hydrateren:", e);
   }
 }
-
