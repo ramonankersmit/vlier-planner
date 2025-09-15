@@ -10,7 +10,8 @@ export type DocMeta = {
   schooljaar?: string | null;
 };
 
-const BASE = "http://localhost:8000";
+export const API_BASE = "http://localhost:8000";
+const BASE = API_BASE;
 
 export async function apiListDocs(): Promise<DocMeta[]> {
   const r = await fetch(`${BASE}/api/docs`);
@@ -33,6 +34,21 @@ export async function apiUploadDoc(file: File): Promise<DocMeta> {
   if (!r.ok) {
     const txt = await r.text();
     throw new Error(`upload failed: ${r.status} – ${txt}`);
+  }
+  return r.json();
+}
+
+export type DocPreview = {
+  mediaType: string;
+  url?: string;
+  html?: string;
+  filename?: string;
+};
+
+export async function apiGetDocPreview(fileId: string): Promise<DocPreview> {
+  const r = await fetch(`${BASE}/api/docs/${fileId}/preview`);
+  if (!r.ok) {
+    throw new Error(`preview_doc failed: ${r.status}`);
   }
   return r.json();
 }

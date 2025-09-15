@@ -16,13 +16,16 @@ export type DocMeta = {
   schooljaar?: string | null;
 };
 
+export type DocRecord = DocMeta & { enabled: boolean };
+
 type State = {
   // ==== documenten (globaal) ====
-  docs: DocMeta[];
+  docs: DocRecord[];
   setDocs: (d: DocMeta[]) => void;
   removeDoc: (fileId: string) => void;
   addDoc: (doc: DocMeta) => void;
   replaceDoc: (fileId: string, next: DocMeta) => void;
+  setDocEnabled: (fileId: string, enabled: boolean) => void;
 
   // ==== instellingen ====
   mijnVakken: string[];
@@ -43,28 +46,78 @@ type State = {
 
 const uniqSorted = (arr: string[]) => Array.from(new Set(arr)).sort();
 
+type MijnVakkenOptions = {
+  ensure?: string[];
+};
+
+const computeMijnVakken = (docs: DocRecord[], prev: string[], options?: MijnVakkenOptions) => {
+  const active = docs.filter((d) => d.enabled);
+  const activeVakken = uniqSorted(active.map((x) => x.vak));
+  const ensured = options?.ensure?.filter((vak) => activeVakken.includes(vak)) ?? [];
+  const preserved = prev.filter((v) => activeVakken.includes(v));
+  const merged = uniqSorted([...preserved, ...ensured]);
+  return merged.length ? merged : activeVakken;
+};
+
 export const useAppStore = create<State>((set, get) => ({
   // ----------------------------
   // documenten
   // ----------------------------
   docs: [], // start leeg; wordt gehydrate via API
   setDocs: (d) => {
-    set({ docs: d });
-    // sync Mijn Vakken met beschikbare vakken uit docs
-    const mk = uniqSorted(d.map((x) => x.vak));
-    set({ mijnVakken: mk });
+    const prevDocs = get().docs;
+    const prevEnabled = new Map(prevDocs.map((doc) => [doc.fileId, doc.enabled] as const));
+    const nextDocs = d.map((doc) => ({
+      ...doc,
+      enabled: prevEnabled.get(doc.fileId) ?? true,
+    }));
+    const prevVakSet = new Set(prevDocs.map((doc) => doc.vak));
+    const newlyEnabledVakken = nextDocs
+      .filter((doc) => doc.enabled && !prevVakSet.has(doc.vak))
+      .map((doc) => doc.vak);
+    const mijnVakken = computeMijnVakken(nextDocs, get().mijnVakken, {
+      ensure: newlyEnabledVakken,
+    });
+    set({ docs: nextDocs, mijnVakken });
   },
   removeDoc: (fileId) => {
-    const next = get().docs.filter((x) => x.fileId !== fileId);
-    get().setDocs(next);
+    const next = get()
+      .docs
+      .filter((x) => x.fileId !== fileId);
+    const mijnVakken = computeMijnVakken(next, get().mijnVakken);
+    set({ docs: next, mijnVakken });
   },
   addDoc: (doc) => {
-    const next = [...get().docs, doc];
-    get().setDocs(next);
+    const prevDocs = get().docs;
+    const next = [...prevDocs, { ...doc, enabled: true }];
+    const hadVakBefore = prevDocs.some((existing) => existing.vak === doc.vak);
+    const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
+      ensure: hadVakBefore ? undefined : [doc.vak],
+    });
+    set({ docs: next, mijnVakken });
   },
   replaceDoc: (fileId, nextDoc) => {
-    const next = get().docs.map((x) => (x.fileId === fileId ? nextDoc : x));
-    get().setDocs(next);
+    const next = get().docs.map((x) =>
+      x.fileId === fileId ? { ...nextDoc, enabled: x.enabled } : x
+    );
+    const mijnVakken = computeMijnVakken(next, get().mijnVakken);
+    set({ docs: next, mijnVakken });
+  },
+  setDocEnabled: (fileId, enabled) => {
+    let ensuredVak: string | undefined;
+    const next = get().docs.map((doc) => {
+      if (doc.fileId !== fileId) {
+        return doc;
+      }
+      if (enabled && !doc.enabled) {
+        ensuredVak = doc.vak;
+      }
+      return { ...doc, enabled };
+    });
+    const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
+      ensure: ensuredVak ? [ensuredVak] : undefined,
+    });
+    set({ docs: next, mijnVakken });
   },
 
   // ----------------------------

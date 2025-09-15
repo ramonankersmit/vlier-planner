@@ -1,9 +1,19 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from typing import List
 from pathlib import Path
+import mimetypes
 import shutil
 import uuid
+from html import escape
+from urllib.parse import quote
+
+from docx import Document
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 from models import DocMeta  # jij gebruikt nog models.py; laat dit zo staan
 from parsers import extract_meta_from_docx, extract_meta_from_pdf
@@ -28,6 +38,42 @@ DOCS: dict[str, DocMeta] = {}
 # -----------------------------
 # Endpoints
 # -----------------------------
+
+def _iter_docx_blocks(document: Document):
+    body = document.element.body
+    for child in body.iterchildren():
+        if isinstance(child, CT_P):
+            yield Paragraph(child, document)
+        elif isinstance(child, CT_Tbl):
+            yield Table(child, document)
+
+
+def _docx_to_html(path: Path) -> str:
+    try:
+        doc = Document(str(path))
+    except Exception as exc:  # pragma: no cover - afhankelijk van docx lib
+        raise HTTPException(500, f"Kon document niet openen: {exc}")
+
+    parts: list[str] = []
+    for block in _iter_docx_blocks(doc):
+        if isinstance(block, Paragraph):
+            text = escape(block.text or "").replace("\n", "<br/>")
+            parts.append(f"<p>{text or '&nbsp;'}</p>")
+        elif isinstance(block, Table):
+            rows_html: list[str] = []
+            for row in block.rows:
+                cells_html = []
+                for cell in row.cells:
+                    cell_text = escape(cell.text or "").replace("\n", "<br/>")
+                    cells_html.append(f"<td>{cell_text or '&nbsp;'}</td>")
+                rows_html.append(f"<tr>{''.join(cells_html)}</tr>")
+            parts.append(
+                "<table class=\"docx-table\">{}</table>".format("".join(rows_html))
+            )
+    if not parts:
+        return "<p><em>Geen tekstinhoud gevonden in document.</em></p>"
+    return "".join(parts)
+
 
 @app.get("/api/docs", response_model=List[DocMeta])
 def list_docs():
@@ -56,6 +102,71 @@ def delete_all_docs():
         except Exception:
             pass
     return {"ok": True}
+
+
+@app.get("/api/docs/{file_id}/content")
+def get_doc_content(file_id: str, inline: bool = False):
+    doc = DOCS.get(file_id)
+    if not doc:
+        raise HTTPException(404, "Not found")
+
+    suffix = Path(doc.bestand).suffix.lower()
+    file_path = STORAGE / f"{file_id}{suffix}"
+    if not file_path.exists():
+        # fallback: zoek naar willekeurige match voor het geval de suffix verschilt
+        match = next(STORAGE.glob(f"{file_id}.*"), None)
+        if not match or not match.exists():
+            raise HTTPException(404, "File missing")
+        file_path = match
+        suffix = file_path.suffix.lower()
+
+    media_type, _ = mimetypes.guess_type(file_path.name)
+    response = FileResponse(
+        file_path,
+        media_type=media_type or "application/octet-stream",
+        filename=None if inline else doc.bestand,
+    )
+
+    if inline:
+        safe_filename = doc.bestand.replace("\"", "\\\"")
+        disposition = f'inline; filename="{safe_filename}"'
+        quoted = quote(doc.bestand)
+        if quoted:
+            disposition = f"{disposition}; filename*=UTF-8''{quoted}"
+        response.headers["Content-Disposition"] = disposition
+
+    return response
+
+
+@app.get("/api/docs/{file_id}/preview")
+def get_doc_preview(file_id: str):
+    doc = DOCS.get(file_id)
+    if not doc:
+        raise HTTPException(404, "Not found")
+
+    suffix = Path(doc.bestand).suffix.lower()
+    file_path = STORAGE / f"{file_id}{suffix}"
+    if not file_path.exists():
+        match = next(STORAGE.glob(f"{file_id}.*"), None)
+        if not match or not match.exists():
+            raise HTTPException(404, "File missing")
+        file_path = match
+        suffix = file_path.suffix.lower()
+
+    media_type, _ = mimetypes.guess_type(file_path.name)
+    if suffix == ".docx":
+        html = _docx_to_html(file_path)
+        return {
+            "mediaType": "text/html",
+            "html": html,
+            "filename": doc.bestand,
+        }
+
+    return {
+        "mediaType": media_type or "application/octet-stream",
+        "url": f"/api/docs/{file_id}/content?inline=1",
+        "filename": doc.bestand,
+    }
 
 @app.post("/api/uploads", response_model=DocMeta)
 async def upload_doc(file: UploadFile = File(...)):

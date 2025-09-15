@@ -2,10 +2,11 @@ import React from "react";
 import { useAppStore } from "../app/store";
 
 export default function Settings() {
-  const { docs, mijnVakken, setMijnVakken } = useAppStore();
+  const { mijnVakken, setMijnVakken } = useAppStore();
+  const docs = useAppStore((s) => s.docs) ?? [];
 
   const allVakken = React.useMemo(
-    () => Array.from(new Set(docs.map((d) => d.vak))).sort(),
+    () => Array.from(new Set(docs.filter((d) => d.enabled).map((d) => d.vak))).sort(),
     [docs]
   );
 
@@ -28,7 +29,7 @@ export default function Settings() {
         <div className="mb-2 font-medium">Mijn vakken</div>
 
         <div className="mb-3 text-sm text-gray-600">
-          Kies welke vakken zichtbaar zijn in <strong>Weekoverzicht</strong>, <strong>Matrix</strong> en <strong>Agenda</strong>.
+          Kies welke vakken zichtbaar zijn in <strong>Weekoverzicht</strong>, <strong>Matrix</strong> en <strong>Deadlines</strong>.
         </div>
 
         <div className="mb-3 flex gap-2">
