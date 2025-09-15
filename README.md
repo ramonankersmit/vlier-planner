@@ -1,9 +1,9 @@
-# Vlier Planner
-
-Een eenvoudige planner voor studiewijzers van het voortgezet onderwijs. Upload een \*.pdf of \*.docx en krijg een weekoverzicht met lesstof, huiswerk en deadlines per vak.
+Een eenvoudige planner voor studiewijzers van het voortgezet onderwijs. Upload een \*.pdf of \*.docx en krijg een weekoverzicht
+met lesstof, huiswerk en deadlines per vak.
 
 ## Functionaliteit
 - FastAPI-backend met parsers voor PDF en DOCX.
+- Genormaliseerde JSON-output en eenvoudige API voor weeks, agenda, matrix en assessments.
 - React + Vite + Tailwind frontend voor het tonen en filteren van weken.
 - Upload, lijst en verwijder studiewijzers via de API.
 - Tijdelijke opslag op schijf en in-memory index (MVP).
@@ -11,27 +11,22 @@ Een eenvoudige planner voor studiewijzers van het voortgezet onderwijs. Upload e
 ## Projectstructuur
 ```
 vlier-planner/
-  backend/      FastAPI-backend (parsen + API)
+  backend/      FastAPI-backend
   frontend/     React/Vite/Tailwind frontend
+  docs/         Documentatie
   samples/      Voorbeeldbestanden
   tools/        Hulpscripts
 ```
 
-## Snel starten (lokaal)
-### Backend
+## Local dev
 ```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app:app --reload --port 8000
-```
+python -m venv .venv && source .venv/bin/activate
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload
 
-### Frontend
-```bash
 cd frontend
 npm install
 npm run dev
-# Open http://localhost:5173
 ```
 
 ## Gebruik
