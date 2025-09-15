@@ -138,9 +138,9 @@ export const useAppStore = create<State>((set, get) => ({
   // ----------------------------
   weekIdxWO: 0,
   setWeekIdxWO: (n) => set({ weekIdxWO: n }),
-  niveauWO: "VWO",
+  niveauWO: "ALLE",
   setNiveauWO: (n) => set({ niveauWO: n }),
-  leerjaarWO: "4",
+  leerjaarWO: "ALLE",
   setLeerjaarWO: (j) => set({ leerjaarWO: j }),
 }));
 
