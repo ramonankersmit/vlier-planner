@@ -87,34 +87,36 @@ export default function Matrix() {
   );
 
   const allWeeks = React.useMemo(() => deriveWeeksFromDocs(filteredDocs), [filteredDocs]);
+  const hasWeekData = allWeeks.length > 0;
+  const disableWeekControls = !hasAnyDocs || !hasWeekData;
 
   const maxStart = Math.max(0, allWeeks.length - count);
   const clampedStart = Math.min(startIdx, maxStart);
   const weeks = allWeeks.slice(clampedStart, clampedStart + count);
 
   const prev = () => {
-    if (!weeks.length) return;
+    if (disableWeekControls) return;
     setStartIdx((i) => Math.max(0, i - 1));
   };
   const next = () => {
-    if (!weeks.length) return;
+    if (disableWeekControls) return;
     setStartIdx((i) => Math.min(maxStart, i + 1));
   };
   const goThisWeek = React.useCallback(() => {
-    if (!allWeeks.length) return;
+    if (disableWeekControls) return;
     const curWeekNr = sampleWeeks[calcCurrentWeekIdx()]?.nr;
     const start = computeWindowStartForWeek(allWeeks, count, curWeekNr);
     setStartIdx(start);
-  }, [allWeeks, count]);
+  }, [allWeeks, count, disableWeekControls]);
 
   // >>> Eerste load: centreer venster rond huidige week
   React.useEffect(() => {
-    if (allWeeks.length) {
-      goThisWeek();
-    } else {
+    if (disableWeekControls) {
       setStartIdx(0);
+    } else {
+      goThisWeek();
     }
-  }, [allWeeks.length, goThisWeek]);
+  }, [disableWeekControls, goThisWeek]);
 
   const hasVisibleData = weeks.length > 0 && visibleVakken.length > 0;
   const showNoDataForFilters = hasAnyDocs && !hasVisibleData;
@@ -124,18 +126,18 @@ export default function Matrix() {
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
           onClick={goThisWeek}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Spring naar huidige week"
           aria-label="Deze week"
-          disabled={!weeks.length}
+          disabled={disableWeekControls}
         >
           <CalendarClock size={16} />
         </button>
         <button
           onClick={prev}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Vorige"
-          disabled={!weeks.length}
+          disabled={disableWeekControls}
         >
           ◀
         </button>
@@ -145,9 +147,9 @@ export default function Matrix() {
         </span>
         <button
           onClick={next}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Volgende"
-          disabled={!weeks.length}
+          disabled={disableWeekControls}
         >
           ▶
         </button>
@@ -158,7 +160,7 @@ export default function Matrix() {
           onChange={(e) => setCount(Number(e.target.value))}
           aria-label="Aantal weken tonen"
           title="Aantal weken tonen"
-          disabled={!weeks.length}
+          disabled={disableWeekControls}
         >
           {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>
