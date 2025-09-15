@@ -32,37 +32,39 @@ export default function Deadlines() {
   const [dur, setDur] = React.useState(3);
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
+  const hasActiveDocs = activeDocs.length > 0;
   const allWeeks = React.useMemo(() => deriveWeeksFromDocs(activeDocs), [activeDocs]);
-
-  const hasUploads = activeDocs.length > 0 && allWeeks.length > 0;
+  const hasWeekData = allWeeks.length > 0;
+  const disableWeekControls = !hasActiveDocs || !hasWeekData;
+  const hasUploads = hasActiveDocs && hasWeekData;
 
   const maxFrom = Math.max(0, allWeeks.length - dur);
   const clampedFrom = Math.min(fromIdx, maxFrom);
   const weeks = allWeeks.slice(clampedFrom, clampedFrom + dur);
 
   const prev = () => {
-    if (!hasUploads) return;
+    if (disableWeekControls) return;
     setFromIdx((i) => Math.max(0, i - 1));
   };
   const next = () => {
-    if (!hasUploads) return;
+    if (disableWeekControls) return;
     setFromIdx((i) => Math.min(maxFrom, i + 1));
   };
   const goThisWeek = React.useCallback(() => {
-    if (!hasUploads) return;
+    if (disableWeekControls) return;
     const currentWeekNr = sampleWeeks[calcCurrentWeekIdx()]?.nr;
     const start = computeWindowStartForWeek(allWeeks, dur, currentWeekNr);
     setFromIdx(start);
-  }, [allWeeks, dur, hasUploads]);
+  }, [allWeeks, dur, disableWeekControls]);
 
   // >>> Eerste load: centreer venster rond huidige week
   React.useEffect(() => {
-    if (hasUploads) {
-      goThisWeek();
-    } else {
+    if (disableWeekControls) {
       setFromIdx(0);
+    } else {
+      goThisWeek();
     }
-  }, [goThisWeek, hasUploads]);
+  }, [disableWeekControls, goThisWeek]);
 
   const items: Item[] = !hasUploads
     ? []
@@ -102,18 +104,18 @@ export default function Deadlines() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
           onClick={goThisWeek}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Spring naar huidige week"
           aria-label="Deze week"
-          disabled={!hasUploads}
+          disabled={disableWeekControls}
         >
           <CalendarClock size={16} />
         </button>
         <button
           onClick={prev}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Vorige"
-          disabled={!hasUploads}
+          disabled={disableWeekControls}
         >
           ◀
         </button>
@@ -123,9 +125,9 @@ export default function Deadlines() {
         </span>
         <button
           onClick={next}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Volgende"
-          disabled={!hasUploads}
+          disabled={disableWeekControls}
         >
           ▶
         </button>
@@ -136,7 +138,7 @@ export default function Deadlines() {
           onChange={(e) => setDur(Number(e.target.value))}
           aria-label="Aantal weken tonen"
           title="Aantal weken tonen"
-          disabled={!hasUploads}
+          disabled={disableWeekControls}
         >
           {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>{n} {n > 1 ? "weken" : "week"}</option>

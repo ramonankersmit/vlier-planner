@@ -1,6 +1,6 @@
 import React from "react";
 import { Info, FileText, CheckSquare, CalendarClock } from "lucide-react";
-import { useAppStore } from "../app/store";
+import { useAppStore, type DocRecord } from "../app/store";
 import { sampleWeeks, sampleByWeek, formatRange, calcCurrentWeekIdx } from "../data/sampleWeeks";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
@@ -103,8 +103,70 @@ export default function WeekOverview() {
   const { openPreview } = useDocumentPreview();
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
+  const hasActiveDocs = activeDocs.length > 0;
 
-  const hasUploads = activeDocs.length > 0;
+  const niveauOptions = React.useMemo(
+    () => Array.from(new Set(activeDocs.map((d) => d.niveau))).sort(),
+    [activeDocs]
+  );
+  const leerjaarOptions = React.useMemo(
+    () =>
+      Array.from(new Set(activeDocs.map((d) => d.leerjaar))).sort(
+        (a, b) => Number(a) - Number(b)
+      ),
+    [activeDocs]
+  );
+
+  React.useEffect(() => {
+    if (!hasActiveDocs && niveauWO !== "ALLE") {
+      setNiveauWO("ALLE");
+      return;
+    }
+    if (hasActiveDocs && niveauWO !== "ALLE" && !niveauOptions.includes(niveauWO)) {
+      setNiveauWO("ALLE");
+    }
+  }, [hasActiveDocs, niveauOptions, niveauWO, setNiveauWO]);
+
+  React.useEffect(() => {
+    if (!hasActiveDocs && leerjaarWO !== "ALLE") {
+      setLeerjaarWO("ALLE");
+      return;
+    }
+    if (hasActiveDocs && leerjaarWO !== "ALLE" && !leerjaarOptions.includes(leerjaarWO)) {
+      setLeerjaarWO("ALLE");
+    }
+  }, [hasActiveDocs, leerjaarOptions, leerjaarWO, setLeerjaarWO]);
+
+  const filteredDocs = React.useMemo(
+    () =>
+      activeDocs.filter(
+        (doc) =>
+          (niveauWO === "ALLE" || doc.niveau === niveauWO) &&
+          (leerjaarWO === "ALLE" || doc.leerjaar === leerjaarWO)
+      ),
+    [activeDocs, niveauWO, leerjaarWO]
+  );
+
+  const docsByVak = React.useMemo(() => {
+    const map = new Map<string, DocRecord[]>();
+    for (const doc of filteredDocs) {
+      const list = map.get(doc.vak);
+      if (list) {
+        list.push(doc);
+      } else {
+        map.set(doc.vak, [doc]);
+      }
+    }
+    return map;
+  }, [filteredDocs]);
+
+  const visibleVakken = React.useMemo(
+    () => mijnVakken.filter((vak) => docsByVak.has(vak)),
+    [mijnVakken, docsByVak]
+  );
+
+  const hasDocsForFilters = visibleVakken.length > 0;
+  const disableWeekControls = !hasActiveDocs;
 
   // >>> Spring automatisch naar huidige week bij eerste load
   React.useEffect(() => {
@@ -125,24 +187,27 @@ export default function WeekOverview() {
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
           onClick={goThisWeek}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Spring naar deze week"
           aria-label="Deze week"
+          disabled={disableWeekControls}
         >
           <CalendarClock size={16} />
         </button>
         <button
           onClick={() => setWeekIdxWO(Math.max(0, weekIdxWO - 1))}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Vorige week"
+          disabled={disableWeekControls}
         >
           ◀
         </button>
         <span className="text-sm text-gray-800">Week {week.nr}</span>
         <button
           onClick={() => setWeekIdxWO(Math.min(sampleWeeks.length - 1, weekIdxWO + 1))}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Volgende week"
+          disabled={disableWeekControls}
         >
           ▶
         </button>
@@ -153,10 +218,14 @@ export default function WeekOverview() {
           onChange={(e) => setNiveauWO(e.target.value as any)}
           aria-label="Filter niveau"
           title="Filter op niveau"
+          disabled={!hasActiveDocs}
         >
           <option value="ALLE">Alle niveaus</option>
-          <option value="HAVO">HAVO</option>
-          <option value="VWO">VWO</option>
+          {niveauOptions.map((niveau) => (
+            <option key={niveau} value={niveau}>
+              {niveau}
+            </option>
+          ))}
         </select>
 
         <select
@@ -165,8 +234,10 @@ export default function WeekOverview() {
           onChange={(e) => setLeerjaarWO(e.target.value)}
           aria-label="Filter leerjaar"
           title="Filter op leerjaar"
+          disabled={!hasActiveDocs}
         >
-          {["1", "2", "3", "4", "5", "6"].map((j) => (
+          <option value="ALLE">Alle leerjaren</option>
+          {leerjaarOptions.map((j) => (
             <option key={j} value={j}>
               Leerjaar {j}
             </option>
@@ -174,22 +245,27 @@ export default function WeekOverview() {
         </select>
       </div>
 
-      {!hasUploads ? (
+      {!hasActiveDocs ? (
         <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
           Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
         </div>
+      ) : !hasDocsForFilters ? (
+        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+          Geen vakken voor deze filters. Pas de selectie aan of controleer de metadata van de documenten.
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {mijnVakken.map((vak) => {
+          {visibleVakken.map((vak) => {
             const d = sampleByWeek[week.nr]?.[vak];
             const key = `${week.nr}:${vak}`;
             const isDone = !!doneMap[key];
-            const doc = activeDocs.find(
-              (dd) =>
-                dd.vak === vak &&
-                week.nr >= Math.min(dd.beginWeek, dd.eindWeek) &&
-                week.nr <= Math.max(dd.beginWeek, dd.eindWeek)
-            ) || activeDocs.find((dd) => dd.vak === vak);
+            const docsForVak = docsByVak.get(vak) ?? [];
+            const doc =
+              docsForVak.find(
+                (dd) =>
+                  week.nr >= Math.min(dd.beginWeek, dd.eindWeek) &&
+                  week.nr <= Math.max(dd.beginWeek, dd.eindWeek)
+              ) ?? docsForVak[0];
             return (
               <Card
                 key={vak}
