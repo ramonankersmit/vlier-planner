@@ -23,6 +23,10 @@ backend/.venv/
 # FastAPI / storage
 backend/storage/uploads/
 
+# Generated data
+uploads/**
+data/**
+
 # Build artifacts
 *.egg-info/
 .eggs/
@@ -33,5 +37,10 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Samples
-# samples/
+# Documents
+*.pdf
+*.docx
+*.doc
+*.xlsx
+*.cache
+*.db
