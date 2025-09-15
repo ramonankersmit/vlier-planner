@@ -166,6 +166,7 @@ export default function WeekOverview() {
   );
 
   const hasDocsForFilters = visibleVakken.length > 0;
+  const disableWeekControls = !hasActiveDocs;
 
   // >>> Spring automatisch naar huidige week bij eerste load
   React.useEffect(() => {
@@ -186,24 +187,27 @@ export default function WeekOverview() {
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
           onClick={goThisWeek}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Spring naar deze week"
           aria-label="Deze week"
+          disabled={disableWeekControls}
         >
           <CalendarClock size={16} />
         </button>
         <button
           onClick={() => setWeekIdxWO(Math.max(0, weekIdxWO - 1))}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Vorige week"
+          disabled={disableWeekControls}
         >
           ◀
         </button>
         <span className="text-sm text-gray-800">Week {week.nr}</span>
         <button
           onClick={() => setWeekIdxWO(Math.min(sampleWeeks.length - 1, weekIdxWO + 1))}
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Volgende week"
+          disabled={disableWeekControls}
         >
           ▶
         </button>
