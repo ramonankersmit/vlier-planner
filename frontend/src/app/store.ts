@@ -46,11 +46,17 @@ type State = {
 
 const uniqSorted = (arr: string[]) => Array.from(new Set(arr)).sort();
 
-const computeMijnVakken = (docs: DocRecord[], prev: string[]) => {
+type MijnVakkenOptions = {
+  ensure?: string[];
+};
+
+const computeMijnVakken = (docs: DocRecord[], prev: string[], options?: MijnVakkenOptions) => {
   const active = docs.filter((d) => d.enabled);
   const activeVakken = uniqSorted(active.map((x) => x.vak));
-  const nextSelection = prev.filter((v) => activeVakken.includes(v));
-  return nextSelection.length ? nextSelection : activeVakken;
+  const ensured = options?.ensure?.filter((vak) => activeVakken.includes(vak)) ?? [];
+  const preserved = prev.filter((v) => activeVakken.includes(v));
+  const merged = uniqSorted([...preserved, ...ensured]);
+  return merged.length ? merged : activeVakken;
 };
 
 export const useAppStore = create<State>((set, get) => ({
@@ -59,12 +65,19 @@ export const useAppStore = create<State>((set, get) => ({
   // ----------------------------
   docs: [], // start leeg; wordt gehydrate via API
   setDocs: (d) => {
-    const prevEnabled = new Map(get().docs.map((doc) => [doc.fileId, doc.enabled] as const));
+    const prevDocs = get().docs;
+    const prevEnabled = new Map(prevDocs.map((doc) => [doc.fileId, doc.enabled] as const));
     const nextDocs = d.map((doc) => ({
       ...doc,
       enabled: prevEnabled.get(doc.fileId) ?? true,
     }));
-    const mijnVakken = computeMijnVakken(nextDocs, get().mijnVakken);
+    const prevVakSet = new Set(prevDocs.map((doc) => doc.vak));
+    const newlyEnabledVakken = nextDocs
+      .filter((doc) => doc.enabled && !prevVakSet.has(doc.vak))
+      .map((doc) => doc.vak);
+    const mijnVakken = computeMijnVakken(nextDocs, get().mijnVakken, {
+      ensure: newlyEnabledVakken,
+    });
     set({ docs: nextDocs, mijnVakken });
   },
   removeDoc: (fileId) => {
@@ -75,8 +88,12 @@ export const useAppStore = create<State>((set, get) => ({
     set({ docs: next, mijnVakken });
   },
   addDoc: (doc) => {
-    const next = [...get().docs, { ...doc, enabled: true }];
-    const mijnVakken = computeMijnVakken(next, get().mijnVakken);
+    const prevDocs = get().docs;
+    const next = [...prevDocs, { ...doc, enabled: true }];
+    const hadVakBefore = prevDocs.some((existing) => existing.vak === doc.vak);
+    const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
+      ensure: hadVakBefore ? undefined : [doc.vak],
+    });
     set({ docs: next, mijnVakken });
   },
   replaceDoc: (fileId, nextDoc) => {

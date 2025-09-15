@@ -217,7 +217,8 @@ export default function Uploads() {
 
       {/* Tabel */}
       <div className="rounded-2xl border bg-white">
-        <div className="grid grid-cols-10 gap-2 text-xs font-medium text-gray-600 border-b pb-2 px-4 pt-3">
+        <div className="grid grid-cols-[90px_minmax(0,2fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))] gap-2 text-xs font-medium text-gray-600 border-b pb-2 px-4 pt-3">
+          <div className="flex justify-center">Gebruik</div>
           <div>Bestand</div>
           <div>Vak</div>
           <div>Niveau</div>
@@ -225,7 +226,6 @@ export default function Uploads() {
           <div>Periode</div>
           <div>Begin week</div>
           <div>Eind week</div>
-          <div>Gebruik</div>
           <div className="col-span-2">Acties</div>
         </div>
 
@@ -235,10 +235,28 @@ export default function Uploads() {
           filtered.map((d, i) => (
             <div
               key={d.fileId}
-              className={`grid grid-cols-10 gap-2 text-sm items-center px-4 py-3 ${
+              className={`grid grid-cols-[90px_minmax(0,2fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))] gap-2 text-sm items-center px-4 py-3 ${
                 i > 0 ? "border-t" : ""
               }`}
             >
+              <div className="flex justify-center">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={d.enabled}
+                  onChange={() => toggleGebruik(d)}
+                  aria-label={
+                    d.enabled
+                      ? `Gebruik uitschakelen voor ${d.bestand}`
+                      : `Gebruik inschakelen voor ${d.bestand}`
+                  }
+                  title={
+                    d.enabled
+                      ? `Gebruik uitschakelen voor ${d.bestand}`
+                      : `Gebruik inschakelen voor ${d.bestand}`
+                  }
+                />
+              </div>
               <div className="truncate" title={d.bestand}>
                 {d.bestand}
               </div>
@@ -248,17 +266,6 @@ export default function Uploads() {
               <div>P{d.periode}</div>
               <div>{d.beginWeek}</div>
               <div>{d.eindWeek}</div>
-              <div>
-                <label className="inline-flex items-center gap-2 text-xs text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={d.enabled}
-                    onChange={() => toggleGebruik(d)}
-                    aria-label={d.enabled ? `Gebruik uitschakelen voor ${d.bestand}` : `Gebruik inschakelen voor ${d.bestand}`}
-                  />
-                  <span>{d.enabled ? "Aan" : "Uit"}</span>
-                </label>
-              </div>
               <div className="flex gap-2 col-span-2">
                 <button
                   title={`Bron: ${d.bestand}`}
