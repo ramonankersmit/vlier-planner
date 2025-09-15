@@ -104,10 +104,19 @@ export const useAppStore = create<State>((set, get) => ({
     set({ docs: next, mijnVakken });
   },
   setDocEnabled: (fileId, enabled) => {
-    const next = get().docs.map((x) =>
-      x.fileId === fileId ? { ...x, enabled } : x
-    );
-    const mijnVakken = computeMijnVakken(next, get().mijnVakken);
+    let ensuredVak: string | undefined;
+    const next = get().docs.map((doc) => {
+      if (doc.fileId !== fileId) {
+        return doc;
+      }
+      if (enabled && !doc.enabled) {
+        ensuredVak = doc.vak;
+      }
+      return { ...doc, enabled };
+    });
+    const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
+      ensure: ensuredVak ? [ensuredVak] : undefined,
+    });
     set({ docs: next, mijnVakken });
   },
 
