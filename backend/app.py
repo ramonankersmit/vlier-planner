@@ -7,6 +7,7 @@ import mimetypes
 import shutil
 import uuid
 from html import escape
+from urllib.parse import quote
 
 from docx import Document
 from docx.oxml.table import CT_Tbl
@@ -104,7 +105,7 @@ def delete_all_docs():
 
 
 @app.get("/api/docs/{file_id}/content")
-def get_doc_content(file_id: str):
+def get_doc_content(file_id: str, inline: bool = False):
     doc = DOCS.get(file_id)
     if not doc:
         raise HTTPException(404, "Not found")
@@ -120,11 +121,21 @@ def get_doc_content(file_id: str):
         suffix = file_path.suffix.lower()
 
     media_type, _ = mimetypes.guess_type(file_path.name)
-    return FileResponse(
+    response = FileResponse(
         file_path,
         media_type=media_type or "application/octet-stream",
-        filename=doc.bestand,
+        filename=None if inline else doc.bestand,
     )
+
+    if inline:
+        safe_filename = doc.bestand.replace("\"", "\\\"")
+        disposition = f'inline; filename="{safe_filename}"'
+        quoted = quote(doc.bestand)
+        if quoted:
+            disposition = f"{disposition}; filename*=UTF-8''{quoted}"
+        response.headers["Content-Disposition"] = disposition
+
+    return response
 
 
 @app.get("/api/docs/{file_id}/preview")
@@ -153,7 +164,7 @@ def get_doc_preview(file_id: str):
 
     return {
         "mediaType": media_type or "application/octet-stream",
-        "url": f"/api/docs/{file_id}/content",
+        "url": f"/api/docs/{file_id}/content?inline=1",
         "filename": doc.bestand,
     }
 
