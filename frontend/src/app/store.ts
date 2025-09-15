@@ -16,13 +16,16 @@ export type DocMeta = {
   schooljaar?: string | null;
 };
 
+export type DocRecord = DocMeta & { enabled: boolean };
+
 type State = {
   // ==== documenten (globaal) ====
-  docs: DocMeta[];
+  docs: DocRecord[];
   setDocs: (d: DocMeta[]) => void;
   removeDoc: (fileId: string) => void;
   addDoc: (doc: DocMeta) => void;
   replaceDoc: (fileId: string, next: DocMeta) => void;
+  setDocEnabled: (fileId: string, enabled: boolean) => void;
 
   // ==== instellingen ====
   mijnVakken: string[];
@@ -43,28 +46,52 @@ type State = {
 
 const uniqSorted = (arr: string[]) => Array.from(new Set(arr)).sort();
 
+const computeMijnVakken = (docs: DocRecord[], prev: string[]) => {
+  const active = docs.filter((d) => d.enabled);
+  const activeVakken = uniqSorted(active.map((x) => x.vak));
+  const nextSelection = prev.filter((v) => activeVakken.includes(v));
+  return nextSelection.length ? nextSelection : activeVakken;
+};
+
 export const useAppStore = create<State>((set, get) => ({
   // ----------------------------
   // documenten
   // ----------------------------
   docs: [], // start leeg; wordt gehydrate via API
   setDocs: (d) => {
-    set({ docs: d });
-    // sync Mijn Vakken met beschikbare vakken uit docs
-    const mk = uniqSorted(d.map((x) => x.vak));
-    set({ mijnVakken: mk });
+    const prevEnabled = new Map(get().docs.map((doc) => [doc.fileId, doc.enabled] as const));
+    const nextDocs = d.map((doc) => ({
+      ...doc,
+      enabled: prevEnabled.get(doc.fileId) ?? true,
+    }));
+    const mijnVakken = computeMijnVakken(nextDocs, get().mijnVakken);
+    set({ docs: nextDocs, mijnVakken });
   },
   removeDoc: (fileId) => {
-    const next = get().docs.filter((x) => x.fileId !== fileId);
-    get().setDocs(next);
+    const next = get()
+      .docs
+      .filter((x) => x.fileId !== fileId);
+    const mijnVakken = computeMijnVakken(next, get().mijnVakken);
+    set({ docs: next, mijnVakken });
   },
   addDoc: (doc) => {
-    const next = [...get().docs, doc];
-    get().setDocs(next);
+    const next = [...get().docs, { ...doc, enabled: true }];
+    const mijnVakken = computeMijnVakken(next, get().mijnVakken);
+    set({ docs: next, mijnVakken });
   },
   replaceDoc: (fileId, nextDoc) => {
-    const next = get().docs.map((x) => (x.fileId === fileId ? nextDoc : x));
-    get().setDocs(next);
+    const next = get().docs.map((x) =>
+      x.fileId === fileId ? { ...nextDoc, enabled: x.enabled } : x
+    );
+    const mijnVakken = computeMijnVakken(next, get().mijnVakken);
+    set({ docs: next, mijnVakken });
+  },
+  setDocEnabled: (fileId, enabled) => {
+    const next = get().docs.map((x) =>
+      x.fileId === fileId ? { ...x, enabled } : x
+    );
+    const mijnVakken = computeMijnVakken(next, get().mijnVakken);
+    set({ docs: next, mijnVakken });
   },
 
   // ----------------------------

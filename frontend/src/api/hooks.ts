@@ -13,12 +13,12 @@ export function useWeeks(params: { from: string; to: string }) {
   return { data, error };
 }
 
-export function useAgenda(week: number, year: number) {
+export function useDeadlines(week: number, year: number) {
   const [data, setData] = useState<any[]>([]);
   const [error, setError] = useState<Error | null>(null);
   useEffect(() => {
     client
-      .getAgenda(week, year)
+      .getDeadlines(week, year)
       .then(setData)
       .catch(setError);
   }, [week, year]);

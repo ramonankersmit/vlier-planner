@@ -9,7 +9,14 @@ export const sampleWeeks: Week[] = [
   { nr: 41, start: "2025-10-06", end: "2025-10-10" },
 ];
 
-export const formatRange = (w: Week) => `${w.start} – ${w.end}`;
+export const formatRange = (w: Week) => {
+  const hasStart = !!w.start;
+  const hasEnd = !!w.end;
+  if (hasStart && hasEnd) return `${w.start} – ${w.end}`;
+  if (hasStart) return w.start;
+  if (hasEnd) return w.end;
+  return `Week ${w.nr}`;
+};
 
 export const formatHumanDate = (iso?: string) => {
   if (!iso) return "";
@@ -43,6 +50,48 @@ export const calcCurrentWeekIdx = (today: Date = new Date()): number => {
     }
   }
   return bestIdx;
+};
+
+const weekMap = new Map(sampleWeeks.map((w) => [w.nr, w] as const));
+
+export const deriveWeeksFromDocs = (
+  docs: { beginWeek: number; eindWeek: number }[]
+): Week[] => {
+  if (!docs?.length) return [];
+  const numbers = new Set<number>();
+  for (const doc of docs) {
+    const start = Math.min(doc.beginWeek, doc.eindWeek);
+    const end = Math.max(doc.beginWeek, doc.eindWeek);
+    for (let wk = start; wk <= end; wk++) {
+      numbers.add(wk);
+    }
+  }
+  return Array.from(numbers)
+    .sort((a, b) => a - b)
+    .map((nr) =>
+      weekMap.get(nr) ?? {
+        nr,
+        start: "",
+        end: "",
+      }
+    );
+};
+
+export const computeWindowStartForWeek = (
+  weeks: Week[],
+  windowSize: number,
+  targetWeekNr?: number
+) => {
+  if (!weeks.length) return 0;
+  const maxStart = Math.max(0, weeks.length - windowSize);
+  if (!targetWeekNr) return 0;
+  let idx = weeks.findIndex((w) => w.nr === targetWeekNr);
+  if (idx === -1) {
+    idx = weeks.findIndex((w) => w.nr > targetWeekNr);
+    if (idx === -1) idx = weeks.length - 1;
+  }
+  const desired = idx - Math.floor(windowSize / 2);
+  return Math.max(0, Math.min(desired, maxStart));
 };
 
 // Sleutel op vaknaam (niet fileId)

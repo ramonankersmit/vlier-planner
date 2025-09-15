@@ -1,7 +1,15 @@
 import React from "react";
 import { CalendarClock, FileText } from "lucide-react";
 import { useAppStore } from "../app/store";
-import { sampleWeeks, sampleByWeek, formatHumanDate, calcCurrentWeekIdx } from "../data/sampleWeeks";
+import {
+  sampleWeeks,
+  sampleByWeek,
+  formatHumanDate,
+  calcCurrentWeekIdx,
+  deriveWeeksFromDocs,
+  computeWindowStartForWeek,
+} from "../data/sampleWeeks";
+import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 type Item = {
   id: string;
@@ -11,36 +19,50 @@ type Item = {
   title: string;
   date?: string;
   src?: string;
+  fileId?: string;
 };
 
-export default function Agenda() {
+export default function Deadlines() {
   const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
   const docs = useAppStore((s) => s.docs) ?? [];
+  const { openPreview } = useDocumentPreview();
 
   const [vak, setVak] = React.useState<string>("ALLE");
   const [fromIdx, setFromIdx] = React.useState(0);
   const [dur, setDur] = React.useState(3);
 
-  const maxFrom = Math.max(0, sampleWeeks.length - dur);
-  const clampedFrom = Math.min(fromIdx, maxFrom);
-  const weeks = sampleWeeks.slice(clampedFrom, clampedFrom + dur);
+  const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
+  const allWeeks = React.useMemo(() => deriveWeeksFromDocs(activeDocs), [activeDocs]);
 
-  const prev = () => setFromIdx((i) => Math.max(0, i - 1));
-  const next = () => setFromIdx((i) => Math.min(maxFrom, i + 1));
-  const goThisWeek = () => {
-    const cur = calcCurrentWeekIdx();
-    let s = cur - Math.floor(dur / 2);
-    s = Math.max(0, Math.min(s, Math.max(0, sampleWeeks.length - dur)));
-    setFromIdx(s);
+  const hasUploads = activeDocs.length > 0 && allWeeks.length > 0;
+
+  const maxFrom = Math.max(0, allWeeks.length - dur);
+  const clampedFrom = Math.min(fromIdx, maxFrom);
+  const weeks = allWeeks.slice(clampedFrom, clampedFrom + dur);
+
+  const prev = () => {
+    if (!hasUploads) return;
+    setFromIdx((i) => Math.max(0, i - 1));
   };
+  const next = () => {
+    if (!hasUploads) return;
+    setFromIdx((i) => Math.min(maxFrom, i + 1));
+  };
+  const goThisWeek = React.useCallback(() => {
+    if (!hasUploads) return;
+    const currentWeekNr = sampleWeeks[calcCurrentWeekIdx()]?.nr;
+    const start = computeWindowStartForWeek(allWeeks, dur, currentWeekNr);
+    setFromIdx(start);
+  }, [allWeeks, dur, hasUploads]);
 
   // >>> Eerste load: centreer venster rond huidige week
   React.useEffect(() => {
-    goThisWeek();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const hasUploads = (docs?.length ?? 0) > 0;
+    if (hasUploads) {
+      goThisWeek();
+    } else {
+      setFromIdx(0);
+    }
+  }, [goThisWeek, hasUploads]);
 
   const items: Item[] = !hasUploads
     ? []
@@ -52,7 +74,12 @@ export default function Agenda() {
           if (!d?.deadlines || d.deadlines === "—") return [];
           const type: Item["type"] =
             String(d.deadlines).toLowerCase().includes("toets") ? "Toets" : "Deadline";
-          const doc = docs.find ? docs.find((dd) => dd.vak === vakNaam) : undefined;
+          const doc = activeDocs.find(
+            (dd) =>
+              dd.vak === vakNaam &&
+              w.nr >= Math.min(dd.beginWeek, dd.eindWeek) &&
+              w.nr <= Math.max(dd.beginWeek, dd.eindWeek)
+          ) || activeDocs.find((dd) => dd.vak === vakNaam);
           return [
             {
               id: `${vakNaam}-${w.nr}`,
@@ -62,6 +89,7 @@ export default function Agenda() {
               title: d.deadlines,
               date: d.date,
               src: doc?.bestand,
+              fileId: doc?.fileId,
             } as Item,
           ];
         });
@@ -69,26 +97,60 @@ export default function Agenda() {
 
   return (
     <div>
-      <div className="text-lg font-semibold mb-3">Agenda &amp; Deadlines</div>
+      <div className="text-lg font-semibold mb-3">Deadlines</div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button onClick={goThisWeek} className="rounded-md border px-2 py-1 text-sm" title="Spring naar huidige week" aria-label="Deze week">
+        <button
+          onClick={goThisWeek}
+          className="rounded-md border px-2 py-1 text-sm"
+          title="Spring naar huidige week"
+          aria-label="Deze week"
+          disabled={!hasUploads}
+        >
           <CalendarClock size={16} />
         </button>
-        <button onClick={prev} className="rounded-md border px-2 py-1 text-sm" title="Vorige">◀</button>
+        <button
+          onClick={prev}
+          className="rounded-md border px-2 py-1 text-sm"
+          title="Vorige"
+          disabled={!hasUploads}
+        >
+          ◀
+        </button>
         <span className="text-sm text-gray-800">
-          Week {weeks[0]?.nr}
+          Week {weeks[0]?.nr ?? "—"}
           {weeks.length > 1 ? `–${weeks[weeks.length - 1].nr}` : ""}
         </span>
-        <button onClick={next} className="rounded-md border px-2 py-1 text-sm" title="Volgende">▶</button>
+        <button
+          onClick={next}
+          className="rounded-md border px-2 py-1 text-sm"
+          title="Volgende"
+          disabled={!hasUploads}
+        >
+          ▶
+        </button>
 
-        <select className="rounded-md border px-2 py-1 text-sm" value={dur} onChange={(e) => setDur(Number(e.target.value))} aria-label="Aantal weken tonen" title="Aantal weken tonen">
+        <select
+          className="rounded-md border px-2 py-1 text-sm"
+          value={dur}
+          onChange={(e) => setDur(Number(e.target.value))}
+          aria-label="Aantal weken tonen"
+          title="Aantal weken tonen"
+          disabled={!hasUploads}
+        >
           {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>{n} {n > 1 ? "weken" : "week"}</option>
           ))}
         </select>
 
-        <select className="rounded-md border px-2 py-1 text-sm" value={vak} onChange={(e) => setVak(e.target.value)} aria-label="Filter vak" title="Filter op vak">
+        <select
+          className="rounded-md border px-2 py-1 text-sm"
+          value={vak}
+          onChange={(e) => setVak(e.target.value)}
+          aria-label="Filter vak"
+          title="Filter op vak"
+          disabled={!hasUploads}
+        >
           <option value="ALLE">Alle vakken</option>
           {mijnVakken.map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
@@ -124,7 +186,16 @@ export default function Agenda() {
                     <td className="px-4 py-2 align-top">{it.title}</td>
                     <td className="px-4 py-2 align-top whitespace-nowrap" title={it.date || ""}>{dateLabel}</td>
                     <td className="px-4 py-2 align-top">
-                      <button className="rounded-lg border bg-white p-1" title={it.src ? `Bron: ${it.src}` : "Toon bron"} aria-label={it.src ? `Bron: ${it.src}` : `Toon bron ${it.vak}`}>
+                      <button
+                        className="rounded-lg border bg-white p-1 disabled:opacity-40"
+                        title={it.src ? `Bron: ${it.src}` : "Geen bron beschikbaar"}
+                        aria-label={it.src ? `Bron: ${it.src}` : `Bron niet beschikbaar voor ${it.vak}`}
+                        disabled={!it.fileId}
+                        onClick={() =>
+                          it.fileId &&
+                          openPreview({ fileId: it.fileId, filename: it.src || `${it.vak}.pdf` })
+                        }
+                      >
                         <FileText size={16} />
                       </button>
                     </td>

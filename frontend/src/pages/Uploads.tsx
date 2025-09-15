@@ -1,8 +1,9 @@
 import React from "react";
-import { Info, FileText, RefreshCw, Archive, Trash2, XCircle } from "lucide-react";
-import type { DocMeta } from "../data/sampleDocs";
+import { Info, FileText, Trash2, XCircle } from "lucide-react";
+import type { DocRecord } from "../app/store";
 import { useAppStore } from "../app/store";
 import { apiUploadDoc, apiDeleteDoc } from "../lib/api";
+import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 type Filters = {
   vak: string;
@@ -11,7 +12,7 @@ type Filters = {
   periode: string;
 };
 
-function useMetadata(docs: DocMeta[]) {
+function useMetadata(docs: DocRecord[]) {
   const vakken = Array.from(new Set(docs.map((d) => d.vak))).sort();
   const niveaus = Array.from(new Set(docs.map((d) => d.niveau))).sort() as string[];
   const leerjaren = Array.from(new Set(docs.map((d) => d.leerjaar))).sort();
@@ -27,7 +28,8 @@ function useMetadata(docs: DocMeta[]) {
 
 export default function Uploads() {
   // Globale docs + acties uit de store
-  const { docs, addDoc, removeDoc /* replaceDoc, setDocs */ } = useAppStore();
+  const { docs, addDoc, removeDoc, setDocEnabled } = useAppStore();
+  const { openPreview } = useDocumentPreview();
 
   // Lokale UI state
   const [filters, setFilters] = React.useState<Filters>({
@@ -60,20 +62,25 @@ export default function Uploads() {
   });
 
   async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
-    const file = ev.target.files?.[0];
-    if (!file) return;
-    try {
-      setUploading(true);
-      setError(null);
-      const meta = await apiUploadDoc(file);
-      // Voeg direct toe aan globale store → Settings/Agenda/Matrix volgen automatisch
-      addDoc(meta as any);
-    } catch (e: any) {
-      setError(e?.message || "Upload mislukt");
-    } finally {
-      setUploading(false);
-      ev.target.value = "";
+    const files = ev.target.files;
+    if (!files?.length) return;
+    setUploading(true);
+    setError(null);
+    const errors: string[] = [];
+    for (const file of Array.from(files)) {
+      try {
+        const meta = await apiUploadDoc(file);
+        // Voeg direct toe aan globale store → Settings/Deadlines/Matrix volgen automatisch
+        addDoc(meta as any);
+      } catch (e: any) {
+        errors.push(`${file.name}: ${e?.message || "Upload mislukt"}`);
+      }
     }
+    if (errors.length) {
+      setError(errors.join(" | "));
+    }
+    setUploading(false);
+    ev.target.value = "";
   }
 
   async function handleDelete(id: string) {
@@ -86,6 +93,10 @@ export default function Uploads() {
     }
   }
 
+  const toggleGebruik = (doc: DocRecord) => {
+    setDocEnabled(doc.fileId, !doc.enabled);
+  };
+
   return (
     <div className="space-y-4">
       <div className="text-lg font-semibold">Uploads &amp; Documentbeheer</div>
@@ -96,7 +107,7 @@ export default function Uploads() {
         <div className="text-sm text-gray-600 mb-2">
           Kies een <strong>PDF</strong> of <strong>DOCX</strong>. Metadata wordt automatisch herkend.
         </div>
-        <input type="file" accept=".pdf,.docx" onChange={handleUpload} />
+        <input type="file" accept=".pdf,.docx" multiple onChange={handleUpload} />
         {isUploading && <div className="mt-2 text-sm text-gray-500">Bezig met uploaden…</div>}
         {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
       </div>
@@ -206,7 +217,7 @@ export default function Uploads() {
 
       {/* Tabel */}
       <div className="rounded-2xl border bg-white">
-        <div className="grid grid-cols-9 gap-2 text-xs font-medium text-gray-600 border-b pb-2 px-4 pt-3">
+        <div className="grid grid-cols-10 gap-2 text-xs font-medium text-gray-600 border-b pb-2 px-4 pt-3">
           <div>Bestand</div>
           <div>Vak</div>
           <div>Niveau</div>
@@ -214,6 +225,7 @@ export default function Uploads() {
           <div>Periode</div>
           <div>Begin week</div>
           <div>Eind week</div>
+          <div>Gebruik</div>
           <div className="col-span-2">Acties</div>
         </div>
 
@@ -223,7 +235,7 @@ export default function Uploads() {
           filtered.map((d, i) => (
             <div
               key={d.fileId}
-              className={`grid grid-cols-9 gap-2 text-sm items-center px-4 py-3 ${
+              className={`grid grid-cols-10 gap-2 text-sm items-center px-4 py-3 ${
                 i > 0 ? "border-t" : ""
               }`}
             >
@@ -236,18 +248,27 @@ export default function Uploads() {
               <div>P{d.periode}</div>
               <div>{d.beginWeek}</div>
               <div>{d.eindWeek}</div>
+              <div>
+                <label className="inline-flex items-center gap-2 text-xs text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={d.enabled}
+                    onChange={() => toggleGebruik(d)}
+                    aria-label={d.enabled ? `Gebruik uitschakelen voor ${d.bestand}` : `Gebruik inschakelen voor ${d.bestand}`}
+                  />
+                  <span>{d.enabled ? "Aan" : "Uit"}</span>
+                </label>
+              </div>
               <div className="flex gap-2 col-span-2">
-                <button title={`Bron: ${d.bestand}`} className="rounded-lg border bg-white p-1">
+                <button
+                  title={`Bron: ${d.bestand}`}
+                  className="rounded-lg border bg-white p-1"
+                  onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
+                >
                   <FileText size={16} />
                 </button>
                 <button onClick={() => setDetailDoc(d)} title="Meta-details" className="rounded-lg border bg-white p-1">
                   <Info size={16} />
-                </button>
-                <button title="Vervang (nog niet actief)" className="rounded-lg border bg-white p-1">
-                  <RefreshCw size={16} />
-                </button>
-                <button title="Archiveer (nog niet actief)" className="rounded-lg border bg-white p-1">
-                  <Archive size={16} />
                 </button>
                 <button
                   onClick={() => handleDelete(d.fileId)}
@@ -285,7 +306,7 @@ export default function Uploads() {
               {"\n"}
               Schooljaar: {detailDoc.schooljaar || "—"}
               {"\n\n"}
-              Let op: deze metadata voedt de filters en views (Weekoverzicht/Matrix/Agenda).
+              Let op: deze metadata voedt de filters en views (Weekoverzicht/Matrix/Deadlines).
             </div>
           </div>
         </div>

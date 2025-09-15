@@ -9,8 +9,8 @@ async function jsonFetch(url: string, opts?: RequestInit) {
 export const client = {
   getWeeks: (from: string, to: string) =>
     jsonFetch(`${API_URL}/api/weeks?from=${from}&to=${to}`),
-  getAgenda: (week: number, year: number) =>
-    jsonFetch(`${API_URL}/api/agenda?week=${week}&year=${year}`),
+  getDeadlines: (week: number, year: number) =>
+    jsonFetch(`${API_URL}/api/deadlines?week=${week}&year=${year}`),
   getMatrix: (period: number, year: number) =>
     jsonFetch(`${API_URL}/api/matrix?period=${period}&year=${year}`),
   getStudyUnits: () => jsonFetch(`${API_URL}/api/study-units`),

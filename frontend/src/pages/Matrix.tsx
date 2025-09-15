@@ -1,43 +1,60 @@
 import React from "react";
 import { FileText, CalendarClock } from "lucide-react";
 import { useAppStore } from "../app/store";
-import { sampleWeeks, sampleByWeek, formatRange, calcCurrentWeekIdx } from "../data/sampleWeeks";
+import {
+  sampleWeeks,
+  sampleByWeek,
+  formatRange,
+  calcCurrentWeekIdx,
+  deriveWeeksFromDocs,
+  computeWindowStartForWeek,
+} from "../data/sampleWeeks";
+import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 export default function Matrix() {
   const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
   const doneMap = useAppStore((s) => s.doneMap) ?? {};
   const toggleDone = useAppStore((s) => s.toggleDone);
   const docs = useAppStore((s) => s.docs) ?? [];
+  const { openPreview } = useDocumentPreview();
 
-  const hasUploads = (docs?.length ?? 0) > 0;
+  const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
+  const allWeeks = React.useMemo(() => deriveWeeksFromDocs(activeDocs), [activeDocs]);
+
+  const hasUploads = activeDocs.length > 0 && allWeeks.length > 0;
 
   const [startIdx, setStartIdx] = React.useState(0);
   const [count, setCount] = React.useState(3); // 1–6
   const [niveau, setNiveau] = React.useState<"HAVO" | "VWO" | "ALLE">("VWO");
   const [leerjaar, setLeerjaar] = React.useState("4");
 
-  const maxStart = Math.max(0, sampleWeeks.length - count);
+  const maxStart = Math.max(0, allWeeks.length - count);
   const clampedStart = Math.min(startIdx, maxStart);
-  const weeks = sampleWeeks.slice(clampedStart, clampedStart + count);
+  const weeks = allWeeks.slice(clampedStart, clampedStart + count);
 
-  const prev = () => setStartIdx((i) => Math.max(0, i - 1));
-  const next = () => setStartIdx((i) => Math.min(maxStart, i + 1));
-  const goThisWeek = () => {
-    const cur = calcCurrentWeekIdx();
-    let s = cur - Math.floor(count / 2);
-    s = Math.max(0, Math.min(s, Math.max(0, sampleWeeks.length - count)));
-    setStartIdx(s);
+  const prev = () => {
+    if (!hasUploads) return;
+    setStartIdx((i) => Math.max(0, i - 1));
   };
+  const next = () => {
+    if (!hasUploads) return;
+    setStartIdx((i) => Math.min(maxStart, i + 1));
+  };
+  const goThisWeek = React.useCallback(() => {
+    if (!hasUploads) return;
+    const curWeekNr = sampleWeeks[calcCurrentWeekIdx()]?.nr;
+    const start = computeWindowStartForWeek(allWeeks, count, curWeekNr);
+    setStartIdx(start);
+  }, [allWeeks, count, hasUploads]);
 
   // >>> Eerste load: centreer venster rond huidige week
   React.useEffect(() => {
-    const cur = calcCurrentWeekIdx();
-    let s = cur - Math.floor(count / 2);
-    s = Math.max(0, Math.min(s, Math.max(0, sampleWeeks.length - count)));
-    setStartIdx(s);
-    // we doen dit één keer bij mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (hasUploads) {
+      goThisWeek();
+    } else {
+      setStartIdx(0);
+    }
+  }, [count, goThisWeek, hasUploads]);
 
   return (
     <div>
@@ -47,17 +64,28 @@ export default function Matrix() {
           className="rounded-md border px-2 py-1 text-sm"
           title="Spring naar huidige week"
           aria-label="Deze week"
+          disabled={!hasUploads}
         >
           <CalendarClock size={16} />
         </button>
-        <button onClick={prev} className="rounded-md border px-2 py-1 text-sm" title="Vorige">
+        <button
+          onClick={prev}
+          className="rounded-md border px-2 py-1 text-sm"
+          title="Vorige"
+          disabled={!hasUploads}
+        >
           ◀
         </button>
         <span className="text-sm text-gray-800">
-          Week {weeks[0]?.nr}
+          Week {weeks[0]?.nr ?? "—"}
           {weeks.length > 1 ? `–${weeks[weeks.length - 1].nr}` : ""}
         </span>
-        <button onClick={next} className="rounded-md border px-2 py-1 text-sm" title="Volgende">
+        <button
+          onClick={next}
+          className="rounded-md border px-2 py-1 text-sm"
+          title="Volgende"
+          disabled={!hasUploads}
+        >
           ▶
         </button>
 
@@ -67,6 +95,7 @@ export default function Matrix() {
           onChange={(e) => setCount(Number(e.target.value))}
           aria-label="Aantal weken tonen"
           title="Aantal weken tonen"
+          disabled={!hasUploads}
         >
           {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>
@@ -81,6 +110,7 @@ export default function Matrix() {
           onChange={(e) => setNiveau(e.target.value as any)}
           aria-label="Filter niveau"
           title="Filter op niveau"
+          disabled={!hasUploads}
         >
           <option value="ALLE">Alle niveaus</option>
           <option value="HAVO">HAVO</option>
@@ -93,6 +123,7 @@ export default function Matrix() {
           onChange={(e) => setLeerjaar(e.target.value)}
           aria-label="Filter leerjaar"
           title="Filter op leerjaar"
+          disabled={!hasUploads}
         >
           {["1", "2", "3", "4", "5", "6"].map((j) => (
             <option key={j} value={j}>
@@ -100,10 +131,6 @@ export default function Matrix() {
             </option>
           ))}
         </select>
-
-        <div className="text-sm text-gray-600 ml-auto">
-          Huiswerk afvinken per cel · Bron openen via icoon
-        </div>
       </div>
 
       {!hasUploads ? (
@@ -133,7 +160,12 @@ export default function Matrix() {
                     const key = `${w.nr}:${vak}`;
                     const isDone = !!doneMap[key];
                     const hasHw = d?.huiswerk && d.huiswerk !== "—";
-                    const doc = docs.find ? docs.find((dd) => dd.vak === vak) : undefined;
+                    const doc = activeDocs.find(
+                      (dd) =>
+                        dd.vak === vak &&
+                        w.nr >= Math.min(dd.beginWeek, dd.eindWeek) &&
+                        w.nr <= Math.max(dd.beginWeek, dd.eindWeek)
+                    ) || activeDocs.find((dd) => dd.vak === vak);
 
                     return (
                       <td key={key} className="px-4 py-2 align-top">
@@ -157,8 +189,12 @@ export default function Matrix() {
                           </span>
                           <button
                             title={doc ? `Bron: ${doc.bestand}` : "Toon bron"}
-                            aria-label={doc ? `Bron: ${doc.bestand}` : `Toon bron ${vak}`}
-                            className="text-gray-600"
+                            aria-label={doc ? `Bron: ${doc.bestand}` : `Geen bron voor ${vak}`}
+                            className="text-gray-600 disabled:opacity-40"
+                            disabled={!doc}
+                            onClick={() =>
+                              doc && openPreview({ fileId: doc.fileId, filename: doc.bestand })
+                            }
                           >
                             <FileText size={14} />
                           </button>

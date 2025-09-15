@@ -11,7 +11,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <nav className="ml-auto flex gap-1">
             <NavLink to="/" className={({isActive}) => `${link} ${isActive?active:"bg-white"}`}>Weekoverzicht</NavLink>
             <NavLink to="/matrix" className={({isActive}) => `${link} ${isActive?active:"bg-white"}`}>Matrix</NavLink>
-            <NavLink to="/agenda" className={({isActive}) => `${link} ${isActive?active:"bg-white"}`}>Agenda</NavLink>
+            <NavLink to="/deadlines" className={({isActive}) => `${link} ${isActive?active:"bg-white"}`}>Deadlines</NavLink>
             <NavLink to="/uploads" className={({isActive}) => `${link} ${isActive?active:"bg-white"}`}>Uploads</NavLink>
             <NavLink to="/settings" className={({isActive}) => `${link} ${isActive?active:"bg-white"}`}>Settings</NavLink>
           </nav>
@@ -23,7 +23,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
       <footer className="mx-auto max-w-6xl px-4 py-8 text-xs text-gray-500">
-        © {new Date().getFullYear()} Studiewijzer Planner
+        © {new Date().getFullYear()} Studiewijzer Planner - made by Ramon Ankersmit
       </footer>
     </div>
   );

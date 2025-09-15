@@ -2,4 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+.docx-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.docx-table td {
+  border: 1px solid #e5e7eb;
+  padding: 0.25rem 0.5rem;
+  vertical-align: top;
+}
+
 body { @apply bg-slate-50 text-slate-800; }

@@ -2,6 +2,7 @@ import React from "react";
 import { Info, FileText, CheckSquare, CalendarClock } from "lucide-react";
 import { useAppStore } from "../app/store";
 import { sampleWeeks, sampleByWeek, formatRange, calcCurrentWeekIdx } from "../data/sampleWeeks";
+import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 function Card({
   vak,
@@ -9,12 +10,16 @@ function Card({
   d,
   isDone,
   onToggle,
+  onOpenDoc,
+  docName,
 }: {
   vak: string;
   weekNr: number;
   d: any;
   isDone: boolean;
   onToggle: () => void;
+  onOpenDoc?: () => void;
+  docName?: string;
 }) {
   const hasHw = d?.huiswerk && d.huiswerk !== "—";
   const [open, setOpen] = React.useState(false);
@@ -31,7 +36,13 @@ function Card({
               <Info size={16} className="text-gray-600" />
             </button>
           )}
-          <button title="Toon brondocument" aria-label={`Bron ${vak}`}>
+          <button
+            title={docName ? `Bron: ${docName}` : "Geen bron beschikbaar"}
+            aria-label={docName ? `Bron: ${docName}` : `Geen bron beschikbaar voor ${vak}`}
+            onClick={onOpenDoc}
+            disabled={!onOpenDoc}
+            className="disabled:opacity-40"
+          >
             <FileText size={16} className="text-gray-600" />
           </button>
         </div>
@@ -87,10 +98,13 @@ export default function WeekOverview() {
     setNiveauWO,
     leerjaarWO,
     setLeerjaarWO,
-    docs,
   } = useAppStore();
+  const docs = useAppStore((s) => s.docs) ?? [];
+  const { openPreview } = useDocumentPreview();
 
-  const hasUploads = (docs?.length ?? 0) > 0;
+  const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
+
+  const hasUploads = activeDocs.length > 0;
 
   // >>> Spring automatisch naar huidige week bij eerste load
   React.useEffect(() => {
@@ -170,6 +184,12 @@ export default function WeekOverview() {
             const d = sampleByWeek[week.nr]?.[vak];
             const key = `${week.nr}:${vak}`;
             const isDone = !!doneMap[key];
+            const doc = activeDocs.find(
+              (dd) =>
+                dd.vak === vak &&
+                week.nr >= Math.min(dd.beginWeek, dd.eindWeek) &&
+                week.nr <= Math.max(dd.beginWeek, dd.eindWeek)
+            ) || activeDocs.find((dd) => dd.vak === vak);
             return (
               <Card
                 key={vak}
@@ -178,6 +198,10 @@ export default function WeekOverview() {
                 d={d}
                 isDone={isDone}
                 onToggle={() => toggleDone(key)}
+                onOpenDoc={
+                  doc ? () => openPreview({ fileId: doc.fileId, filename: doc.bestand }) : undefined
+                }
+                docName={doc?.bestand}
               />
             );
           })}
