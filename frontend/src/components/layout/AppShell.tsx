@@ -3,10 +3,8 @@ import { NavLink } from "react-router-dom";
 import { useAppStore } from "../../app/store";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { theme, backgroundImage } = useAppStore((state) => ({
-    theme: state.theme,
-    backgroundImage: state.backgroundImage,
-  }));
+  const theme = useAppStore((state) => state.theme);
+  const backgroundImage = useAppStore((state) => state.backgroundImage);
 
   const themeStyle = React.useMemo(() => {
     const base = {
