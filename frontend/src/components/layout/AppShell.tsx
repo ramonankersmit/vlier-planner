@@ -7,7 +7,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <header className="sticky top-0 z-20 border-b bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
-          <div className="text-xl font-semibold">Studiewijzer Planner</div>
+          <div className="text-xl font-semibold">Het Vlier Studiewijzer Planner</div>
           <nav className="ml-auto flex gap-1">
             <NavLink to="/" className={({isActive}) => `${link} ${isActive?active:"bg-white"}`}>Weekoverzicht</NavLink>
             <NavLink to="/matrix" className={({isActive}) => `${link} ${isActive?active:"bg-white"}`}>Matrix</NavLink>
@@ -23,7 +23,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
       <footer className="mx-auto max-w-6xl px-4 py-8 text-xs text-gray-500">
-        © {new Date().getFullYear()} Studiewijzer Planner - made by Ramon Ankersmit
+        © {new Date().getFullYear()} Het Vlier Studiewijzer Planner - made by Ramon Ankersmit
       </footer>
     </div>
   );

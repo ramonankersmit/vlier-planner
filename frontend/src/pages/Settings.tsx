@@ -2,7 +2,7 @@ import React from "react";
 import { useAppStore } from "../app/store";
 
 export default function Settings() {
-  const { mijnVakken, setMijnVakken } = useAppStore();
+  const { mijnVakken, setMijnVakken, huiswerkWeergave, setHuiswerkWeergave } = useAppStore();
   const docs = useAppStore((s) => s.docs) ?? [];
 
   const allVakken = React.useMemo(
@@ -52,6 +52,37 @@ export default function Settings() {
 
         <div className="mt-4 text-xs text-gray-500">
           Deze lijst volgt automatisch de geüploade documenten.
+        </div>
+      </div>
+
+      <div className="rounded-2xl border bg-white p-4">
+        <div className="mb-2 font-medium">Huiswerkweergave</div>
+
+        <div className="mb-3 text-sm text-gray-600">
+          Kies hoe huiswerk wordt getoond in <strong>Weekoverzicht</strong> en <strong>Matrix</strong>.
+        </div>
+
+        <div className="space-y-2 text-sm">
+          <label className="flex items-center gap-2 rounded-md border p-2 bg-white">
+            <input
+              type="radio"
+              name="huiswerkweergave"
+              value="perOpdracht"
+              checked={huiswerkWeergave === "perOpdracht"}
+              onChange={() => setHuiswerkWeergave("perOpdracht")}
+            />
+            <span>Per opdracht (meerdere regels met vinkjes)</span>
+          </label>
+          <label className="flex items-center gap-2 rounded-md border p-2 bg-white">
+            <input
+              type="radio"
+              name="huiswerkweergave"
+              value="gecombineerd"
+              checked={huiswerkWeergave === "gecombineerd"}
+              onChange={() => setHuiswerkWeergave("gecombineerd")}
+            />
+            <span>Alles als één regel met één vinkje</span>
+          </label>
         </div>
       </div>
     </div>

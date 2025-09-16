@@ -1,12 +1,14 @@
 import React from "react";
 import { CalendarClock, FileText } from "lucide-react";
-import { useAppStore } from "../app/store";
-import { formatHumanDate, calcCurrentWeekIdx, computeWindowStartForWeek } from "../lib/weekUtils";
+import { useAppStore, type DocRecord, type WeekInfo } from "../app/store";
+import { formatHumanDate, calcCurrentWeekIdx, formatWeekWindowLabel } from "../lib/weekUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
+import { deriveIsoYearForWeek } from "../lib/calendar";
 
 type Item = {
   id: string;
   week: number;
+  isoYear: number;
   type: "Toets" | "Deadline";
   vak: string;
   title: string;
@@ -26,15 +28,28 @@ export default function Deadlines() {
   const [dur, setDur] = React.useState(3);
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
+  const docsByVak = React.useMemo(() => {
+    const map = new Map<string, DocRecord[]>();
+    for (const doc of activeDocs) {
+      const list = map.get(doc.vak);
+      if (list) {
+        list.push(doc);
+      } else {
+        map.set(doc.vak, [doc]);
+      }
+    }
+    return map;
+  }, [activeDocs]);
   const hasActiveDocs = activeDocs.length > 0;
   const allWeeks = weekData.weeks ?? [];
   const hasWeekData = allWeeks.length > 0;
   const disableWeekControls = !hasActiveDocs || !hasWeekData;
   const hasUploads = hasActiveDocs && hasWeekData;
 
-  const maxFrom = Math.max(0, allWeeks.length - dur);
-  const clampedFrom = Math.min(fromIdx, maxFrom);
+  const maxStartIdx = Math.max(0, allWeeks.length - 1);
+  const clampedFrom = Math.min(fromIdx, maxStartIdx);
   const weeks = allWeeks.slice(clampedFrom, clampedFrom + dur);
+  const windowLabel = formatWeekWindowLabel(weeks);
 
   const prev = () => {
     if (disableWeekControls) return;
@@ -42,15 +57,13 @@ export default function Deadlines() {
   };
   const next = () => {
     if (disableWeekControls) return;
-    setFromIdx((i) => Math.min(maxFrom, i + 1));
+    setFromIdx((i) => Math.min(maxStartIdx, i + 1));
   };
   const goThisWeek = React.useCallback(() => {
     if (disableWeekControls) return;
     const idx = calcCurrentWeekIdx(allWeeks);
-    const currentWeekNr = allWeeks[idx]?.nr;
-    const start = computeWindowStartForWeek(allWeeks, dur, currentWeekNr);
-    setFromIdx(start);
-  }, [allWeeks, dur, disableWeekControls]);
+    setFromIdx(idx);
+  }, [allWeeks, disableWeekControls]);
 
   // >>> Eerste load: centreer venster rond huidige week
   React.useEffect(() => {
@@ -61,26 +74,39 @@ export default function Deadlines() {
     }
   }, [disableWeekControls, goThisWeek]);
 
+  const findDocForWeek = React.useCallback(
+    (vakNaam: string, info: WeekInfo) => {
+      if (!info) return undefined;
+      const docsForVak = docsByVak.get(vakNaam);
+      if (!docsForVak?.length) return undefined;
+      const matched = docsForVak.find((doc) => {
+        const minWeek = Math.min(doc.beginWeek, doc.eindWeek);
+        const maxWeek = Math.max(doc.beginWeek, doc.eindWeek);
+        if (info.nr < minWeek || info.nr > maxWeek) return false;
+        const isoYear = deriveIsoYearForWeek(info.nr, { schooljaar: doc.schooljaar });
+        return isoYear === info.isoYear;
+      });
+      return matched ?? docsForVak[0];
+    },
+    [docsByVak]
+  );
+
   const items: Item[] = !hasUploads
     ? []
     : weeks.flatMap((w) => {
-        const perVak = weekData.byWeek?.[w.nr] || {};
+        const perVak = weekData.byWeek?.[w.id] || {};
         return Object.entries(perVak).flatMap(([vakNaam, d]: any) => {
           if (mijnVakken.length && !mijnVakken.includes(vakNaam)) return [];
           if (vak !== "ALLE" && vakNaam !== vak) return [];
           if (!d?.deadlines || d.deadlines === "—") return [];
           const type: Item["type"] =
             String(d.deadlines).toLowerCase().includes("toets") ? "Toets" : "Deadline";
-          const doc = activeDocs.find(
-            (dd) =>
-              dd.vak === vakNaam &&
-              w.nr >= Math.min(dd.beginWeek, dd.eindWeek) &&
-              w.nr <= Math.max(dd.beginWeek, dd.eindWeek)
-          ) || activeDocs.find((dd) => dd.vak === vakNaam);
+          const doc = findDocForWeek(vakNaam, w);
           return [
             {
-              id: `${vakNaam}-${w.nr}`,
+              id: `${vakNaam}-${w.id}`,
               week: w.nr,
+              isoYear: w.isoYear,
               type,
               vak: vakNaam,
               title: d.deadlines,
@@ -95,6 +121,8 @@ export default function Deadlines() {
   return (
     <div>
       <div className="text-lg font-semibold mb-3">Deadlines</div>
+
+      <div className="mb-2 text-sm text-gray-600">{windowLabel}</div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
@@ -183,7 +211,10 @@ export default function Deadlines() {
                 const dateLabel = it.date ? formatHumanDate(it.date) : "—";
                 return (
                   <tr key={it.id} className={idx > 0 ? "border-t" : ""}>
-                    <td className="px-4 py-2 align-top">wk {it.week}</td>
+                    <td className="px-4 py-2 align-top">
+                      wk {it.week}
+                      <span className="text-xs text-gray-500"> ({it.isoYear})</span>
+                    </td>
                     <td className="px-4 py-2 align-top"><span className="rounded-full border bg-white px-2 py-0.5">{it.type}</span></td>
                     <td className="px-4 py-2 align-top whitespace-nowrap">{it.vak}</td>
                     <td className="px-4 py-2 align-top">{it.title}</td>

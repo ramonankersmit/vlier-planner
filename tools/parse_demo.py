@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Parser demo CLI voor Studiewijzer Planner
+Parser demo CLI voor Het Vlier Studiewijzer Planner
 """
 
 import argparse
@@ -48,7 +48,7 @@ def print_result(meta: DocMeta):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Studiewijzer parse demo (PDF/DOCX).")
+    parser = argparse.ArgumentParser(description="Het Vlier Studiewijzer parse demo (PDF/DOCX).")
     parser.add_argument("path", type=str, help="Pad naar bestand of directory")
     parser.add_argument("--json", type=str, default=None, help="Schrijf resultaten naar JSON-bestand")
     parser.add_argument("--rows", "--row", dest="rows", action="store_true", help="Geef ook rijen terug als JSON")

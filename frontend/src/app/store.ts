@@ -1,5 +1,13 @@
 import { create } from "zustand";
 import type { DocMeta as ApiDocMeta, DocRow } from "../lib/api";
+import {
+  deriveIsoYearForWeek,
+  formatIsoDate,
+  getIsoWeekEnd,
+  getIsoWeekStart,
+  makeWeekId,
+} from "../lib/calendar";
+import { splitHomeworkItems } from "../lib/textUtils";
 
 /**
  * Houd deze DocMeta shape in sync met de backend (app.py).
@@ -9,11 +17,12 @@ export type DocMeta = ApiDocMeta;
 
 export type DocRecord = DocMeta & { enabled: boolean };
 
-export type WeekInfo = { nr: number; start: string; end: string };
+export type WeekInfo = { id: string; nr: number; isoYear: number; start: string; end: string };
 
 export type WeekData = {
   lesstof?: string;
   huiswerk?: string;
+  huiswerkItems?: string[];
   deadlines?: string;
   opmerkingen?: string;
   date?: string;
@@ -21,7 +30,7 @@ export type WeekData = {
 
 export type WeekAggregation = {
   weeks: WeekInfo[];
-  byWeek: Record<number, Record<string, WeekData>>;
+  byWeek: Record<string, Record<string, WeekData>>;
 };
 
 type State = {
@@ -40,9 +49,12 @@ type State = {
   // ==== instellingen ====
   mijnVakken: string[];
   setMijnVakken: (v: string[]) => void;
+  huiswerkWeergave: "perOpdracht" | "gecombineerd";
+  setHuiswerkWeergave: (mode: "perOpdracht" | "gecombineerd") => void;
 
   // ==== afvinkstatus gedeeld ====
   doneMap: Record<string, boolean>;
+  setDoneState: (key: string, value: boolean) => void;
   toggleDone: (key: string) => void;
 
   // ==== weekoverzicht (UI state) ====
@@ -55,6 +67,12 @@ type State = {
 };
 
 const uniqSorted = (arr: string[]) => Array.from(new Set(arr)).sort();
+
+const formatVakName = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.charAt(0).toLocaleUpperCase("nl-NL") + trimmed.slice(1);
+};
 
 type MijnVakkenOptions = {
   ensure?: string[];
@@ -72,14 +90,31 @@ const computeMijnVakken = (docs: DocRecord[], prev: string[], options?: MijnVakk
 type WeekAccumulator = {
   lesstof: string[];
   huiswerk: string[];
+  huiswerkItems: string[];
   deadlines: string[];
   opmerkingen: string[];
   dates: string[];
 };
 
-const normalizeText = (value?: string | null) => {
+type NormalizeOptions = {
+  preserveLineBreaks?: boolean;
+};
+
+const normalizeText = (value?: string | null, options?: NormalizeOptions) => {
   if (value == null) return undefined;
-  const cleaned = value.replace(/\s+/g, " ").trim();
+  const normalizedLineBreaks = value.replace(/\r\n?/g, "\n");
+  let cleaned: string;
+
+  if (options?.preserveLineBreaks) {
+    const lines = normalizedLineBreaks
+      .split("\n")
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .filter((line) => line.length > 0);
+    cleaned = lines.join("\n");
+  } else {
+    cleaned = normalizedLineBreaks.replace(/\s+/g, " ").trim();
+  }
+
   if (!cleaned) return undefined;
   const lowered = cleaned.toLowerCase();
   if (cleaned === "—" || cleaned === "-" || lowered === "geen" || lowered === "n.v.t.") {
@@ -96,9 +131,27 @@ const computeWeekAggregation = (
     return { weeks: [], byWeek: {} };
   }
 
-  const byWeek: Record<number, Record<string, WeekAccumulator>> = {};
-  const weekNumbers = new Set<number>();
-  const weekDates = new Map<number, Set<string>>();
+  const weekInfoMap = new Map<string, WeekInfo>();
+  const byWeek = new Map<string, Record<string, WeekAccumulator>>();
+  const ensureWeek = (weekNr: number, isoYear: number) => {
+    const weekId = makeWeekId(isoYear, weekNr);
+    if (!weekInfoMap.has(weekId)) {
+      const startDate = getIsoWeekStart(isoYear, weekNr);
+      const endDate = getIsoWeekEnd(isoYear, weekNr);
+      weekInfoMap.set(weekId, {
+        id: weekId,
+        nr: weekNr,
+        isoYear,
+        start: formatIsoDate(startDate),
+        end: formatIsoDate(endDate),
+      });
+    }
+    if (!byWeek.has(weekId)) {
+      byWeek.set(weekId, {});
+    }
+    return { weekId, vakMap: byWeek.get(weekId)! };
+  };
+  const today = new Date();
 
   for (const doc of docs) {
     if (!doc.enabled) {
@@ -108,10 +161,8 @@ const computeWeekAggregation = (
     const end = Math.max(doc.beginWeek, doc.eindWeek);
     for (let wk = start; wk <= end; wk++) {
       if (wk < 1 || wk > 53) continue;
-      weekNumbers.add(wk);
-      if (!weekDates.has(wk)) {
-        weekDates.set(wk, new Set());
-      }
+      const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar, today });
+      ensureWeek(wk, isoYear);
     }
 
     const rows = docRows[doc.fileId];
@@ -124,26 +175,53 @@ const computeWeekAggregation = (
       if (!wk || wk < 1 || wk > 53) {
         continue;
       }
-      weekNumbers.add(wk);
-      if (!weekDates.has(wk)) {
-        weekDates.set(wk, new Set());
-      }
-      const perVak = (byWeek[wk] ??= {});
+      const isoYear = deriveIsoYearForWeek(wk, {
+        schooljaar: doc.schooljaar,
+        candidateDates: [row.datum, row.inleverdatum],
+        today,
+      });
+      const { vakMap } = ensureWeek(wk, isoYear);
       const accum =
-        perVak[doc.vak] ??
-        (perVak[doc.vak] = { lesstof: [], huiswerk: [], deadlines: [], opmerkingen: [], dates: [] });
+        vakMap[doc.vak] ??
+        (vakMap[doc.vak] = {
+          lesstof: [],
+          huiswerk: [],
+          huiswerkItems: [],
+          deadlines: [],
+          opmerkingen: [],
+          dates: [],
+        });
 
-      const add = (arr: string[], value?: string | null) => {
-        const normalized = normalizeText(value);
-        if (normalized) arr.push(normalized);
+      const addUnique = (arr: string[], value: string) => {
+        if (!arr.includes(value)) {
+          arr.push(value);
+        }
       };
 
-      add(accum.lesstof, row.onderwerp || row.les);
+      const addNormalized = (arr: string[], value?: string | null, options?: NormalizeOptions) => {
+        const normalized = normalizeText(value, options);
+        if (normalized) {
+          addUnique(arr, normalized);
+        }
+        return normalized;
+      };
+
+      addNormalized(accum.lesstof, row.onderwerp || row.les);
       if ((!row.onderwerp && !row.les) && row.leerdoelen?.length) {
-        add(accum.lesstof, row.leerdoelen.join("; "));
+        addNormalized(accum.lesstof, row.leerdoelen.join("; "));
       }
-      add(accum.huiswerk, row.huiswerk);
-      add(accum.huiswerk, row.opdracht);
+
+      const addHomework = (value?: string | null) => {
+        const normalized = addNormalized(accum.huiswerk, value, { preserveLineBreaks: true });
+        if (!normalized) return;
+        const items = splitHomeworkItems(normalized);
+        for (const item of items) {
+          addUnique(accum.huiswerkItems, item);
+        }
+      };
+
+      addHomework(row.huiswerk);
+      addHomework(row.opdracht);
 
       const toetsType = row.toets?.type;
       if (toetsType) {
@@ -153,60 +231,53 @@ const computeWeekAggregation = (
           const label = normalizedWeight
             ? `${normalizedType} (weging ${normalizedWeight})`
             : normalizedType;
-          accum.deadlines.push(label);
+          addUnique(accum.deadlines, label);
         }
       }
 
       const recordDate = (value?: string | null) => {
         const normalized = normalizeText(value);
         if (!normalized) return;
-        accum.dates.push(normalized);
-        weekDates.get(wk)?.add(normalized);
+        addUnique(accum.dates, normalized);
       };
 
       const normalizedInlever = normalizeText(row.inleverdatum);
       if (normalizedInlever) {
-        accum.deadlines.push(`Inleveren ${normalizedInlever}`);
+        addUnique(accum.deadlines, `Inleveren ${normalizedInlever}`);
         recordDate(normalizedInlever);
       }
 
       recordDate(row.datum);
-      add(accum.opmerkingen, row.notities);
+      addNormalized(accum.opmerkingen, row.notities);
     }
   }
 
-  const resultByWeek: Record<number, Record<string, WeekData>> = {};
-  for (const [weekStr, vakMap] of Object.entries(byWeek)) {
-    const weekNr = Number(weekStr);
-    resultByWeek[weekNr] = {};
+  const resultByWeek: Record<string, Record<string, WeekData>> = {};
+  for (const [weekId, vakMap] of byWeek.entries()) {
+    const entries: Record<string, WeekData> = {};
     for (const [vak, acc] of Object.entries(vakMap)) {
       const uniqJoin = (values: string[], sep: string) => {
         const unique = Array.from(new Set(values));
         return unique.length ? unique.join(sep) : undefined;
       };
       const sortedDates = Array.from(new Set(acc.dates)).sort();
-      resultByWeek[weekNr][vak] = {
+      entries[vak] = {
         lesstof: uniqJoin(acc.lesstof, "\n"),
-        huiswerk: uniqJoin(acc.huiswerk, "; "),
+        huiswerk: uniqJoin(acc.huiswerk, "\n"),
+        huiswerkItems: acc.huiswerkItems.length ? [...acc.huiswerkItems] : undefined,
         deadlines: uniqJoin(acc.deadlines, "; "),
         opmerkingen: uniqJoin(acc.opmerkingen, "\n"),
         date: sortedDates[0],
       };
     }
+    resultByWeek[weekId] = entries;
   }
 
-  const weeks = Array.from(weekNumbers)
-    .sort((a, b) => a - b)
-    .map((nr) => {
-      const set = weekDates.get(nr);
-      if (!set || set.size === 0) {
-        return { nr, start: "", end: "" };
-      }
-      const sorted = Array.from(set).sort();
-      const start = sorted[0];
-      const end = sorted[sorted.length - 1] ?? sorted[0];
-      return { nr, start, end };
-    });
+  const weeks = Array.from(weekInfoMap.values()).sort((a, b) => {
+    if (a.isoYear !== b.isoYear) return a.isoYear - b.isoYear;
+    if (a.nr !== b.nr) return a.nr - b.nr;
+    return a.id.localeCompare(b.id);
+  });
 
   return { weeks, byWeek: resultByWeek };
 };
@@ -221,10 +292,14 @@ export const useAppStore = create<State>((set, get) => ({
   setDocs: (d) => {
     const prevDocs = get().docs;
     const prevEnabled = new Map(prevDocs.map((doc) => [doc.fileId, doc.enabled] as const));
-    const nextDocs = d.map((doc) => ({
-      ...doc,
-      enabled: prevEnabled.get(doc.fileId) ?? true,
-    }));
+    const nextDocs = d.map((doc) => {
+      const normalizedVak = formatVakName(doc.vak);
+      return {
+        ...doc,
+        vak: normalizedVak,
+        enabled: prevEnabled.get(doc.fileId) ?? true,
+      };
+    });
     const prevVakSet = new Set(prevDocs.map((doc) => doc.vak));
     const newlyEnabledVakken = nextDocs
       .filter((doc) => doc.enabled && !prevVakSet.has(doc.vak))
@@ -255,10 +330,12 @@ export const useAppStore = create<State>((set, get) => ({
   },
   addDoc: (doc) => {
     const prevDocs = get().docs;
-    const next = [...prevDocs, { ...doc, enabled: true }];
-    const hadVakBefore = prevDocs.some((existing) => existing.vak === doc.vak);
+    const normalizedVak = formatVakName(doc.vak);
+    const nextDoc = { ...doc, vak: normalizedVak, enabled: true };
+    const next = [...prevDocs, nextDoc];
+    const hadVakBefore = prevDocs.some((existing) => existing.vak === normalizedVak);
     const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
-      ensure: hadVakBefore ? undefined : [doc.vak],
+      ensure: hadVakBefore ? undefined : [normalizedVak],
     });
     const nextRows = { ...get().docRows };
     if (!nextRows[doc.fileId]) {
@@ -268,8 +345,9 @@ export const useAppStore = create<State>((set, get) => ({
     set({ docs: next, mijnVakken, docRows: nextRows, weekData });
   },
   replaceDoc: (fileId, nextDoc) => {
+    const normalizedVak = formatVakName(nextDoc.vak);
     const next = get().docs.map((x) =>
-      x.fileId === fileId ? { ...nextDoc, enabled: x.enabled } : x
+      x.fileId === fileId ? { ...nextDoc, vak: normalizedVak, enabled: x.enabled } : x
     );
     const mijnVakken = computeMijnVakken(next, get().mijnVakken);
     const weekData = computeWeekAggregation(next, get().docRows);
@@ -311,13 +389,33 @@ export const useAppStore = create<State>((set, get) => ({
   // ----------------------------
   mijnVakken: [], // start leeg; wordt gezet bij setDocs()
   setMijnVakken: (v) => set({ mijnVakken: v }),
+  huiswerkWeergave: "perOpdracht",
+  setHuiswerkWeergave: (mode) => set({ huiswerkWeergave: mode }),
 
   // ----------------------------
   // done-map
   // ----------------------------
   doneMap: {},
+  setDoneState: (key, value) =>
+    set((s) => {
+      const next = { ...s.doneMap };
+      if (value) {
+        next[key] = true;
+      } else {
+        delete next[key];
+      }
+      return { doneMap: next };
+    }),
   toggleDone: (key) =>
-    set((s) => ({ doneMap: { ...s.doneMap, [key]: !s.doneMap[key] } })),
+    set((s) => {
+      const next = { ...s.doneMap };
+      if (next[key]) {
+        delete next[key];
+      } else {
+        next[key] = true;
+      }
+      return { doneMap: next };
+    }),
 
   // ----------------------------
   // weekoverzicht (UI state)
