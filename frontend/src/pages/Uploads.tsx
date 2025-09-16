@@ -100,63 +100,63 @@ export default function Uploads() {
 
   return (
     <div className="space-y-4">
-      <div className="text-lg font-semibold">Uploads &amp; Documentbeheer</div>
+      <div className="text-lg font-semibold theme-text">Uploads &amp; Documentbeheer</div>
 
       {/* Uploadblok */}
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="mb-1 font-medium">Bestanden uploaden</div>
-        <div className="text-sm text-gray-600 mb-2">
+      <div className="rounded-2xl border theme-border theme-surface p-4">
+        <div className="mb-1 font-medium theme-text">Bestanden uploaden</div>
+        <div className="text-sm theme-muted mb-2">
           Kies een <strong>PDF</strong> of <strong>DOCX</strong>. Metadata wordt automatisch herkend.
         </div>
         <input type="file" accept=".pdf,.docx" multiple onChange={handleUpload} />
-        {isUploading && <div className="mt-2 text-sm text-gray-500">Bezig met uploaden…</div>}
+        {isUploading && <div className="mt-2 text-sm theme-muted">Bezig met uploaden…</div>}
         {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
       </div>
 
       {/* Metadata-overzicht */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border bg-white p-3">
-          <div className="text-xs text-gray-500 mb-1">Beschikbare vakken</div>
+        <div className="rounded-2xl border theme-border theme-surface p-3">
+          <div className="text-xs theme-muted mb-1">Beschikbare vakken</div>
           <div className="flex flex-wrap gap-1">
             {meta.vakken.map((v) => (
-              <span key={v} className="text-xs rounded-full border bg-white px-2 py-0.5">
+              <span key={v} className="text-xs rounded-full border theme-border theme-surface px-2 py-0.5">
                 {v}
               </span>
             ))}
-            {meta.vakken.length === 0 && <span className="text-xs text-gray-400">—</span>}
+            {meta.vakken.length === 0 && <span className="text-xs theme-muted opacity-70">—</span>}
           </div>
         </div>
-        <div className="rounded-2xl border bg-white p-3">
-          <div className="text-xs text-gray-500 mb-1">Niveaus</div>
+        <div className="rounded-2xl border theme-border theme-surface p-3">
+          <div className="text-xs theme-muted mb-1">Niveaus</div>
           <div className="flex flex-wrap gap-1">
             {meta.niveaus.map((n) => (
-              <span key={n} className="text-xs rounded-full border bg-white px-2 py-0.5">
+              <span key={n} className="text-xs rounded-full border theme-border theme-surface px-2 py-0.5">
                 {n}
               </span>
             ))}
-            {meta.niveaus.length === 0 && <span className="text-xs text-gray-400">—</span>}
+            {meta.niveaus.length === 0 && <span className="text-xs theme-muted opacity-70">—</span>}
           </div>
         </div>
-        <div className="rounded-2xl border bg-white p-3">
-          <div className="text-xs text-gray-500 mb-1">Leerjaren</div>
+        <div className="rounded-2xl border theme-border theme-surface p-3">
+          <div className="text-xs theme-muted mb-1">Leerjaren</div>
           <div className="flex flex-wrap gap-1">
             {meta.leerjaren.map((j) => (
-              <span key={j} className="text-xs rounded-full border bg-white px-2 py-0.5">
+              <span key={j} className="text-xs rounded-full border theme-border theme-surface px-2 py-0.5">
                 {j}
               </span>
             ))}
-            {meta.leerjaren.length === 0 && <span className="text-xs text-gray-400">—</span>}
+            {meta.leerjaren.length === 0 && <span className="text-xs theme-muted opacity-70">—</span>}
           </div>
         </div>
-        <div className="rounded-2xl border bg-white p-3">
-          <div className="text-xs text-gray-500 mb-1">Periodes &amp; Weken</div>
+        <div className="rounded-2xl border theme-border theme-surface p-3">
+          <div className="text-xs theme-muted mb-1">Periodes &amp; Weken</div>
           <div className="flex flex-wrap items-center gap-1">
             {meta.periodes.map((p) => (
-              <span key={p} className="text-xs rounded-full border bg-white px-2 py-0.5">
+              <span key={p} className="text-xs rounded-full border theme-border theme-surface px-2 py-0.5">
                 P{p}
               </span>
             ))}
-            <span className="text-xs text-gray-500 ml-2">wk {meta.weekBereik}</span>
+            <span className="text-xs theme-muted ml-2">wk {meta.weekBereik}</span>
           </div>
         </div>
       </div>
@@ -167,10 +167,10 @@ export default function Uploads() {
           placeholder="Zoek vak…"
           value={filters.vak}
           onChange={(e) => setFilters((f) => ({ ...f, vak: e.target.value }))}
-          className="rounded-md border px-2 py-1"
+          className="rounded-md border theme-border theme-surface px-2 py-1"
         />
         <select
-          className="rounded-md border px-2 py-1"
+          className="rounded-md border theme-border theme-surface px-2 py-1"
           value={filters.niveau}
           onChange={(e) => setFilters((f) => ({ ...f, niveau: e.target.value }))}
         >
@@ -182,7 +182,7 @@ export default function Uploads() {
           ))}
         </select>
         <select
-          className="rounded-md border px-2 py-1"
+          className="rounded-md border theme-border theme-surface px-2 py-1"
           value={filters.leerjaar}
           onChange={(e) => setFilters((f) => ({ ...f, leerjaar: e.target.value }))}
         >
@@ -194,7 +194,7 @@ export default function Uploads() {
           ))}
         </select>
         <select
-          className="rounded-md border px-2 py-1"
+          className="rounded-md border theme-border theme-surface px-2 py-1"
           value={filters.periode}
           onChange={(e) => setFilters((f) => ({ ...f, periode: e.target.value }))}
         >
@@ -208,7 +208,7 @@ export default function Uploads() {
         {(filters.vak || filters.niveau || filters.leerjaar || filters.periode) && (
           <button
             onClick={reset}
-            className="ml-2 inline-flex items-center gap-1 rounded-md border px-2 py-1"
+            className="ml-2 inline-flex items-center gap-1 rounded-md border theme-border theme-surface px-2 py-1"
             title="Reset filters"
           >
             <XCircle size={14} /> Reset
@@ -217,8 +217,8 @@ export default function Uploads() {
       </div>
 
       {/* Tabel */}
-      <div className="rounded-2xl border bg-white">
-        <div className="grid grid-cols-[90px_minmax(0,2fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))] gap-2 text-xs font-medium text-gray-600 border-b pb-2 px-4 pt-3">
+      <div className="rounded-2xl border theme-border theme-surface">
+        <div className="grid grid-cols-[90px_minmax(0,2fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))] gap-2 text-xs font-medium theme-muted border-b theme-border pb-2 px-4 pt-3">
           <div className="flex justify-center">Gebruik</div>
           <div>Bestand</div>
           <div>Vak</div>
@@ -231,13 +231,13 @@ export default function Uploads() {
         </div>
 
         {filtered.length === 0 ? (
-          <div className="p-6 text-sm text-gray-600">Geen documenten gevonden.</div>
+          <div className="p-6 text-sm theme-muted">Geen documenten gevonden.</div>
         ) : (
           filtered.map((d, i) => (
             <div
               key={d.fileId}
               className={`grid grid-cols-[90px_minmax(0,2fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))] gap-2 text-sm items-center px-4 py-3 ${
-                i > 0 ? "border-t" : ""
+                i > 0 ? "border-t theme-border" : ""
               }`}
             >
               <div className="flex justify-center">
@@ -270,18 +270,22 @@ export default function Uploads() {
               <div className="flex gap-2 col-span-2">
                 <button
                   title={`Bron: ${d.bestand}`}
-                  className="rounded-lg border bg-white p-1"
+                  className="rounded-lg border theme-border theme-surface p-1"
                   onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
                 >
                   <FileText size={16} />
                 </button>
-                <button onClick={() => setDetailDoc(d)} title="Meta-details" className="rounded-lg border bg-white p-1">
+                <button
+                  onClick={() => setDetailDoc(d)}
+                  title="Meta-details"
+                  className="rounded-lg border theme-border theme-surface p-1"
+                >
                   <Info size={16} />
                 </button>
                 <button
                   onClick={() => handleDelete(d.fileId)}
                   title="Verwijder"
-                  className="rounded-lg border bg-white p-1 text-red-600"
+                  className="rounded-lg border theme-border theme-surface p-1 text-red-600"
                 >
                   <Trash2 size={16} />
                 </button>
@@ -294,10 +298,10 @@ export default function Uploads() {
       {/* Detail modal */}
       {detailDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
+          <div className="rounded-2xl border theme-border theme-surface shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Metadata — {detailDoc.bestand}</h2>
-              <button onClick={() => setDetailDoc(null)} className="text-gray-500" aria-label="Sluiten">
+              <button onClick={() => setDetailDoc(null)} className="theme-muted" aria-label="Sluiten">
                 ✕
               </button>
             </div>

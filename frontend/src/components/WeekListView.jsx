@@ -17,8 +17,8 @@ export default function WeekListView({ tasks }) {
   return (
     <div className="space-y-4">
       {dates.map(d => (
-        <div key={d} className="bg-white rounded-2xl shadow p-4">
-          <div className="font-semibold text-sm uppercase text-slate-600 mb-2">{fmt(d)}</div>
+        <div key={d} className="rounded-2xl border theme-border theme-surface shadow p-4">
+          <div className="font-semibold text-sm uppercase theme-muted mb-2">{fmt(d)}</div>
           <ul className="space-y-2">
             {byDate[d].map(it => (
               <li key={it.id || it.vak+it.titel+it.datum} className="flex items-start gap-2">
@@ -26,7 +26,7 @@ export default function WeekListView({ tasks }) {
                 <div className="text-sm">
                   <div className="font-medium">{it.titel}</div>
                   {it.is_assessment && <div className="text-xs text-red-700">TOETS / DEADLINE</div>}
-                  {it.omschrijving && <div className="text-xs text-slate-600">{it.omschrijving}</div>}
+                  {it.omschrijving && <div className="text-xs theme-muted">{it.omschrijving}</div>}
                 </div>
               </li>
             ))}

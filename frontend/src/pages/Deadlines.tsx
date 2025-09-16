@@ -120,14 +120,14 @@ export default function Deadlines() {
 
   return (
     <div>
-      <div className="text-lg font-semibold mb-3">Deadlines</div>
+      <div className="text-lg font-semibold mb-3 theme-text">Deadlines</div>
 
-      <div className="mb-2 text-sm text-gray-600">{windowLabel}</div>
+      <div className="mb-2 text-sm theme-muted">{windowLabel}</div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
           onClick={goThisWeek}
-          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Spring naar huidige week"
           aria-label="Deze week"
           disabled={disableWeekControls}
@@ -136,19 +136,19 @@ export default function Deadlines() {
         </button>
         <button
           onClick={prev}
-          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Vorige"
           disabled={disableWeekControls}
         >
           ◀
         </button>
-        <span className="text-sm text-gray-800">
+        <span className="text-sm theme-text">
           Week {weeks[0]?.nr ?? "—"}
           {weeks.length > 1 ? `–${weeks[weeks.length - 1].nr}` : ""}
         </span>
         <button
           onClick={next}
-          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Volgende"
           disabled={disableWeekControls}
         >
@@ -156,7 +156,7 @@ export default function Deadlines() {
         </button>
 
         <select
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
           value={dur}
           onChange={(e) => setDur(Number(e.target.value))}
           aria-label="Aantal weken tonen"
@@ -169,7 +169,7 @@ export default function Deadlines() {
         </select>
 
         <select
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
           value={vak}
           onChange={(e) => setVak(e.target.value)}
           aria-label="Filter vak"
@@ -177,13 +177,17 @@ export default function Deadlines() {
           disabled={!hasUploads}
         >
           <option value="ALLE">Alle vakken</option>
-          {mijnVakken.map((v) => <option key={v} value={v}>{v}</option>)}
+          {mijnVakken.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
         </select>
       </div>
 
-      <div className="overflow-auto rounded-2xl border bg-white">
+      <div className="overflow-auto rounded-2xl border theme-border theme-surface">
         {!hasUploads ? (
-          <div className="p-6 text-sm text-gray-600">
+          <div className="p-6 text-sm theme-muted">
             {hasActiveDocs
               ? "Nog geen weekgegevens beschikbaar. Controleer of de documenten studiewijzerdata bevatten."
               : (
@@ -193,10 +197,10 @@ export default function Deadlines() {
                 )}
           </div>
         ) : items.length === 0 ? (
-          <div className="p-6 text-sm text-gray-600">Geen deadlines in deze periode.</div>
+          <div className="p-6 text-sm theme-muted">Geen deadlines in deze periode.</div>
         ) : (
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="theme-soft">
               <tr>
                 <th className="px-4 py-2 text-left">Week</th>
                 <th className="px-4 py-2 text-left">Type</th>
@@ -210,18 +214,20 @@ export default function Deadlines() {
               {items.map((it, idx) => {
                 const dateLabel = it.date ? formatHumanDate(it.date) : "—";
                 return (
-                  <tr key={it.id} className={idx > 0 ? "border-t" : ""}>
+                  <tr key={it.id} className={idx > 0 ? "border-t theme-border" : ""}>
                     <td className="px-4 py-2 align-top">
                       wk {it.week}
-                      <span className="text-xs text-gray-500"> ({it.isoYear})</span>
+                      <span className="text-xs theme-muted"> ({it.isoYear})</span>
                     </td>
-                    <td className="px-4 py-2 align-top"><span className="rounded-full border bg-white px-2 py-0.5">{it.type}</span></td>
+                    <td className="px-4 py-2 align-top">
+                      <span className="rounded-full border theme-border theme-surface px-2 py-0.5">{it.type}</span>
+                    </td>
                     <td className="px-4 py-2 align-top whitespace-nowrap">{it.vak}</td>
                     <td className="px-4 py-2 align-top">{it.title}</td>
                     <td className="px-4 py-2 align-top whitespace-nowrap" title={it.date || ""}>{dateLabel}</td>
                     <td className="px-4 py-2 align-top">
                       <button
-                        className="rounded-lg border bg-white p-1 disabled:opacity-40"
+                        className="rounded-lg border theme-border theme-surface p-1 disabled:opacity-40"
                         title={it.src ? `Bron: ${it.src}` : "Geen bron beschikbaar"}
                         aria-label={it.src ? `Bron: ${it.src}` : `Bron niet beschikbaar voor ${it.vak}`}
                         disabled={!it.fileId}

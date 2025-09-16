@@ -109,22 +109,22 @@ export function DocumentPreviewProvider({
       {doc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={closePreview} />
-          <div className="relative z-10 mx-4 w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b px-5 py-3">
+          <div className="relative z-10 mx-4 w-full max-w-5xl overflow-hidden rounded-2xl border theme-border theme-surface shadow-xl">
+            <div className="flex items-center justify-between border-b theme-border px-5 py-3">
               <div className="truncate text-sm font-medium" title={doc.filename}>
                 {doc.filename}
               </div>
               <button
                 onClick={closePreview}
-                className="rounded-md border px-2 py-1 text-sm"
+                className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
                 aria-label="Sluiten"
               >
                 ✕
               </button>
             </div>
-            <div className="max-h-[75vh] overflow-auto bg-gray-100">
+            <div className="max-h-[75vh] overflow-auto theme-soft">
               {loading ? (
-                <div className="p-6 text-center text-sm text-gray-600">Bezig met laden…</div>
+                <div className="p-6 text-center text-sm theme-muted">Bezig met laden…</div>
               ) : error ? (
                 <div className="p-6 text-sm text-red-600">{error}</div>
               ) : hasHtml ? (
@@ -139,7 +139,7 @@ export function DocumentPreviewProvider({
                   className="h-[75vh] w-full"
                 />
               ) : (
-                <div className="p-6 text-sm text-gray-600">Geen voorvertoning beschikbaar.</div>
+                <div className="p-6 text-sm theme-muted">Geen voorvertoning beschikbaar.</div>
               )}
             </div>
           </div>

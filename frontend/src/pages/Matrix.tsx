@@ -105,7 +105,7 @@ function MatrixCell({
                             onChange={() => toggleItem(idx)}
                             className="mt-0.5"
                           />
-                          <span className={`flex-1 ${checked ? "line-through text-gray-400" : ""}`}>
+                          <span className={`flex-1 ${checked ? "line-through theme-muted opacity-80" : ""}`}>
                             {item}
                           </span>
                         </label>
@@ -114,7 +114,7 @@ function MatrixCell({
                   })}
                 </ul>
               ) : (
-                <div className="text-gray-500">Geen huiswerk</div>
+                <div className="theme-muted">Geen huiswerk</div>
               )
             ) : aggregatedHomework ? (
               <label className="flex items-start gap-2">
@@ -125,25 +125,25 @@ function MatrixCell({
                   onChange={toggleCombined}
                   className="mt-0.5"
                 />
-                <span className={`flex-1 whitespace-pre-line ${allDone ? "line-through text-gray-400" : ""}`}>
+                <span className={`flex-1 whitespace-pre-line ${allDone ? "line-through theme-muted opacity-80" : ""}`}>
                   {aggregatedHomework}
                 </span>
               </label>
             ) : (
-              <div className="text-gray-500">Geen huiswerk</div>
+              <div className="theme-muted">Geen huiswerk</div>
             )}
           </div>
           <button
             title={doc ? `Bron: ${doc.bestand}` : "Geen bron voor dit vak"}
             aria-label={doc ? `Bron: ${doc.bestand}` : `Geen bron voor ${vak}`}
-            className="text-gray-600 disabled:opacity-40"
+            className="theme-muted disabled:opacity-40"
             disabled={!onOpenDoc}
             onClick={onOpenDoc}
           >
             <FileText size={14} />
           </button>
         </div>
-        <div className={`text-xs text-gray-600 ${allDone ? "opacity-70" : ""}`}>{deadlineLabel}</div>
+        <div className={`text-xs theme-muted ${allDone ? "opacity-80" : ""}`}>{deadlineLabel}</div>
       </div>
     </td>
   );
@@ -300,13 +300,13 @@ export default function Matrix() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-lg font-semibold">Matrix</h1>
-        <div className="mt-1 text-sm text-gray-600">{windowLabel}</div>
+        <h1 className="text-lg font-semibold theme-text">Matrix</h1>
+        <div className="mt-1 text-sm theme-muted">{windowLabel}</div>
       </div>
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
           onClick={goThisWeek}
-          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Spring naar huidige week"
           aria-label="Deze week"
           disabled={disableWeekControls}
@@ -315,19 +315,19 @@ export default function Matrix() {
         </button>
         <button
           onClick={prev}
-          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Vorige"
           disabled={disableWeekControls}
         >
           ◀
         </button>
-        <span className="text-sm text-gray-800">
+        <span className="text-sm theme-text">
           Week {weeks[0]?.nr ?? "—"}
           {weeks.length > 1 ? `–${weeks[weeks.length - 1].nr}` : ""}
         </span>
         <button
           onClick={next}
-          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Volgende"
           disabled={disableWeekControls}
         >
@@ -335,7 +335,7 @@ export default function Matrix() {
         </button>
 
         <select
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
           value={count}
           onChange={(e) => setCount(Number(e.target.value))}
           aria-label="Aantal weken tonen"
@@ -350,7 +350,7 @@ export default function Matrix() {
         </select>
 
         <select
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
           value={niveau}
           onChange={(e) => setNiveau(e.target.value as any)}
           aria-label="Filter niveau"
@@ -366,7 +366,7 @@ export default function Matrix() {
         </select>
 
         <select
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
           value={leerjaar}
           onChange={(e) => setLeerjaar(e.target.value)}
           aria-label="Filter leerjaar"
@@ -383,34 +383,34 @@ export default function Matrix() {
       </div>
 
       {!hasAnyDocs ? (
-        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+        <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
           Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
         </div>
       ) : !hasWeekData ? (
-        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+        <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
           Nog geen weekgegevens beschikbaar. Controleer of de documenten studiewijzerdata bevatten.
         </div>
       ) : showNoDataForFilters ? (
-        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+        <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
           Geen vakken voor deze filters. Pas de selectie aan of controleer de metadata van de documenten.
         </div>
       ) : (
-        <div className="overflow-auto rounded-2xl border bg-white">
+        <div className="overflow-auto rounded-2xl border theme-border theme-surface">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="theme-soft">
               <tr>
                 <th className="px-4 py-2 text-left whitespace-nowrap">Vak</th>
                 {weeks.map((w) => (
                   <th key={w.id} className="px-4 py-2 text-left">
                     <div className="font-medium">Week {w.nr}</div>
-                    <div className="text-xs text-gray-500">{formatRange(w)}</div>
+                    <div className="text-xs theme-muted">{formatRange(w)}</div>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {visibleVakken.map((vak) => (
-                <tr key={vak} className="border-t">
+                <tr key={vak} className="border-t theme-border">
                   <td className="px-4 py-2 font-medium whitespace-nowrap">{vak}</td>
                   {weeks.map((w) => {
                     const perWeek = weekData.byWeek?.[w.id] || {};

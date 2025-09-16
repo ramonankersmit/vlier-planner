@@ -1,8 +1,19 @@
 import React from "react";
-import { useAppStore } from "../app/store";
+import { useAppStore, type ThemeSettings } from "../app/store";
 
 export default function Settings() {
-  const { mijnVakken, setMijnVakken, huiswerkWeergave, setHuiswerkWeergave } = useAppStore();
+  const {
+    mijnVakken,
+    setMijnVakken,
+    huiswerkWeergave,
+    setHuiswerkWeergave,
+    theme,
+    setThemeColor,
+    resetTheme,
+    backgroundImage,
+    setBackgroundImage,
+    resetBackgroundImage,
+  } = useAppStore();
   const docs = useAppStore((s) => s.docs) ?? [];
 
   const allVakken = React.useMemo(
@@ -21,25 +32,106 @@ export default function Settings() {
   const selectAll = () => setMijnVakken(allVakken);
   const clearAll = () => setMijnVakken([]);
 
+  const colorOptions: { key: keyof ThemeSettings; label: string; description: string }[] = [
+    {
+      key: "background",
+      label: "Achtergrond",
+      description: "Algemene achtergrondkleur van de applicatie.",
+    },
+    {
+      key: "surface",
+      label: "Kaarten & panelen",
+      description: "Gebruikt voor kaarten, tabellen en panelen.",
+    },
+    {
+      key: "text",
+      label: "Tekstkleur",
+      description: "Standaard kleur voor tekst.",
+    },
+    {
+      key: "muted",
+      label: "Secundaire tekst",
+      description: "Kleur voor subtiele teksten en toelichtingen.",
+    },
+    {
+      key: "border",
+      label: "Randen",
+      description: "Kleur voor randen en scheidingslijnen.",
+    },
+    {
+      key: "accent",
+      label: "Accent",
+      description: "Wordt gebruikt voor actieve navigatie en accenten.",
+    },
+    {
+      key: "accentText",
+      label: "Accent-tekst",
+      description: "Tekstkleur op het accent, bijvoorbeeld bij actieve navigatie.",
+    },
+  ];
+
+  const handleColorChange = (key: keyof ThemeSettings, value: string) => {
+    if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+      setThemeColor(key, value.toLowerCase());
+    }
+  };
+
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleBackgroundUpload: React.ChangeEventHandler<HTMLInputElement> = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      event.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === "string") {
+        setBackgroundImage(result);
+      }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  };
+
+  const resetAllAppearance = () => {
+    resetTheme();
+    resetBackgroundImage();
+  };
+
   return (
     <div className="space-y-4">
-      <div className="text-lg font-semibold">Instellingen</div>
+      <div className="text-lg font-semibold theme-text">Instellingen</div>
 
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="mb-2 font-medium">Mijn vakken</div>
+      <div className="rounded-2xl border theme-border theme-surface p-4">
+        <div className="mb-2 font-medium theme-text">Mijn vakken</div>
 
-        <div className="mb-3 text-sm text-gray-600">
+        <div className="mb-3 text-sm theme-muted">
           Kies welke vakken zichtbaar zijn in <strong>Weekoverzicht</strong>, <strong>Matrix</strong> en <strong>Deadlines</strong>.
         </div>
 
         <div className="mb-3 flex gap-2">
-          <button onClick={selectAll} className="rounded-md border px-2 py-1 text-sm">Alles selecteren</button>
-          <button onClick={clearAll} className="rounded-md border px-2 py-1 text-sm">Alles leegmaken</button>
+          <button
+            onClick={selectAll}
+            className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+          >
+            Alles selecteren
+          </button>
+          <button
+            onClick={clearAll}
+            className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+          >
+            Alles leegmaken
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
           {allVakken.map((vak) => (
-            <label key={vak} className="flex items-center gap-2 rounded-md border p-2 bg-white">
+            <label
+              key={vak}
+              className="flex items-center gap-2 rounded-md border theme-border theme-soft p-2"
+            >
               <input
                 type="checkbox"
                 checked={mijnVakken.includes(vak)}
@@ -50,20 +142,20 @@ export default function Settings() {
           ))}
         </div>
 
-        <div className="mt-4 text-xs text-gray-500">
+        <div className="mt-4 text-xs theme-muted">
           Deze lijst volgt automatisch de geüploade documenten.
         </div>
       </div>
 
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="mb-2 font-medium">Huiswerkweergave</div>
+      <div className="rounded-2xl border theme-border theme-surface p-4">
+        <div className="mb-2 font-medium theme-text">Huiswerkweergave</div>
 
-        <div className="mb-3 text-sm text-gray-600">
+        <div className="mb-3 text-sm theme-muted">
           Kies hoe huiswerk wordt getoond in <strong>Weekoverzicht</strong> en <strong>Matrix</strong>.
         </div>
 
         <div className="space-y-2 text-sm">
-          <label className="flex items-center gap-2 rounded-md border p-2 bg-white">
+          <label className="flex items-center gap-2 rounded-md border theme-border theme-soft p-2">
             <input
               type="radio"
               name="huiswerkweergave"
@@ -73,7 +165,7 @@ export default function Settings() {
             />
             <span>Per opdracht (meerdere regels met vinkjes)</span>
           </label>
-          <label className="flex items-center gap-2 rounded-md border p-2 bg-white">
+          <label className="flex items-center gap-2 rounded-md border theme-border theme-soft p-2">
             <input
               type="radio"
               name="huiswerkweergave"
@@ -83,6 +175,76 @@ export default function Settings() {
             />
             <span>Alles als één regel met één vinkje</span>
           </label>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border theme-border theme-surface p-4 space-y-4">
+        <div className="font-medium theme-text">Thema &amp; achtergrond</div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {colorOptions.map((option) => (
+            <div
+              key={option.key}
+              className="flex items-center justify-between gap-4 rounded-xl border theme-border theme-soft px-3 py-2"
+            >
+              <div className="flex-1">
+                <div className="text-sm font-medium theme-text">{option.label}</div>
+                <div className="text-xs theme-muted">{option.description}</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  aria-label={option.label}
+                  value={theme[option.key]}
+                  onChange={(event) => handleColorChange(option.key, event.target.value)}
+                  className="h-10 w-10 cursor-pointer rounded-md border theme-border bg-transparent p-0"
+                />
+                <span className="font-mono text-sm theme-text">{theme[option.key].toUpperCase()}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-sm font-medium theme-text">Achtergrondafbeelding</div>
+          <div className="text-xs theme-muted">
+            Upload een afbeelding om als achtergrond te gebruiken. Grote afbeeldingen worden automatisch geschaald.
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleBackgroundUpload}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-md border theme-border theme-surface px-3 py-1 text-sm"
+            >
+              Kies afbeelding
+            </button>
+            <button
+              onClick={resetBackgroundImage}
+              className="rounded-md border theme-border theme-surface px-3 py-1 text-sm"
+              disabled={!backgroundImage}
+            >
+              Achtergrond resetten
+            </button>
+            <button
+              onClick={resetAllAppearance}
+              className="rounded-md border theme-border theme-surface px-3 py-1 text-sm"
+            >
+              Reset thema &amp; achtergrond
+            </button>
+          </div>
+          {backgroundImage ? (
+            <div className="h-32 w-full overflow-hidden rounded-xl border theme-border theme-soft">
+              <img src={backgroundImage} alt="Voorbeeld achtergrond" className="h-full w-full object-cover" />
+            </div>
+          ) : (
+            <div className="text-sm theme-muted">Er is nog geen achtergrond ingesteld.</div>
+          )}
         </div>
       </div>
     </div>

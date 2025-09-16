@@ -2,6 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --app-background: #f8fafc;
+  --app-surface: #ffffff;
+  --app-accent: #111827;
+  --app-text: #0f172a;
+  --app-muted: #64748b;
+  --app-border: #e2e8f0;
+  --app-accent-text: #ffffff;
+}
+
+body {
+  background-color: var(--app-background);
+  color: var(--app-text);
+}
+
+.theme-app {
+  background-color: var(--app-background);
+  color: var(--app-text);
+}
+
+.theme-surface {
+  background-color: var(--app-surface);
+  color: var(--app-text);
+}
+
+.theme-soft {
+  background-color: var(--app-background);
+}
+
+.theme-border {
+  border-color: var(--app-border) !important;
+}
+
+.theme-text {
+  color: var(--app-text) !important;
+}
+
+.theme-muted {
+  color: var(--app-muted) !important;
+}
+
+.theme-accent {
+  background-color: var(--app-accent) !important;
+  color: var(--app-accent-text) !important;
+}
+
 .docx-table {
   width: 100%;
   border-collapse: collapse;
@@ -9,9 +55,7 @@
 }
 
 .docx-table td {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--app-border);
   padding: 0.25rem 0.5rem;
   vertical-align: top;
 }
-
-body { @apply bg-slate-50 text-slate-800; }

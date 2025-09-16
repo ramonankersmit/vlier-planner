@@ -82,7 +82,7 @@ function Card({
       : filteredHomeworkItems.join("\n");
 
   return (
-    <div className="rounded-2xl border bg-white shadow-sm p-4 flex flex-col gap-3">
+    <div className="rounded-2xl border theme-border theme-surface shadow-sm p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div className="font-semibold">{vak}</div>
         <div className="flex gap-2">
@@ -95,7 +95,7 @@ function Card({
               title="Toon details (lesstof/opmerkingen)"
               aria-label={`Details ${vak}`}
             >
-              <Info size={16} className="text-gray-600" />
+              <Info size={16} className="theme-muted" />
             </button>
           )}
           <button
@@ -105,7 +105,7 @@ function Card({
             disabled={!onOpenDoc}
             className="disabled:opacity-40"
           >
-            <FileText size={16} className="text-gray-600" />
+            <FileText size={16} className="theme-muted" />
           </button>
         </div>
       </div>
@@ -125,7 +125,7 @@ function Card({
                       onChange={() => toggleItem(idx)}
                       className="mt-0.5"
                     />
-                    <span className={`flex-1 ${checked ? "line-through text-gray-400" : ""}`}>
+                    <span className={`flex-1 ${checked ? "line-through theme-muted opacity-80" : ""}`}>
                       {item}
                     </span>
                   </label>
@@ -134,7 +134,7 @@ function Card({
             })}
           </ul>
         ) : (
-          <div className="text-sm text-gray-500">Geen huiswerk</div>
+          <div className="text-sm theme-muted">Geen huiswerk</div>
         )
       ) : aggregatedHomework ? (
         <label className="flex items-start gap-2 text-sm">
@@ -146,27 +146,29 @@ function Card({
             className="mt-0.5"
           />
           <span
-            className={`flex-1 whitespace-pre-line ${allDone ? "line-through text-gray-400" : ""}`}
+            className={`flex-1 whitespace-pre-line ${allDone ? "line-through theme-muted opacity-80" : ""}`}
           >
             {aggregatedHomework}
           </span>
         </label>
       ) : (
-        <div className="text-sm text-gray-500">Geen huiswerk</div>
+        <div className="text-sm theme-muted">Geen huiswerk</div>
       )}
 
-      <div className={`text-sm text-gray-700 ${allDone ? "opacity-70" : ""}`} title={data?.date || ""}>
+      <div className={`text-sm theme-muted ${allDone ? "opacity-80" : ""}`} title={data?.date || ""}>
         {data?.deadlines || "Geen toets/deadline"}
       </div>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
+          <div className="rounded-2xl border theme-border theme-surface shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">
                 {vak} – Week {weekNr}
               </h2>
-              <button onClick={() => setOpen(false)} className="text-gray-500" aria-label="Sluiten">✕</button>
+              <button onClick={() => setOpen(false)} className="theme-muted" aria-label="Sluiten">
+                ✕
+              </button>
             </div>
             <div className="text-sm whitespace-pre-wrap">
               Lesstof: {data?.lesstof || "—"}
@@ -310,8 +312,8 @@ export default function WeekOverview() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-lg font-semibold">Weekoverzicht</h1>
-        <div className="mt-1 text-sm text-gray-600">
+        <h1 className="text-lg font-semibold theme-text">Weekoverzicht</h1>
+        <div className="mt-1 text-sm theme-muted">
           Week {week?.nr ?? "—"} · {week ? formatRange(week) : "Geen data"}
         </div>
       </div>
@@ -319,7 +321,7 @@ export default function WeekOverview() {
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
           onClick={goThisWeek}
-          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Spring naar deze week"
           aria-label="Deze week"
           disabled={disableWeekControls}
@@ -328,16 +330,16 @@ export default function WeekOverview() {
         </button>
         <button
           onClick={() => setWeekIdxWO(Math.max(0, weekIdxWO - 1))}
-          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Vorige week"
           disabled={disableWeekControls}
         >
           ◀
         </button>
-        <span className="text-sm text-gray-800">Week {week?.nr ?? "—"}</span>
+        <span className="text-sm theme-text">Week {week?.nr ?? "—"}</span>
         <button
           onClick={() => setWeekIdxWO(Math.min(Math.max(weeks.length - 1, 0), weekIdxWO + 1))}
-          className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Volgende week"
           disabled={disableWeekControls}
         >
@@ -345,7 +347,7 @@ export default function WeekOverview() {
         </button>
 
         <select
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
           value={niveauWO}
           onChange={(e) => setNiveauWO(e.target.value as any)}
           aria-label="Filter niveau"
@@ -361,7 +363,7 @@ export default function WeekOverview() {
         </select>
 
         <select
-          className="rounded-md border px-2 py-1 text-sm"
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
           value={leerjaarWO}
           onChange={(e) => setLeerjaarWO(e.target.value)}
           aria-label="Filter leerjaar"
@@ -378,15 +380,15 @@ export default function WeekOverview() {
       </div>
 
       {!hasActiveDocs ? (
-        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+        <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
           Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
         </div>
       ) : !hasWeekData ? (
-        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+        <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
           Nog geen weekgegevens beschikbaar. Controleer of de documenten studiewijzerdata bevatten.
         </div>
       ) : !hasDocsForFilters ? (
-        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+        <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
           Geen vakken voor deze filters. Pas de selectie aan of controleer de metadata van de documenten.
         </div>
       ) : (
