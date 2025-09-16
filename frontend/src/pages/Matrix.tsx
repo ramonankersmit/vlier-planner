@@ -1,6 +1,6 @@
 import React from "react";
 import { FileText, CalendarClock } from "lucide-react";
-import { useAppStore, type DocRecord, type WeekInfo } from "../app/store";
+import { useAppStore, type DocRecord, type WeekInfo, type WeekData } from "../app/store";
 import {
   formatRange,
   calcCurrentWeekIdx,
@@ -11,10 +11,149 @@ import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
 
+function MatrixCell({
+  vak,
+  week,
+  data,
+  doneMap,
+  setDoneState,
+  mode,
+  doc,
+  onOpenDoc,
+}: {
+  vak: string;
+  week: WeekInfo;
+  data?: WeekData;
+  doneMap: Record<string, boolean>;
+  setDoneState: (key: string, value: boolean) => void;
+  mode: "perOpdracht" | "gecombineerd";
+  doc?: DocRecord;
+  onOpenDoc?: () => void;
+}) {
+  const baseKey = `${week.id}:${vak}`;
+  const storedItems =
+    Array.isArray(data?.huiswerkItems) && data?.huiswerkItems.length
+      ? data.huiswerkItems
+      : undefined;
+  const homeworkItems = (storedItems ?? splitHomeworkItems(data?.huiswerk)).map((item) => item.trim());
+  const filteredHomeworkItems = homeworkItems.filter((item) => item.length > 0);
+  const itemKeys = filteredHomeworkItems.map((_, idx) => `${baseKey}:${idx}`);
+  const hasItemState = itemKeys.some((itemKey) =>
+    Object.prototype.hasOwnProperty.call(doneMap, itemKey)
+  );
+  const rawDoneStates = itemKeys.map((itemKey) => !!doneMap[itemKey]);
+  const baseDone = !!doneMap[baseKey];
+  const displayDoneStates = hasItemState
+    ? rawDoneStates
+    : filteredHomeworkItems.map(() => baseDone);
+  const allDone = filteredHomeworkItems.length
+    ? hasItemState
+      ? rawDoneStates.every(Boolean)
+      : baseDone
+    : baseDone;
+  const shouldAdoptBaseState =
+    mode === "perOpdracht" && baseDone && !hasItemState && filteredHomeworkItems.length > 0;
+
+  React.useEffect(() => {
+    if (!shouldAdoptBaseState) return;
+    filteredHomeworkItems.forEach((_, idx) => {
+      setDoneState(`${baseKey}:${idx}`, true);
+    });
+    setDoneState(baseKey, false);
+  }, [shouldAdoptBaseState, filteredHomeworkItems, baseKey, setDoneState]);
+
+  const toggleItem = (idx: number) => {
+    const itemKey = itemKeys[idx];
+    const current = hasItemState ? rawDoneStates[idx] : baseDone;
+    const next = !current;
+    setDoneState(baseKey, false);
+    setDoneState(itemKey, next);
+  };
+
+  const toggleCombined = () => {
+    const next = !allDone;
+    setDoneState(baseKey, next);
+    filteredHomeworkItems.forEach((_, idx) => {
+      setDoneState(`${baseKey}:${idx}`, next);
+    });
+  };
+
+  const aggregatedHomework =
+    data?.huiswerk && data.huiswerk.trim().length
+      ? data.huiswerk
+      : filteredHomeworkItems.join("\n");
+
+  const deadlineLabel = data?.deadlines || "Geen toets/deadline";
+
+  return (
+    <td className="px-4 py-2 align-top">
+      <div className="flex flex-col gap-2 min-w-[14rem]">
+        <div className="flex items-start gap-2">
+          <div className="flex-1 text-sm">
+            {mode === "perOpdracht" ? (
+              filteredHomeworkItems.length ? (
+                <ul className="space-y-1">
+                  {filteredHomeworkItems.map((item, idx) => {
+                    const checked = !!displayDoneStates[idx];
+                    return (
+                      <li key={`${baseKey}-${idx}`}>
+                        <label className="flex items-start gap-2">
+                          <input
+                            aria-label={`Huiswerk ${vak}: ${item}`}
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleItem(idx)}
+                            className="mt-0.5"
+                          />
+                          <span className={`flex-1 ${checked ? "line-through text-gray-400" : ""}`}>
+                            {item}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="text-gray-500">Geen huiswerk</div>
+              )
+            ) : aggregatedHomework ? (
+              <label className="flex items-start gap-2">
+                <input
+                  aria-label={`Huiswerk ${vak}`}
+                  type="checkbox"
+                  checked={allDone}
+                  onChange={toggleCombined}
+                  className="mt-0.5"
+                />
+                <span className={`flex-1 whitespace-pre-line ${allDone ? "line-through text-gray-400" : ""}`}>
+                  {aggregatedHomework}
+                </span>
+              </label>
+            ) : (
+              <div className="text-gray-500">Geen huiswerk</div>
+            )}
+          </div>
+          <button
+            title={doc ? `Bron: ${doc.bestand}` : "Geen bron voor dit vak"}
+            aria-label={doc ? `Bron: ${doc.bestand}` : `Geen bron voor ${vak}`}
+            className="text-gray-600 disabled:opacity-40"
+            disabled={!onOpenDoc}
+            onClick={onOpenDoc}
+          >
+            <FileText size={14} />
+          </button>
+        </div>
+        <div className={`text-xs text-gray-600 ${allDone ? "opacity-70" : ""}`}>{deadlineLabel}</div>
+      </div>
+    </td>
+  );
+}
+
 export default function Matrix() {
   const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
   const doneMap = useAppStore((s) => s.doneMap) ?? {};
   const setDoneState = useAppStore((s) => s.setDoneState);
+  const huiswerkWeergave = useAppStore((s) => s.huiswerkWeergave);
   const docs = useAppStore((s) => s.docs) ?? [];
   const weekData = useAppStore((s) => s.weekData);
   const { openPreview } = useDocumentPreview();
@@ -272,62 +411,25 @@ export default function Matrix() {
                   <td className="px-4 py-2 font-medium whitespace-nowrap">{vak}</td>
                   {weeks.map((w) => {
                     const perWeek = weekData.byWeek?.[w.id] || {};
-                    const d = perWeek[vak] || {};
-                    const baseKey = `${w.id}:${vak}`;
-                    const homeworkItems = splitHomeworkItems(d?.huiswerk);
-                    const itemKeys = homeworkItems.map((_, idx) => `${baseKey}:${idx}`);
-                    const hasItemState = itemKeys.some((itemKey) =>
-                      Object.prototype.hasOwnProperty.call(doneMap, itemKey)
-                    );
-                    const baseDone = !!doneMap[baseKey];
-                    const allDone = homeworkItems.length
-                      ? hasItemState
-                        ? itemKeys.every((itemKey) => !!doneMap[itemKey])
-                        : baseDone
-                      : baseDone;
-                    const hasHw = homeworkItems.length > 0;
+                    const data = perWeek[vak];
                     const docsForVak = docsByVak.get(vak) ?? [];
                     const doc = findDocForWeek(docsForVak, w);
+                    const onOpenDoc = doc
+                      ? () => openPreview({ fileId: doc.fileId, filename: doc.bestand })
+                      : undefined;
 
                     return (
-                      <td key={baseKey} className="px-4 py-2 align-top">
-                        <div className="flex items-center gap-2 min-w-[14rem]">
-                          {hasHw && (
-                            <input
-                              aria-label={`Huiswerk ${vak} week ${w.nr}`}
-                              type="checkbox"
-                              checked={allDone}
-                              onChange={() => {
-                                const nextValue = !allDone;
-                                setDoneState(baseKey, false);
-                                homeworkItems.forEach((_, idx) => {
-                                  setDoneState(`${baseKey}:${idx}`, nextValue);
-                                });
-                              }}
-                              title="Markeer huiswerk gereed"
-                            />
-                          )}
-                          <span
-                            className={`truncate flex-1 ${
-                              hasHw && allDone ? "line-through text-gray-400" : ""
-                            }`}
-                            title={`${d.huiswerk || "—"} | ${d.deadlines || "—"}`}
-                          >
-                            {d.huiswerk || d.deadlines || "—"}
-                          </span>
-                          <button
-                            title={doc ? `Bron: ${doc.bestand}` : "Toon bron"}
-                            aria-label={doc ? `Bron: ${doc.bestand}` : `Geen bron voor ${vak}`}
-                            className="text-gray-600 disabled:opacity-40"
-                            disabled={!doc}
-                            onClick={() =>
-                              doc && openPreview({ fileId: doc.fileId, filename: doc.bestand })
-                            }
-                          >
-                            <FileText size={14} />
-                          </button>
-                        </div>
-                      </td>
+                      <MatrixCell
+                        key={`${w.id}:${vak}`}
+                        vak={vak}
+                        week={w}
+                        data={data}
+                        doneMap={doneMap}
+                        setDoneState={setDoneState}
+                        mode={huiswerkWeergave}
+                        doc={doc}
+                        onOpenDoc={onOpenDoc}
+                      />
                     );
                   })}
                 </tr>

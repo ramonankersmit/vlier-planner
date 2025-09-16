@@ -1,6 +1,6 @@
 import React from "react";
 import { Info, FileText, CheckSquare, CalendarClock } from "lucide-react";
-import { useAppStore, type DocRecord, type WeekInfo } from "../app/store";
+import { useAppStore, type DocRecord, type WeekInfo, type WeekData } from "../app/store";
 import { formatRange, calcCurrentWeekIdx } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
@@ -8,57 +8,93 @@ import { deriveIsoYearForWeek } from "../lib/calendar";
 
 function Card({
   vak,
+  weekId,
   weekNr,
-  d,
-  homeworkItems,
-  doneStates,
-  baseKey,
-  shouldAdoptBaseState,
+  data,
+  doneMap,
   setDoneState,
+  mode,
   onOpenDoc,
   docName,
 }: {
   vak: string;
+  weekId: string;
   weekNr: number;
-  d: any;
-  homeworkItems: string[];
-  doneStates: boolean[];
-  baseKey: string;
-  shouldAdoptBaseState: boolean;
+  data?: WeekData;
+  doneMap: Record<string, boolean>;
   setDoneState: (key: string, value: boolean) => void;
+  mode: "perOpdracht" | "gecombineerd";
   onOpenDoc?: () => void;
   docName?: string;
 }) {
-  const hasHw = homeworkItems.length > 0;
-  const allDone = hasHw && doneStates.every(Boolean);
   const [open, setOpen] = React.useState(false);
+  const baseKey = `${weekId}:${vak}`;
+  const storedItems =
+    Array.isArray(data?.huiswerkItems) && data?.huiswerkItems.length
+      ? data.huiswerkItems
+      : undefined;
+  const homeworkItems = (storedItems ?? splitHomeworkItems(data?.huiswerk)).map((item) => item.trim());
+  const filteredHomeworkItems = homeworkItems.filter((item) => item.length > 0);
+  const itemKeys = filteredHomeworkItems.map((_, idx) => `${baseKey}:${idx}`);
+  const hasItemState = itemKeys.some((itemKey) =>
+    Object.prototype.hasOwnProperty.call(doneMap, itemKey)
+  );
+  const rawDoneStates = itemKeys.map((itemKey) => !!doneMap[itemKey]);
+  const baseDone = !!doneMap[baseKey];
+  const displayDoneStates = hasItemState
+    ? rawDoneStates
+    : filteredHomeworkItems.map(() => baseDone);
+  const allDone = filteredHomeworkItems.length
+    ? hasItemState
+      ? rawDoneStates.every(Boolean)
+      : baseDone
+    : baseDone;
+  const shouldAdoptBaseState =
+    mode === "perOpdracht" && baseDone && !hasItemState && filteredHomeworkItems.length > 0;
 
   React.useEffect(() => {
     if (!shouldAdoptBaseState) return;
-    homeworkItems.forEach((_, idx) => {
+    filteredHomeworkItems.forEach((_, idx) => {
       setDoneState(`${baseKey}:${idx}`, true);
     });
     setDoneState(baseKey, false);
-  }, [shouldAdoptBaseState, homeworkItems, baseKey, setDoneState]);
+  }, [shouldAdoptBaseState, filteredHomeworkItems, baseKey, setDoneState]);
 
   const toggleItem = (idx: number) => {
-    const itemKey = `${baseKey}:${idx}`;
-    const current = !!doneStates[idx];
+    const itemKey = itemKeys[idx];
+    const current = hasItemState ? rawDoneStates[idx] : baseDone;
     const next = !current;
     setDoneState(baseKey, false);
     setDoneState(itemKey, next);
   };
+
+  const toggleCombined = () => {
+    const next = !allDone;
+    setDoneState(baseKey, next);
+    filteredHomeworkItems.forEach((_, idx) => {
+      setDoneState(`${baseKey}:${idx}`, next);
+    });
+  };
+
+  const aggregatedHomework =
+    data?.huiswerk && data.huiswerk.trim().length
+      ? data.huiswerk
+      : filteredHomeworkItems.join("\n");
 
   return (
     <div className="rounded-2xl border bg-white shadow-sm p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div className="font-semibold">{vak}</div>
         <div className="flex gap-2">
-          {d?.deadlines && d.deadlines !== "—" && (
+          {data?.deadlines && data.deadlines !== "—" && (
             <CheckSquare size={16} className="text-amber-600" title="Toets/Deadline aanwezig" />
           )}
-          {(d?.lesstof || d?.opmerkingen) && (
-            <button onClick={() => setOpen(true)} title="Toon details (lesstof/opmerkingen)" aria-label={`Details ${vak}`}>
+          {(data?.lesstof || data?.opmerkingen) && (
+            <button
+              onClick={() => setOpen(true)}
+              title="Toon details (lesstof/opmerkingen)"
+              aria-label={`Details ${vak}`}
+            >
               <Info size={16} className="text-gray-600" />
             </button>
           )}
@@ -74,34 +110,53 @@ function Card({
         </div>
       </div>
 
-      {hasHw ? (
-        <ul className="space-y-1 text-sm">
-          {homeworkItems.map((item, idx) => {
-            const checked = !!doneStates[idx];
-            return (
-              <li key={`${baseKey}-${idx}`}>
-                <label className="flex items-start gap-2">
-                  <input
-                    aria-label={`Huiswerk ${vak}: ${item}`}
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleItem(idx)}
-                    className="mt-0.5"
-                  />
-                  <span className={`flex-1 ${checked ? "line-through text-gray-400" : ""}`}>
-                    {item}
-                  </span>
-                </label>
-              </li>
-            );
-          })}
-        </ul>
+      {mode === "perOpdracht" ? (
+        filteredHomeworkItems.length ? (
+          <ul className="space-y-1 text-sm">
+            {filteredHomeworkItems.map((item, idx) => {
+              const checked = !!displayDoneStates[idx];
+              return (
+                <li key={`${baseKey}-${idx}`}>
+                  <label className="flex items-start gap-2">
+                    <input
+                      aria-label={`Huiswerk ${vak}: ${item}`}
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleItem(idx)}
+                      className="mt-0.5"
+                    />
+                    <span className={`flex-1 ${checked ? "line-through text-gray-400" : ""}`}>
+                      {item}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className="text-sm text-gray-500">Geen huiswerk</div>
+        )
+      ) : aggregatedHomework ? (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            aria-label={`Huiswerk ${vak}`}
+            type="checkbox"
+            checked={allDone}
+            onChange={toggleCombined}
+            className="mt-0.5"
+          />
+          <span
+            className={`flex-1 whitespace-pre-line ${allDone ? "line-through text-gray-400" : ""}`}
+          >
+            {aggregatedHomework}
+          </span>
+        </label>
       ) : (
         <div className="text-sm text-gray-500">Geen huiswerk</div>
       )}
 
-      <div className={`text-sm text-gray-700 ${allDone ? "opacity-70" : ""}`} title={d?.date || ""}>
-        {d?.deadlines || "Geen toets/deadline"}
+      <div className={`text-sm text-gray-700 ${allDone ? "opacity-70" : ""}`} title={data?.date || ""}>
+        {data?.deadlines || "Geen toets/deadline"}
       </div>
 
       {open && (
@@ -114,9 +169,9 @@ function Card({
               <button onClick={() => setOpen(false)} className="text-gray-500" aria-label="Sluiten">✕</button>
             </div>
             <div className="text-sm whitespace-pre-wrap">
-              Lesstof: {d?.lesstof || "—"}
+              Lesstof: {data?.lesstof || "—"}
               {"\n"}
-              Opmerkingen: {d?.opmerkingen || "—"}
+              Opmerkingen: {data?.opmerkingen || "—"}
             </div>
           </div>
         </div>
@@ -130,6 +185,7 @@ export default function WeekOverview() {
     mijnVakken,
     doneMap,
     setDoneState,
+    huiswerkWeergave,
     weekIdxWO,
     setWeekIdxWO,
     niveauWO,
@@ -228,8 +284,8 @@ export default function WeekOverview() {
   }, [weeks, weekIdxWO, setWeekIdxWO]);
 
   const week = weeks.length ? weeks[Math.min(weekIdxWO, weeks.length - 1)] : undefined;
-  const weekId = week?.id ?? "";
   const weekNumber = week?.nr ?? 0;
+  const weekKey = week?.id ?? `wk-${weekNumber}`;
   const dataForActiveWeek = week ? byWeek[week.id] || {} : {};
   const goThisWeek = React.useCallback(() => {
     if (!weeks.length) return;
@@ -333,37 +389,23 @@ export default function WeekOverview() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleVakken.map((vak) => {
-            const d = dataForActiveWeek[vak];
-            const weekKey = weekId || `wk-${weekNumber}`;
-            const baseKey = `${weekKey}:${vak}`;
-            const homeworkItems = splitHomeworkItems(d?.huiswerk);
-            const itemKeys = homeworkItems.map((_, idx) => `${baseKey}:${idx}`);
-            const hasItemState = itemKeys.some((itemKey) =>
-              Object.prototype.hasOwnProperty.call(doneMap, itemKey)
-            );
-            const baseDone = !!doneMap[baseKey];
-            const rawDoneStates = itemKeys.map((itemKey) => !!doneMap[itemKey]);
-            const displayDoneStates = hasItemState
-              ? rawDoneStates
-              : homeworkItems.map(() => baseDone);
-            const shouldAdoptBaseState =
-              baseDone && !hasItemState && homeworkItems.length > 0;
+            const data = dataForActiveWeek[vak];
             const docsForVak = docsByVak.get(vak) ?? [];
             const doc = findDocForWeek(docsForVak, week);
+            const onOpenDoc = doc
+              ? () => openPreview({ fileId: doc.fileId, filename: doc.bestand })
+              : undefined;
             return (
               <Card
                 key={vak}
                 vak={vak}
+                weekId={weekKey}
                 weekNr={weekNumber}
-                d={d}
-                homeworkItems={homeworkItems}
-                doneStates={displayDoneStates}
-                baseKey={baseKey}
-                shouldAdoptBaseState={shouldAdoptBaseState}
+                data={data}
+                doneMap={doneMap}
                 setDoneState={setDoneState}
-                onOpenDoc={
-                  doc ? () => openPreview({ fileId: doc.fileId, filename: doc.bestand }) : undefined
-                }
+                mode={huiswerkWeergave}
+                onOpenDoc={onOpenDoc}
                 docName={doc?.bestand}
               />
             );

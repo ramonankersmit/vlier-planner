@@ -7,6 +7,7 @@ import {
   getIsoWeekStart,
   makeWeekId,
 } from "../lib/calendar";
+import { splitHomeworkItems } from "../lib/textUtils";
 
 /**
  * Houd deze DocMeta shape in sync met de backend (app.py).
@@ -21,6 +22,7 @@ export type WeekInfo = { id: string; nr: number; isoYear: number; start: string;
 export type WeekData = {
   lesstof?: string;
   huiswerk?: string;
+  huiswerkItems?: string[];
   deadlines?: string;
   opmerkingen?: string;
   date?: string;
@@ -47,6 +49,8 @@ type State = {
   // ==== instellingen ====
   mijnVakken: string[];
   setMijnVakken: (v: string[]) => void;
+  huiswerkWeergave: "perOpdracht" | "gecombineerd";
+  setHuiswerkWeergave: (mode: "perOpdracht" | "gecombineerd") => void;
 
   // ==== afvinkstatus gedeeld ====
   doneMap: Record<string, boolean>;
@@ -86,6 +90,7 @@ const computeMijnVakken = (docs: DocRecord[], prev: string[], options?: MijnVakk
 type WeekAccumulator = {
   lesstof: string[];
   huiswerk: string[];
+  huiswerkItems: string[];
   deadlines: string[];
   opmerkingen: string[];
   dates: string[];
@@ -178,19 +183,45 @@ const computeWeekAggregation = (
       const { vakMap } = ensureWeek(wk, isoYear);
       const accum =
         vakMap[doc.vak] ??
-        (vakMap[doc.vak] = { lesstof: [], huiswerk: [], deadlines: [], opmerkingen: [], dates: [] });
+        (vakMap[doc.vak] = {
+          lesstof: [],
+          huiswerk: [],
+          huiswerkItems: [],
+          deadlines: [],
+          opmerkingen: [],
+          dates: [],
+        });
 
-      const add = (arr: string[], value?: string | null, options?: NormalizeOptions) => {
-        const normalized = normalizeText(value, options);
-        if (normalized) arr.push(normalized);
+      const addUnique = (arr: string[], value: string) => {
+        if (!arr.includes(value)) {
+          arr.push(value);
+        }
       };
 
-      add(accum.lesstof, row.onderwerp || row.les);
+      const addNormalized = (arr: string[], value?: string | null, options?: NormalizeOptions) => {
+        const normalized = normalizeText(value, options);
+        if (normalized) {
+          addUnique(arr, normalized);
+        }
+        return normalized;
+      };
+
+      addNormalized(accum.lesstof, row.onderwerp || row.les);
       if ((!row.onderwerp && !row.les) && row.leerdoelen?.length) {
-        add(accum.lesstof, row.leerdoelen.join("; "));
+        addNormalized(accum.lesstof, row.leerdoelen.join("; "));
       }
-      add(accum.huiswerk, row.huiswerk, { preserveLineBreaks: true });
-      add(accum.huiswerk, row.opdracht, { preserveLineBreaks: true });
+
+      const addHomework = (value?: string | null) => {
+        const normalized = addNormalized(accum.huiswerk, value, { preserveLineBreaks: true });
+        if (!normalized) return;
+        const items = splitHomeworkItems(normalized);
+        for (const item of items) {
+          addUnique(accum.huiswerkItems, item);
+        }
+      };
+
+      addHomework(row.huiswerk);
+      addHomework(row.opdracht);
 
       const toetsType = row.toets?.type;
       if (toetsType) {
@@ -200,24 +231,24 @@ const computeWeekAggregation = (
           const label = normalizedWeight
             ? `${normalizedType} (weging ${normalizedWeight})`
             : normalizedType;
-          accum.deadlines.push(label);
+          addUnique(accum.deadlines, label);
         }
       }
 
       const recordDate = (value?: string | null) => {
         const normalized = normalizeText(value);
         if (!normalized) return;
-        accum.dates.push(normalized);
+        addUnique(accum.dates, normalized);
       };
 
       const normalizedInlever = normalizeText(row.inleverdatum);
       if (normalizedInlever) {
-        accum.deadlines.push(`Inleveren ${normalizedInlever}`);
+        addUnique(accum.deadlines, `Inleveren ${normalizedInlever}`);
         recordDate(normalizedInlever);
       }
 
       recordDate(row.datum);
-      add(accum.opmerkingen, row.notities);
+      addNormalized(accum.opmerkingen, row.notities);
     }
   }
 
@@ -233,6 +264,7 @@ const computeWeekAggregation = (
       entries[vak] = {
         lesstof: uniqJoin(acc.lesstof, "\n"),
         huiswerk: uniqJoin(acc.huiswerk, "\n"),
+        huiswerkItems: acc.huiswerkItems.length ? [...acc.huiswerkItems] : undefined,
         deadlines: uniqJoin(acc.deadlines, "; "),
         opmerkingen: uniqJoin(acc.opmerkingen, "\n"),
         date: sortedDates[0],
@@ -357,6 +389,8 @@ export const useAppStore = create<State>((set, get) => ({
   // ----------------------------
   mijnVakken: [], // start leeg; wordt gezet bij setDocs()
   setMijnVakken: (v) => set({ mijnVakken: v }),
+  huiswerkWeergave: "perOpdracht",
+  setHuiswerkWeergave: (mode) => set({ huiswerkWeergave: mode }),
 
   // ----------------------------
   // done-map
