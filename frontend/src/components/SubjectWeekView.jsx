@@ -17,16 +17,16 @@ export default function SubjectWeekView({ tasks }) {
   return (
     <div className="space-y-4">
       {subjects.map(subj => (
-        <div key={subj} className="bg-white rounded-2xl shadow p-4">
+        <div key={subj} className="rounded-2xl border theme-border theme-surface shadow p-4">
           <div className="font-semibold mb-2">{subj}</div>
           <ul className="space-y-2">
             {bySubject[subj].sort((a,b)=>a.datum.localeCompare(b.datum)).map(it => (
               <li key={it.id || it.vak+it.titel+it.datum} className="flex items-start gap-2">
-                <span className="text-xs text-slate-500 w-16">{fmt(it.datum)}</span>
+                <span className="text-xs theme-muted w-16">{fmt(it.datum)}</span>
                 <div className="text-sm">
                   <div className="font-medium">{it.titel}</div>
                   {it.is_assessment && <div className="text-xs text-red-700">TOETS / DEADLINE</div>}
-                  {it.omschrijving && <div className="text-xs text-slate-600">{it.omschrijving}</div>}
+                  {it.omschrijving && <div className="text-xs theme-muted">{it.omschrijving}</div>}
                 </div>
               </li>
             ))}

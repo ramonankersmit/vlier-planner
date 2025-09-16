@@ -18,17 +18,17 @@ export default function WeekView({ tasks, week }) {
       {days.map((d, i) => {
         const items = byDay[Object.keys(mapIdx).find(k => mapIdx[k]===i)] || [];
         return (
-          <div key={i} className="bg-white rounded-2xl shadow p-3">
+          <div key={i} className="rounded-2xl border theme-border theme-surface shadow p-3">
             <div className="font-semibold mb-2 uppercase text-sm">{d}</div>
             <div className="space-y-2">
               {items.map(it => (
-                <div key={it.id} className="rounded-xl border border-slate-200 p-3">
+                <div key={it.id} className="rounded-xl border theme-border theme-soft p-3">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">{it.vak}</span>
                     {it.is_assessment && <span className="bg-red-50 text-red-700 text-xs px-2 py-0.5 rounded-full">TOETS / DEADLINE</span>}
                   </div>
                   <div className="text-sm font-medium">{it.titel}</div>
-                  {it.omschrijving && <div className="text-xs text-slate-600">{it.omschrijving}</div>}
+                  {it.omschrijving && <div className="text-xs theme-muted">{it.omschrijving}</div>}
                 </div>
               ))}
             </div>

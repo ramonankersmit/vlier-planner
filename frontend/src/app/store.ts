@@ -33,6 +33,26 @@ export type WeekAggregation = {
   byWeek: Record<string, Record<string, WeekData>>;
 };
 
+export type ThemeSettings = {
+  background: string;
+  surface: string;
+  accent: string;
+  text: string;
+  muted: string;
+  border: string;
+  accentText: string;
+};
+
+const defaultTheme: ThemeSettings = {
+  background: "#f8fafc",
+  surface: "#ffffff",
+  accent: "#111827",
+  text: "#0f172a",
+  muted: "#64748b",
+  border: "#e2e8f0",
+  accentText: "#ffffff",
+};
+
 type State = {
   // ==== documenten (globaal) ====
   docs: DocRecord[];
@@ -51,6 +71,12 @@ type State = {
   setMijnVakken: (v: string[]) => void;
   huiswerkWeergave: "perOpdracht" | "gecombineerd";
   setHuiswerkWeergave: (mode: "perOpdracht" | "gecombineerd") => void;
+  theme: ThemeSettings;
+  setThemeColor: (key: keyof ThemeSettings, value: string) => void;
+  resetTheme: () => void;
+  backgroundImage: string | null;
+  setBackgroundImage: (value: string | null) => void;
+  resetBackgroundImage: () => void;
 
   // ==== afvinkstatus gedeeld ====
   doneMap: Record<string, boolean>;
@@ -391,6 +417,13 @@ export const useAppStore = create<State>((set, get) => ({
   setMijnVakken: (v) => set({ mijnVakken: v }),
   huiswerkWeergave: "perOpdracht",
   setHuiswerkWeergave: (mode) => set({ huiswerkWeergave: mode }),
+  theme: { ...defaultTheme },
+  setThemeColor: (key, value) =>
+    set((state) => ({ theme: { ...state.theme, [key]: value } })),
+  resetTheme: () => set({ theme: { ...defaultTheme } }),
+  backgroundImage: null,
+  setBackgroundImage: (value) => set({ backgroundImage: value }),
+  resetBackgroundImage: () => set({ backgroundImage: null }),
 
   // ----------------------------
   // done-map
