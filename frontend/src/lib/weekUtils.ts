@@ -13,8 +13,15 @@ export const formatWeekWindowLabel = (weeks: WeekInfo[]): string => {
   if (!weeks.length) return "Geen data";
   const first = weeks[0];
   const last = weeks[weeks.length - 1];
-  const sameWeek = first.nr === last.nr;
-  const weekLabel = sameWeek ? `Week ${first.nr}` : `Week ${first.nr}–${last.nr}`;
+  const sameWeek = first.id === last.id;
+  let weekLabel: string;
+  if (sameWeek) {
+    weekLabel = `Week ${first.nr}`;
+  } else if (first.isoYear === last.isoYear) {
+    weekLabel = `Week ${first.nr}–${last.nr}`;
+  } else {
+    weekLabel = `Week ${first.nr}/${first.isoYear} – ${last.nr}/${last.isoYear}`;
+  }
   const start = first.start || last.start || "";
   const end = last.end || first.end || "";
   if (start && end) return `${weekLabel} · ${start} – ${end}`;
@@ -35,28 +42,17 @@ export const formatHumanDate = (iso?: string) => {
   }).format(d);
 };
 
-const getIsoWeek = (date: Date): number => {
-  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = target.getUTCDay() || 7;
-  target.setUTCDate(target.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
-  return Math.ceil(((target.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-};
-
 export const calcCurrentWeekIdx = (weeks: WeekInfo[], today: Date = new Date()): number => {
   if (!weeks.length) return 0;
-  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const base = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
   const todayMs = base.getTime();
-  const currentWeekNr = getIsoWeek(base);
-  let bestPastIdx: number | null = null;
-  let bestPastDist = Number.POSITIVE_INFINITY;
-  let bestFutureIdx: number | null = null;
-  let bestFutureDist = Number.POSITIVE_INFINITY;
+  let bestIdx = 0;
+  let bestDist = Number.POSITIVE_INFINITY;
 
   for (let i = 0; i < weeks.length; i++) {
     const w = weeks[i];
-    const startMs = w.start ? Date.parse(w.start) : Number.NaN;
-    const endMs = w.end ? Date.parse(w.end) : Number.NaN;
+    const startMs = w.start ? Date.parse(`${w.start}T00:00:00Z`) : Number.NaN;
+    const endMs = w.end ? Date.parse(`${w.end}T23:59:59Z`) : Number.NaN;
     const hasStart = Number.isFinite(startMs);
     const hasEnd = Number.isFinite(endMs);
 
@@ -64,77 +60,38 @@ export const calcCurrentWeekIdx = (weeks: WeekInfo[], today: Date = new Date()):
       return i;
     }
 
-    if (hasEnd && endMs < todayMs) {
-      const dist = todayMs - endMs;
-      if (dist < bestPastDist) {
-        bestPastDist = dist;
-        bestPastIdx = i;
+    let dist = Number.POSITIVE_INFINITY;
+    if (hasStart && hasEnd) {
+      if (todayMs < startMs) {
+        dist = startMs - todayMs;
+      } else if (todayMs > endMs) {
+        dist = todayMs - endMs;
       }
-      continue;
+    } else if (hasStart) {
+      dist = Math.abs(todayMs - startMs);
+    } else if (hasEnd) {
+      dist = Math.abs(endMs - todayMs);
     }
 
-    if (hasStart && startMs > todayMs) {
-      const dist = startMs - todayMs;
-      if (dist < bestFutureDist) {
-        bestFutureDist = dist;
-        bestFutureIdx = i;
-      }
-      continue;
-    }
-
-    if (hasStart && startMs <= todayMs) {
-      const dist = todayMs - startMs;
-      if (dist < bestPastDist) {
-        bestPastDist = dist;
-        bestPastIdx = i;
-      }
-      continue;
-    }
-
-    if (hasEnd && endMs >= todayMs) {
-      const dist = endMs - todayMs;
-      if (dist < bestFutureDist) {
-        bestFutureDist = dist;
-        bestFutureIdx = i;
-      }
-      continue;
-    }
-
-    const diff = w.nr - currentWeekNr;
-    const dist = Math.abs(diff);
-    if (diff <= 0) {
-      if (dist < bestPastDist) {
-        bestPastDist = dist;
-        bestPastIdx = i;
-      }
-    } else if (dist < bestFutureDist) {
-      bestFutureDist = dist;
-      bestFutureIdx = i;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
     }
   }
 
-  if (bestPastIdx != null) {
-    return bestPastIdx;
-  }
-  if (bestFutureIdx != null) {
-    return bestFutureIdx;
-  }
-  return 0;
+  return bestIdx;
 };
 
 export const computeWindowStartForWeek = (
   weeks: WeekInfo[],
   windowSize: number,
-  targetWeekNr?: number
+  targetWeekId?: string
 ) => {
   if (!weeks.length) return 0;
   const maxStart = Math.max(0, weeks.length - windowSize);
-  if (!targetWeekNr) return 0;
-  let idx = weeks.findIndex((w) => w.nr === targetWeekNr);
-  if (idx === -1) {
-    idx = weeks.findIndex((w) => w.nr > targetWeekNr);
-    if (idx === -1) idx = weeks.length - 1;
-  }
+  if (!targetWeekId) return 0;
+  const idx = weeks.findIndex((w) => w.id === targetWeekId);
+  if (idx === -1) return 0;
   const desired = idx - Math.floor(windowSize / 2);
   return Math.max(0, Math.min(desired, maxStart));
 };

@@ -1,6 +1,6 @@
 import React from "react";
 import { FileText, CalendarClock } from "lucide-react";
-import { useAppStore, type DocRecord } from "../app/store";
+import { useAppStore, type DocRecord, type WeekInfo } from "../app/store";
 import {
   formatRange,
   calcCurrentWeekIdx,
@@ -9,6 +9,7 @@ import {
 } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
+import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
 
 export default function Matrix() {
   const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
@@ -86,25 +87,25 @@ export default function Matrix() {
     [mijnVakken, docsByVak]
   );
 
-  const allowedWeekNumbers = React.useMemo(() => {
-    const numbers = new Set<number>();
+  const allowedWeekIdSet = React.useMemo(() => {
+    const ids = new Set<string>();
     for (const doc of filteredDocs) {
       const start = Math.min(doc.beginWeek, doc.eindWeek);
       const end = Math.max(doc.beginWeek, doc.eindWeek);
       for (let wk = start; wk <= end; wk++) {
-        if (wk >= 1 && wk <= 53) {
-          numbers.add(wk);
-        }
+        if (wk < 1 || wk > 53) continue;
+        const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar });
+        ids.add(makeWeekId(isoYear, wk));
       }
     }
-    return Array.from(numbers).sort((a, b) => a - b);
+    return ids;
   }, [filteredDocs]);
 
   const allWeeks = React.useMemo(() => {
-    if (!allowedWeekNumbers.length) return [];
-    const infoByNr = new Map((weekData.weeks ?? []).map((w) => [w.nr, w] as const));
-    return allowedWeekNumbers.map((nr) => infoByNr.get(nr) ?? { nr, start: "", end: "" });
-  }, [allowedWeekNumbers, weekData.weeks]);
+    if (!allowedWeekIdSet.size) return [];
+    const allowed = allowedWeekIdSet;
+    return (weekData.weeks ?? []).filter((w) => allowed.has(w.id));
+  }, [allowedWeekIdSet, weekData.weeks]);
 
   const hasWeekData = allWeeks.length > 0;
   const disableWeekControls = !hasAnyDocs || !hasWeekData;
@@ -124,8 +125,8 @@ export default function Matrix() {
   const goThisWeek = React.useCallback(() => {
     if (disableWeekControls) return;
     const idx = calcCurrentWeekIdx(allWeeks);
-    const targetWeekNr = allWeeks[idx]?.nr;
-    const start = computeWindowStartForWeek(allWeeks, count, targetWeekNr);
+    const targetWeekId = allWeeks[idx]?.id;
+    const start = computeWindowStartForWeek(allWeeks, count, targetWeekId);
     setStartIdx(start);
   }, [allWeeks, count, disableWeekControls]);
 
@@ -141,6 +142,21 @@ export default function Matrix() {
   const hasVisibleData = weeks.length > 0 && visibleVakken.length > 0;
   const showNoDataForFilters = hasAnyDocs && hasWeekData && !hasVisibleData;
   const windowLabel = formatWeekWindowLabel(weeks);
+
+  const findDocForWeek = React.useCallback(
+    (docsForVak: DocRecord[], info: WeekInfo) => {
+      if (!info || docsForVak.length === 0) return docsForVak[0];
+      const matched = docsForVak.find((doc) => {
+        const minWeek = Math.min(doc.beginWeek, doc.eindWeek);
+        const maxWeek = Math.max(doc.beginWeek, doc.eindWeek);
+        if (info.nr < minWeek || info.nr > maxWeek) return false;
+        const isoYear = deriveIsoYearForWeek(info.nr, { schooljaar: doc.schooljaar });
+        return isoYear === info.isoYear;
+      });
+      return matched ?? docsForVak[0];
+    },
+    []
+  );
 
   return (
     <div>
@@ -243,7 +259,7 @@ export default function Matrix() {
               <tr>
                 <th className="px-4 py-2 text-left whitespace-nowrap">Vak</th>
                 {weeks.map((w) => (
-                  <th key={w.nr} className="px-4 py-2 text-left">
+                  <th key={w.id} className="px-4 py-2 text-left">
                     <div className="font-medium">Week {w.nr}</div>
                     <div className="text-xs text-gray-500">{formatRange(w)}</div>
                   </th>
@@ -255,8 +271,9 @@ export default function Matrix() {
                 <tr key={vak} className="border-t">
                   <td className="px-4 py-2 font-medium whitespace-nowrap">{vak}</td>
                   {weeks.map((w) => {
-                    const d = (weekData.byWeek?.[w.nr] || {})[vak] || {};
-                    const baseKey = `${w.nr}:${vak}`;
+                    const perWeek = weekData.byWeek?.[w.id] || {};
+                    const d = perWeek[vak] || {};
+                    const baseKey = `${w.id}:${vak}`;
                     const homeworkItems = splitHomeworkItems(d?.huiswerk);
                     const itemKeys = homeworkItems.map((_, idx) => `${baseKey}:${idx}`);
                     const hasItemState = itemKeys.some((itemKey) =>
@@ -270,12 +287,7 @@ export default function Matrix() {
                       : baseDone;
                     const hasHw = homeworkItems.length > 0;
                     const docsForVak = docsByVak.get(vak) ?? [];
-                    const doc =
-                      docsForVak.find(
-                        (dd) =>
-                          w.nr >= Math.min(dd.beginWeek, dd.eindWeek) &&
-                          w.nr <= Math.max(dd.beginWeek, dd.eindWeek)
-                      ) ?? docsForVak[0];
+                    const doc = findDocForWeek(docsForVak, w);
 
                     return (
                       <td key={baseKey} className="px-4 py-2 align-top">

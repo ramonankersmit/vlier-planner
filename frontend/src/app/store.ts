@@ -1,5 +1,12 @@
 import { create } from "zustand";
 import type { DocMeta as ApiDocMeta, DocRow } from "../lib/api";
+import {
+  deriveIsoYearForWeek,
+  formatIsoDate,
+  getIsoWeekEnd,
+  getIsoWeekStart,
+  makeWeekId,
+} from "../lib/calendar";
 
 /**
  * Houd deze DocMeta shape in sync met de backend (app.py).
@@ -9,7 +16,7 @@ export type DocMeta = ApiDocMeta;
 
 export type DocRecord = DocMeta & { enabled: boolean };
 
-export type WeekInfo = { nr: number; start: string; end: string };
+export type WeekInfo = { id: string; nr: number; isoYear: number; start: string; end: string };
 
 export type WeekData = {
   lesstof?: string;
@@ -21,7 +28,7 @@ export type WeekData = {
 
 export type WeekAggregation = {
   weeks: WeekInfo[];
-  byWeek: Record<number, Record<string, WeekData>>;
+  byWeek: Record<string, Record<string, WeekData>>;
 };
 
 type State = {
@@ -119,9 +126,27 @@ const computeWeekAggregation = (
     return { weeks: [], byWeek: {} };
   }
 
-  const byWeek: Record<number, Record<string, WeekAccumulator>> = {};
-  const weekNumbers = new Set<number>();
-  const weekDates = new Map<number, Set<string>>();
+  const weekInfoMap = new Map<string, WeekInfo>();
+  const byWeek = new Map<string, Record<string, WeekAccumulator>>();
+  const ensureWeek = (weekNr: number, isoYear: number) => {
+    const weekId = makeWeekId(isoYear, weekNr);
+    if (!weekInfoMap.has(weekId)) {
+      const startDate = getIsoWeekStart(isoYear, weekNr);
+      const endDate = getIsoWeekEnd(isoYear, weekNr);
+      weekInfoMap.set(weekId, {
+        id: weekId,
+        nr: weekNr,
+        isoYear,
+        start: formatIsoDate(startDate),
+        end: formatIsoDate(endDate),
+      });
+    }
+    if (!byWeek.has(weekId)) {
+      byWeek.set(weekId, {});
+    }
+    return { weekId, vakMap: byWeek.get(weekId)! };
+  };
+  const today = new Date();
 
   for (const doc of docs) {
     if (!doc.enabled) {
@@ -131,10 +156,8 @@ const computeWeekAggregation = (
     const end = Math.max(doc.beginWeek, doc.eindWeek);
     for (let wk = start; wk <= end; wk++) {
       if (wk < 1 || wk > 53) continue;
-      weekNumbers.add(wk);
-      if (!weekDates.has(wk)) {
-        weekDates.set(wk, new Set());
-      }
+      const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar, today });
+      ensureWeek(wk, isoYear);
     }
 
     const rows = docRows[doc.fileId];
@@ -147,14 +170,15 @@ const computeWeekAggregation = (
       if (!wk || wk < 1 || wk > 53) {
         continue;
       }
-      weekNumbers.add(wk);
-      if (!weekDates.has(wk)) {
-        weekDates.set(wk, new Set());
-      }
-      const perVak = (byWeek[wk] ??= {});
+      const isoYear = deriveIsoYearForWeek(wk, {
+        schooljaar: doc.schooljaar,
+        candidateDates: [row.datum, row.inleverdatum],
+        today,
+      });
+      const { vakMap } = ensureWeek(wk, isoYear);
       const accum =
-        perVak[doc.vak] ??
-        (perVak[doc.vak] = { lesstof: [], huiswerk: [], deadlines: [], opmerkingen: [], dates: [] });
+        vakMap[doc.vak] ??
+        (vakMap[doc.vak] = { lesstof: [], huiswerk: [], deadlines: [], opmerkingen: [], dates: [] });
 
       const add = (arr: string[], value?: string | null, options?: NormalizeOptions) => {
         const normalized = normalizeText(value, options);
@@ -184,7 +208,6 @@ const computeWeekAggregation = (
         const normalized = normalizeText(value);
         if (!normalized) return;
         accum.dates.push(normalized);
-        weekDates.get(wk)?.add(normalized);
       };
 
       const normalizedInlever = normalizeText(row.inleverdatum);
@@ -198,17 +221,16 @@ const computeWeekAggregation = (
     }
   }
 
-  const resultByWeek: Record<number, Record<string, WeekData>> = {};
-  for (const [weekStr, vakMap] of Object.entries(byWeek)) {
-    const weekNr = Number(weekStr);
-    resultByWeek[weekNr] = {};
+  const resultByWeek: Record<string, Record<string, WeekData>> = {};
+  for (const [weekId, vakMap] of byWeek.entries()) {
+    const entries: Record<string, WeekData> = {};
     for (const [vak, acc] of Object.entries(vakMap)) {
       const uniqJoin = (values: string[], sep: string) => {
         const unique = Array.from(new Set(values));
         return unique.length ? unique.join(sep) : undefined;
       };
       const sortedDates = Array.from(new Set(acc.dates)).sort();
-      resultByWeek[weekNr][vak] = {
+      entries[vak] = {
         lesstof: uniqJoin(acc.lesstof, "\n"),
         huiswerk: uniqJoin(acc.huiswerk, "\n"),
         deadlines: uniqJoin(acc.deadlines, "; "),
@@ -216,20 +238,14 @@ const computeWeekAggregation = (
         date: sortedDates[0],
       };
     }
+    resultByWeek[weekId] = entries;
   }
 
-  const weeks = Array.from(weekNumbers)
-    .sort((a, b) => a - b)
-    .map((nr) => {
-      const set = weekDates.get(nr);
-      if (!set || set.size === 0) {
-        return { nr, start: "", end: "" };
-      }
-      const sorted = Array.from(set).sort();
-      const start = sorted[0];
-      const end = sorted[sorted.length - 1] ?? sorted[0];
-      return { nr, start, end };
-    });
+  const weeks = Array.from(weekInfoMap.values()).sort((a, b) => {
+    if (a.isoYear !== b.isoYear) return a.isoYear - b.isoYear;
+    if (a.nr !== b.nr) return a.nr - b.nr;
+    return a.id.localeCompare(b.id);
+  });
 
   return { weeks, byWeek: resultByWeek };
 };

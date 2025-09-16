@@ -1,9 +1,10 @@
 import React from "react";
 import { Info, FileText, CheckSquare, CalendarClock } from "lucide-react";
-import { useAppStore, type DocRecord } from "../app/store";
+import { useAppStore, type DocRecord, type WeekInfo } from "../app/store";
 import { formatRange, calcCurrentWeekIdx } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
+import { deriveIsoYearForWeek } from "../lib/calendar";
 
 function Card({
   vak,
@@ -227,12 +228,28 @@ export default function WeekOverview() {
   }, [weeks, weekIdxWO, setWeekIdxWO]);
 
   const week = weeks.length ? weeks[Math.min(weekIdxWO, weeks.length - 1)] : undefined;
+  const weekId = week?.id ?? "";
   const weekNumber = week?.nr ?? 0;
-  const dataForActiveWeek = weekNumber ? byWeek[weekNumber] || {} : {};
+  const dataForActiveWeek = week ? byWeek[week.id] || {} : {};
   const goThisWeek = React.useCallback(() => {
     if (!weeks.length) return;
     setWeekIdxWO(calcCurrentWeekIdx(weeks));
   }, [weeks, setWeekIdxWO]);
+
+  const findDocForWeek = React.useCallback(
+    (docsForVak: DocRecord[], info?: WeekInfo) => {
+      if (!info || docsForVak.length === 0) return docsForVak[0];
+      const matched = docsForVak.find((doc) => {
+        const minWeek = Math.min(doc.beginWeek, doc.eindWeek);
+        const maxWeek = Math.max(doc.beginWeek, doc.eindWeek);
+        if (info.nr < minWeek || info.nr > maxWeek) return false;
+        const isoYear = deriveIsoYearForWeek(info.nr, { schooljaar: doc.schooljaar });
+        return isoYear === info.isoYear;
+      });
+      return matched ?? docsForVak[0];
+    },
+    []
+  );
 
   return (
     <div>
@@ -317,7 +334,8 @@ export default function WeekOverview() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleVakken.map((vak) => {
             const d = dataForActiveWeek[vak];
-            const baseKey = `${weekNumber}:${vak}`;
+            const weekKey = weekId || `wk-${weekNumber}`;
+            const baseKey = `${weekKey}:${vak}`;
             const homeworkItems = splitHomeworkItems(d?.huiswerk);
             const itemKeys = homeworkItems.map((_, idx) => `${baseKey}:${idx}`);
             const hasItemState = itemKeys.some((itemKey) =>
@@ -331,12 +349,7 @@ export default function WeekOverview() {
             const shouldAdoptBaseState =
               baseDone && !hasItemState && homeworkItems.length > 0;
             const docsForVak = docsByVak.get(vak) ?? [];
-            const doc =
-              docsForVak.find(
-                (dd) =>
-                  weekNumber >= Math.min(dd.beginWeek, dd.eindWeek) &&
-                  weekNumber <= Math.max(dd.beginWeek, dd.eindWeek)
-              ) ?? docsForVak[0];
+            const doc = findDocForWeek(docsForVak, week);
             return (
               <Card
                 key={vak}
