@@ -1,13 +1,23 @@
 const BULLET_RE = /[•●◦▪▫]/g;
 const BASE_SPLIT_RE = /[;\n]/;
-const KEYWORD_SPLITTERS = [
-  /(?=Opgaven\s+\d+)/i,
-  /(?=Opdrachten?\s+\d+)/i,
-  /(?=Par(?:agraaf)?\s+\d+[a-z]?)/i,
-  /(?=Hoofdstuk\s+\d+)/i,
-  /(?=Bl(?:z|ad)\.?\s*\d+)/i,
-  /(?=§\s*\d+)/,
+const KEYWORD_PATTERNS = [
+  "Opgaven\\s+\\d+",
+  "Opdrachten?\\s+\\d+",
+  "Par(?:agraaf)?\\s+\\d+[a-z]?",
+  "Hoofdstuk\\s+\\d+",
+  "Bl(?:z|ad)\\.?\\s*\\d+",
+  "§\\s*\\d+",
 ];
+
+type KeywordRule = {
+  lookahead: RegExp;
+  occurrence: RegExp;
+};
+
+const KEYWORD_RULES: KeywordRule[] = KEYWORD_PATTERNS.map((pattern) => ({
+  lookahead: new RegExp(`(?=${pattern})`, "i"),
+  occurrence: new RegExp(pattern, "gi"),
+}));
 
 export function splitHomeworkItems(raw?: string | null): string[] {
   if (!raw) return [];
@@ -19,11 +29,19 @@ export function splitHomeworkItems(raw?: string | null): string[] {
 
   const expanded = initialParts.flatMap((part) => {
     let segments = [part];
-    for (const splitter of KEYWORD_SPLITTERS) {
+    for (const rule of KEYWORD_RULES) {
       segments = segments.flatMap((segment) => {
         const trimmed = segment.trim();
         if (!trimmed) return [];
-        const pieces = trimmed.split(splitter).map((piece) => piece.trim()).filter(Boolean);
+        rule.occurrence.lastIndex = 0;
+        const matches = trimmed.match(rule.occurrence);
+        if (!matches || matches.length < 2) {
+          return [trimmed];
+        }
+        const pieces = trimmed
+          .split(rule.lookahead)
+          .map((piece) => piece.trim())
+          .filter(Boolean);
         return pieces.length > 1 ? pieces : [trimmed];
       });
     }
