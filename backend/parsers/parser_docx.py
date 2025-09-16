@@ -23,14 +23,54 @@ RE_NUM_PURE = re.compile(r"^\s*(\d{1,2})\s*$")  # hele cel is een getal
 RE_SCHOOLYEAR = re.compile(r"((?:20)?\d{2})\s*[/\-]\s*((?:20)?\d{2})")
 
 
-def _format_schooljaar(a: str, b: str) -> str:
-    """Converteer twee-delige matches naar formaat YYYY/YYYY."""
-    ai, bi = int(a), int(b)
-    if ai < 100:
-        ai += 2000
-    if bi < 100:
-        bi += 2000
+def _normalize_year_fragment(part: str) -> Optional[int]:
+    """Normaliseer een (mogelijke) jaartal-string naar een viercijferig jaar."""
+    part = (part or "").strip()
+    if not part:
+        return None
+    try:
+        value = int(part)
+    except ValueError:
+        return None
+
+    if len(part) <= 2:
+        if value > 50:  # vermijd paginareeksen zoals 60/61
+            return None
+        value += 2000
+    elif value < 1900 or value > 2100:
+        return None
+
+    return value
+
+
+def _format_schooljaar(a: str, b: str) -> Optional[str]:
+    """Converteer matches naar formaat YYYY/YYYY met eenvoudige validatie."""
+    ai = _normalize_year_fragment(a)
+    bi = _normalize_year_fragment(b)
+    if ai is None or bi is None:
+        return None
+    if bi < ai or abs(bi - ai) > 2:
+        return None
     return f"{ai}/{bi}"
+
+
+def extract_schooljaar_from_text(text: str) -> Optional[str]:
+    """Zoek het meest waarschijnlijke schooljaar in een stuk tekst."""
+    best: Optional[str] = None
+    best_score = -1
+    for match in RE_SCHOOLYEAR.finditer(text):
+        candidate = _format_schooljaar(match.group(1), match.group(2))
+        if not candidate:
+            continue
+        score = 0
+        if len(match.group(1)) >= 4:
+            score += 1
+        if len(match.group(2)) >= 4:
+            score += 1
+        if best is None or score > best_score:
+            best = candidate
+            best_score = score
+    return best
 
 def _clean(s: str) -> str:
     return (s or "").strip()
@@ -55,13 +95,16 @@ def _parse_vak_anywhere(doc: Document) -> Optional[str]:
             return _clean(m.group(1))
     return None
 
-def _parse_vak_from_filename(filename: str) -> Optional[str]:
+def vak_from_filename(filename: str) -> Optional[str]:
     base = filename.rsplit(".", 1)[0]
-    part = base.split("_")[0]
-    part = re.sub(r"\d+", "", part)  # verwijder cijfers
-    part = re.sub(r"(?i)studiewijzer|periode", "", part)  # verwijder generieke woorden
-    part = part.replace("-", " ").strip()
-    return part or None
+    base = base.replace("_", " ").replace("-", " ")
+    base = re.sub(r"(?i)studiewijzer|planner|periode", " ", base)
+    base = re.sub(r"(?i)\bp\s*\d+\b", " ", base)
+    base = re.sub(r"\d+", " ", base)
+    base = re.sub(r"(?i)\b(havo|vwo)\b", " ", base)
+    tokens = [t for t in base.split() if len(t) > 1]
+    cleaned = " ".join(tokens).strip()
+    return cleaned or None
 
 def _parse_vak_from_header(doc: Document, filename: str) -> Optional[str]:
     anywhere = _parse_vak_anywhere(doc)
@@ -85,7 +128,7 @@ def _parse_vak_from_header(doc: Document, filename: str) -> Optional[str]:
                 mb2 = RE_VAK_IN_BRACKETS.search(nxt2)
                 if mb2:
                     return _clean(mb2.group(1))
-    return _parse_vak_from_filename(filename)
+    return vak_from_filename(filename)
 
 # ---------------------------
 # Schooljaar parsing
@@ -93,10 +136,7 @@ def _parse_vak_from_header(doc: Document, filename: str) -> Optional[str]:
 
 def _parse_schooljaar_from_filename(filename: str) -> Optional[str]:
     base = filename.rsplit(".", 1)[0]
-    m = RE_SCHOOLYEAR.search(base)
-    if m:
-        return _format_schooljaar(m.group(1), m.group(2))
-    return None
+    return extract_schooljaar_from_text(base)
 
 def _parse_schooljaar_from_doc(doc: Document) -> Optional[str]:
     texts: List[str] = []
@@ -109,10 +149,7 @@ def _parse_schooljaar_from_doc(doc: Document) -> Optional[str]:
     except Exception:
         pass
     blob = " | ".join(t for t in texts if t)
-    m = RE_SCHOOLYEAR.search(blob)
-    if m:
-        return _format_schooljaar(m.group(1), m.group(2))
-    return None
+    return extract_schooljaar_from_text(blob)
 
 def _parse_footer_meta(doc: Document) -> Tuple[str, str, int, Optional[str]]:
     """Heuristiek uit footer: niveau (HAVO/VWO), leerjaar (1-6), periode (1-4), schooljaar (YYYY/YYYY, indien aanwezig)."""
@@ -223,7 +260,9 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
     - Neem min/max.
     """
     begin_w, eind_w = 0, 0
-    all_weeks: List[int] = []
+    ordered_weeks: List[int] = []
+    unique_weeks: List[int] = []
+    seen: set[int] = set()
 
     try:
         for tbl in doc.tables:
@@ -239,10 +278,19 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
                 if week_col < len(r):
                     ws = _weeks_from_week_cell(r[week_col])
                     if ws:
-                        all_weeks.extend(ws)
+                        for w in ws:
+                            if 1 <= w <= 53:
+                                ordered_weeks.append(w)
+                                if w not in seen:
+                                    unique_weeks.append(w)
+                                    seen.add(w)
 
-        if all_weeks:
-            begin_w, eind_w = min(all_weeks), max(all_weeks)
+        if ordered_weeks:
+            begin_w, eind_w = ordered_weeks[0], ordered_weeks[-1]
+            if eind_w < begin_w and unique_weeks:
+                eind_w = max(unique_weeks)
+        elif unique_weeks:
+            begin_w, eind_w = unique_weeks[0], unique_weeks[-1]
 
     except Exception:
         pass
@@ -291,10 +339,19 @@ from datetime import date
 # Header keyword sets
 DATE_HEADER_KEYWORDS = ("datum", "weekdatum", "date", "start", "begin")
 LES_HEADER_KEYWORDS = ("les", "lesnr", "lesnummer")
-ONDERWERP_HEADERS = ("onderwerp", "thema", "hoofdstuk", "chapter", "topic", "lesstof")
+ONDERWERP_HEADERS = (
+    "onderwerp",
+    "thema",
+    "hoofdstuk",
+    "chapter",
+    "topic",
+    "lesstof",
+    "in les",
+    "grammatica",
+)
 LEERDOEL_HEADERS = ("leerdoelen", "doelen")
-HUISWERK_HEADERS = ("huiswerk", "maken", "leren")
-OPDRACHT_HEADERS = ("opdracht",)
+HUISWERK_HEADERS = ("huiswerk", "maken", "leren", "planning teksten")
+OPDRACHT_HEADERS = ("opdracht", "k-tekst")
 INLEVER_HEADERS = ("inleverdatum", "deadline", "inleveren voor")
 TOETS_HEADERS = (
     "toets",
@@ -314,17 +371,29 @@ LOCATIE_HEADERS = ("locatie", "lokaal")
 
 MONTHS_NL = {
     "januari": 1,
+    "jan": 1,
     "februari": 2,
+    "feb": 2,
     "maart": 3,
+    "mrt": 3,
     "april": 4,
+    "apr": 4,
     "mei": 5,
     "juni": 6,
+    "jun": 6,
     "juli": 7,
+    "jul": 7,
     "augustus": 8,
+    "aug": 8,
     "september": 9,
+    "sep": 9,
+    "sept": 9,
     "oktober": 10,
+    "okt": 10,
     "november": 11,
+    "nov": 11,
     "december": 12,
+    "dec": 12,
 }
 
 
@@ -360,12 +429,16 @@ def parse_date_cell(text: str, schooljaar: Optional[str]) -> Optional[str]:
     m = re.search(r"(\d{1,2})[\-/](\d{1,2})[\-/](\d{2,4})", t)
     if m:
         d, mth, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if not (1 <= mth <= 12 and 1 <= d <= 31):
+            return None
         if y < 100:
             y += 2000
         return f"{y:04d}-{mth:02d}-{d:02d}"
     m = re.search(r"(\d{1,2})[\-/](\d{1,2})", t)
     if m:
         d, mth = int(m.group(1)), int(m.group(2))
+        if not (1 <= mth <= 12 and 1 <= d <= 31):
+            return None
         year = None
         if schooljaar:
             try:
@@ -382,6 +455,8 @@ def parse_date_cell(text: str, schooljaar: Optional[str]) -> Optional[str]:
         d = int(m.group(1))
         mn = MONTHS_NL.get(m.group(2).lower())
         if mn:
+            if not (1 <= d <= 31):
+                return None
             y = m.group(3)
             if y:
                 year = int(y)
@@ -467,8 +542,10 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
 
         for r in rows[1:]:
             weeks: List[int] = []
+            week_text = None
             if week_col is not None and week_col < len(r):
-                weeks = parse_week_cell(r[week_col])
+                week_text = r[week_col]
+                weeks = parse_week_cell(week_text)
             elif date_col is not None and date_col < len(r):
                 iso = parse_date_cell(r[date_col], schooljaar)
                 if iso:
@@ -484,11 +561,15 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
             datum = None
             if date_col is not None and date_col < len(r):
                 datum = parse_date_cell(r[date_col], schooljaar)
+            if not datum and week_text:
+                datum = parse_date_cell(week_text, schooljaar)
 
             base: Dict[str, Optional[str]] = {}
             base_list: Dict[str, Optional[List[str]]] = {}
             base_dict: Dict[str, Optional[Dict[str, Optional[str]]]] = {}
 
+            opd_text = None
+            toets_text = None
             if les_col is not None and les_col < len(r):
                 base["les"] = normalize_text(r[les_col]) or None
             if ond_col is not None and ond_col < len(r):
@@ -498,11 +579,13 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
             if hw_col is not None and hw_col < len(r):
                 base["huiswerk"] = normalize_text(r[hw_col]) or None
             if opd_col is not None and opd_col < len(r):
-                base["opdracht"] = normalize_text(r[opd_col]) or None
+                opd_text = r[opd_col]
+                base["opdracht"] = normalize_text(opd_text) or None
             if inl_col is not None and inl_col < len(r):
                 base["inleverdatum"] = parse_date_cell(r[inl_col], schooljaar)
             if toets_col is not None and toets_col < len(r):
-                base_dict["toets"] = parse_toets_cell(r[toets_col])
+                toets_text = r[toets_col]
+                base_dict["toets"] = parse_toets_cell(toets_text)
             if bron_col is not None and bron_col < len(r):
                 base_list["bronnen"] = find_urls(r[bron_col])
             if not_col is not None and not_col < len(r):
@@ -511,6 +594,15 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
                 base["klas_of_groep"] = normalize_text(r[klas_col]) or None
             if loc_col is not None and loc_col < len(r):
                 base["locatie"] = normalize_text(r[loc_col]) or None
+
+            if not base.get("inleverdatum"):
+                candidate = None
+                if opd_text:
+                    candidate = parse_date_cell(opd_text, schooljaar)
+                if not candidate and toets_text:
+                    candidate = parse_date_cell(toets_text, schooljaar)
+                if candidate:
+                    base["inleverdatum"] = candidate
 
             for w in weeks:
                 if not (1 <= w <= 53):

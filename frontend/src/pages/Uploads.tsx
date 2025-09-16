@@ -1,7 +1,7 @@
 import React from "react";
 import { Info, FileText, Trash2, XCircle } from "lucide-react";
 import type { DocRecord } from "../app/store";
-import { useAppStore } from "../app/store";
+import { useAppStore, hydrateDocRowsFromApi } from "../app/store";
 import { apiUploadDoc, apiDeleteDoc } from "../lib/api";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
@@ -72,6 +72,7 @@ export default function Uploads() {
         const meta = await apiUploadDoc(file);
         // Voeg direct toe aan globale store → Settings/Deadlines/Matrix volgen automatisch
         addDoc(meta as any);
+        await hydrateDocRowsFromApi(meta.fileId);
       } catch (e: any) {
         errors.push(`${file.name}: ${e?.message || "Upload mislukt"}`);
       }

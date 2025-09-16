@@ -1,14 +1,7 @@
 import React from "react";
 import { CalendarClock, FileText } from "lucide-react";
 import { useAppStore } from "../app/store";
-import {
-  sampleWeeks,
-  sampleByWeek,
-  formatHumanDate,
-  calcCurrentWeekIdx,
-  deriveWeeksFromDocs,
-  computeWindowStartForWeek,
-} from "../data/sampleWeeks";
+import { formatHumanDate, calcCurrentWeekIdx, computeWindowStartForWeek } from "../lib/weekUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 type Item = {
@@ -25,6 +18,7 @@ type Item = {
 export default function Deadlines() {
   const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
   const docs = useAppStore((s) => s.docs) ?? [];
+  const weekData = useAppStore((s) => s.weekData);
   const { openPreview } = useDocumentPreview();
 
   const [vak, setVak] = React.useState<string>("ALLE");
@@ -33,7 +27,7 @@ export default function Deadlines() {
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
   const hasActiveDocs = activeDocs.length > 0;
-  const allWeeks = React.useMemo(() => deriveWeeksFromDocs(activeDocs), [activeDocs]);
+  const allWeeks = weekData.weeks ?? [];
   const hasWeekData = allWeeks.length > 0;
   const disableWeekControls = !hasActiveDocs || !hasWeekData;
   const hasUploads = hasActiveDocs && hasWeekData;
@@ -52,7 +46,8 @@ export default function Deadlines() {
   };
   const goThisWeek = React.useCallback(() => {
     if (disableWeekControls) return;
-    const currentWeekNr = sampleWeeks[calcCurrentWeekIdx()]?.nr;
+    const idx = calcCurrentWeekIdx(allWeeks);
+    const currentWeekNr = allWeeks[idx]?.nr;
     const start = computeWindowStartForWeek(allWeeks, dur, currentWeekNr);
     setFromIdx(start);
   }, [allWeeks, dur, disableWeekControls]);
@@ -69,7 +64,7 @@ export default function Deadlines() {
   const items: Item[] = !hasUploads
     ? []
     : weeks.flatMap((w) => {
-        const perVak = sampleByWeek[w.nr] || {};
+        const perVak = weekData.byWeek?.[w.nr] || {};
         return Object.entries(perVak).flatMap(([vakNaam, d]: any) => {
           if (mijnVakken.length && !mijnVakken.includes(vakNaam)) return [];
           if (vak !== "ALLE" && vakNaam !== vak) return [];
@@ -161,7 +156,13 @@ export default function Deadlines() {
       <div className="overflow-auto rounded-2xl border bg-white">
         {!hasUploads ? (
           <div className="p-6 text-sm text-gray-600">
-            Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
+            {hasActiveDocs
+              ? "Nog geen weekgegevens beschikbaar. Controleer of de documenten studiewijzerdata bevatten."
+              : (
+                  <>
+                    Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
+                  </>
+                )}
           </div>
         ) : items.length === 0 ? (
           <div className="p-6 text-sm text-gray-600">Geen deadlines in deze periode.</div>

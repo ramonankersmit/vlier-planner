@@ -1,7 +1,7 @@
 import React from "react";
 import { Info, FileText, CheckSquare, CalendarClock } from "lucide-react";
 import { useAppStore, type DocRecord } from "../app/store";
-import { sampleWeeks, sampleByWeek, formatRange, calcCurrentWeekIdx } from "../data/sampleWeeks";
+import { formatRange, calcCurrentWeekIdx } from "../lib/weekUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 function Card({
@@ -98,12 +98,16 @@ export default function WeekOverview() {
     setNiveauWO,
     leerjaarWO,
     setLeerjaarWO,
+    weekData,
   } = useAppStore();
   const docs = useAppStore((s) => s.docs) ?? [];
   const { openPreview } = useDocumentPreview();
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
   const hasActiveDocs = activeDocs.length > 0;
+  const weeks = weekData.weeks ?? [];
+  const byWeek = weekData.byWeek ?? {};
+  const hasWeekData = weeks.length > 0;
 
   const niveauOptions = React.useMemo(
     () => Array.from(new Set(activeDocs.map((d) => d.niveau))).sort(),
@@ -166,22 +170,37 @@ export default function WeekOverview() {
   );
 
   const hasDocsForFilters = visibleVakken.length > 0;
-  const disableWeekControls = !hasActiveDocs;
+  const disableWeekControls = !hasActiveDocs || !hasWeekData;
 
-  // >>> Spring automatisch naar huidige week bij eerste load
+  const initialWeekRef = React.useRef(false);
   React.useEffect(() => {
-    const idx = calcCurrentWeekIdx();
-    if (idx !== weekIdxWO) setWeekIdxWO(idx);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!weeks.length) {
+      initialWeekRef.current = false;
+      if (weekIdxWO !== 0) setWeekIdxWO(0);
+      return;
+    }
+    if (weekIdxWO >= weeks.length) {
+      setWeekIdxWO(weeks.length - 1);
+      return;
+    }
+    if (!initialWeekRef.current) {
+      initialWeekRef.current = true;
+      setWeekIdxWO(calcCurrentWeekIdx(weeks));
+    }
+  }, [weeks, weekIdxWO, setWeekIdxWO]);
 
-  const week = sampleWeeks[weekIdxWO] ?? sampleWeeks[0];
-  const goThisWeek = () => setWeekIdxWO(calcCurrentWeekIdx());
+  const week = weeks.length ? weeks[Math.min(weekIdxWO, weeks.length - 1)] : undefined;
+  const weekNumber = week?.nr ?? 0;
+  const dataForActiveWeek = weekNumber ? byWeek[weekNumber] || {} : {};
+  const goThisWeek = React.useCallback(() => {
+    if (!weeks.length) return;
+    setWeekIdxWO(calcCurrentWeekIdx(weeks));
+  }, [weeks, setWeekIdxWO]);
 
   return (
     <div>
       <div className="mb-2 text-sm text-gray-600">
-        Week {week.nr} · {formatRange(week)}
+        Week {week?.nr ?? "—"} · {week ? formatRange(week) : "Geen data"}
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2 items-center">
@@ -202,9 +221,9 @@ export default function WeekOverview() {
         >
           ◀
         </button>
-        <span className="text-sm text-gray-800">Week {week.nr}</span>
+        <span className="text-sm text-gray-800">Week {week?.nr ?? "—"}</span>
         <button
-          onClick={() => setWeekIdxWO(Math.min(sampleWeeks.length - 1, weekIdxWO + 1))}
+          onClick={() => setWeekIdxWO(Math.min(Math.max(weeks.length - 1, 0), weekIdxWO + 1))}
           className="rounded-md border px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Volgende week"
           disabled={disableWeekControls}
@@ -249,6 +268,10 @@ export default function WeekOverview() {
         <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
           Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
         </div>
+      ) : !hasWeekData ? (
+        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+          Nog geen weekgegevens beschikbaar. Controleer of de documenten studiewijzerdata bevatten.
+        </div>
       ) : !hasDocsForFilters ? (
         <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
           Geen vakken voor deze filters. Pas de selectie aan of controleer de metadata van de documenten.
@@ -256,21 +279,21 @@ export default function WeekOverview() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleVakken.map((vak) => {
-            const d = sampleByWeek[week.nr]?.[vak];
-            const key = `${week.nr}:${vak}`;
+            const d = dataForActiveWeek[vak];
+            const key = `${weekNumber}:${vak}`;
             const isDone = !!doneMap[key];
             const docsForVak = docsByVak.get(vak) ?? [];
             const doc =
               docsForVak.find(
                 (dd) =>
-                  week.nr >= Math.min(dd.beginWeek, dd.eindWeek) &&
-                  week.nr <= Math.max(dd.beginWeek, dd.eindWeek)
+                  weekNumber >= Math.min(dd.beginWeek, dd.eindWeek) &&
+                  weekNumber <= Math.max(dd.beginWeek, dd.eindWeek)
               ) ?? docsForVak[0];
             return (
               <Card
                 key={vak}
                 vak={vak}
-                weekNr={week.nr}
+                weekNr={weekNumber}
                 d={d}
                 isDone={isDone}
                 onToggle={() => toggleDone(key)}
