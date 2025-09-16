@@ -9,6 +9,20 @@ export const formatRange = (w: WeekInfo) => {
   return `Week ${w.nr}`;
 };
 
+export const formatWeekWindowLabel = (weeks: WeekInfo[]): string => {
+  if (!weeks.length) return "Geen data";
+  const first = weeks[0];
+  const last = weeks[weeks.length - 1];
+  const sameWeek = first.nr === last.nr;
+  const weekLabel = sameWeek ? `Week ${first.nr}` : `Week ${first.nr}–${last.nr}`;
+  const start = first.start || last.start || "";
+  const end = last.end || first.end || "";
+  if (start && end) return `${weekLabel} · ${start} – ${end}`;
+  if (start) return `${weekLabel} · ${start}`;
+  if (end) return `${weekLabel} · ${end}`;
+  return weekLabel;
+};
+
 export const formatHumanDate = (iso?: string) => {
   if (!iso) return "";
   const d = new Date(iso);

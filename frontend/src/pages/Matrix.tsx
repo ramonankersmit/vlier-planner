@@ -1,13 +1,19 @@
 import React from "react";
 import { FileText, CalendarClock } from "lucide-react";
 import { useAppStore, type DocRecord } from "../app/store";
-import { formatRange, calcCurrentWeekIdx, computeWindowStartForWeek } from "../lib/weekUtils";
+import {
+  formatRange,
+  calcCurrentWeekIdx,
+  computeWindowStartForWeek,
+  formatWeekWindowLabel,
+} from "../lib/weekUtils";
+import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 export default function Matrix() {
   const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
   const doneMap = useAppStore((s) => s.doneMap) ?? {};
-  const toggleDone = useAppStore((s) => s.toggleDone);
+  const setDoneState = useAppStore((s) => s.setDoneState);
   const docs = useAppStore((s) => s.docs) ?? [];
   const weekData = useAppStore((s) => s.weekData);
   const { openPreview } = useDocumentPreview();
@@ -134,9 +140,11 @@ export default function Matrix() {
 
   const hasVisibleData = weeks.length > 0 && visibleVakken.length > 0;
   const showNoDataForFilters = hasAnyDocs && hasWeekData && !hasVisibleData;
+  const windowLabel = formatWeekWindowLabel(weeks);
 
   return (
     <div>
+      <div className="mb-2 text-sm text-gray-600">{windowLabel}</div>
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
           onClick={goThisWeek}
@@ -248,9 +256,19 @@ export default function Matrix() {
                   <td className="px-4 py-2 font-medium whitespace-nowrap">{vak}</td>
                   {weeks.map((w) => {
                     const d = (weekData.byWeek?.[w.nr] || {})[vak] || {};
-                    const key = `${w.nr}:${vak}`;
-                    const isDone = !!doneMap[key];
-                    const hasHw = d?.huiswerk && d.huiswerk !== "—";
+                    const baseKey = `${w.nr}:${vak}`;
+                    const homeworkItems = splitHomeworkItems(d?.huiswerk);
+                    const itemKeys = homeworkItems.map((_, idx) => `${baseKey}:${idx}`);
+                    const hasItemState = itemKeys.some((itemKey) =>
+                      Object.prototype.hasOwnProperty.call(doneMap, itemKey)
+                    );
+                    const baseDone = !!doneMap[baseKey];
+                    const allDone = homeworkItems.length
+                      ? hasItemState
+                        ? itemKeys.every((itemKey) => !!doneMap[itemKey])
+                        : baseDone
+                      : baseDone;
+                    const hasHw = homeworkItems.length > 0;
                     const docsForVak = docsByVak.get(vak) ?? [];
                     const doc =
                       docsForVak.find(
@@ -260,20 +278,26 @@ export default function Matrix() {
                       ) ?? docsForVak[0];
 
                     return (
-                      <td key={key} className="px-4 py-2 align-top">
+                      <td key={baseKey} className="px-4 py-2 align-top">
                         <div className="flex items-center gap-2 min-w-[14rem]">
                           {hasHw && (
                             <input
                               aria-label={`Huiswerk ${vak} week ${w.nr}`}
                               type="checkbox"
-                              checked={isDone}
-                              onChange={() => toggleDone(key)}
+                              checked={allDone}
+                              onChange={() => {
+                                const nextValue = !allDone;
+                                setDoneState(baseKey, false);
+                                homeworkItems.forEach((_, idx) => {
+                                  setDoneState(`${baseKey}:${idx}`, nextValue);
+                                });
+                              }}
                               title="Markeer huiswerk gereed"
                             />
                           )}
                           <span
                             className={`truncate flex-1 ${
-                              hasHw && isDone ? "line-through text-gray-400" : ""
+                              hasHw && allDone ? "line-through text-gray-400" : ""
                             }`}
                             title={`${d.huiswerk || "—"} | ${d.deadlines || "—"}`}
                           >

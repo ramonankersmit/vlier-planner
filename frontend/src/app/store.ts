@@ -43,6 +43,7 @@ type State = {
 
   // ==== afvinkstatus gedeeld ====
   doneMap: Record<string, boolean>;
+  setDoneState: (key: string, value: boolean) => void;
   toggleDone: (key: string) => void;
 
   // ==== weekoverzicht (UI state) ====
@@ -55,6 +56,12 @@ type State = {
 };
 
 const uniqSorted = (arr: string[]) => Array.from(new Set(arr)).sort();
+
+const formatVakName = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.charAt(0).toLocaleUpperCase("nl-NL") + trimmed.slice(1);
+};
 
 type MijnVakkenOptions = {
   ensure?: string[];
@@ -221,10 +228,14 @@ export const useAppStore = create<State>((set, get) => ({
   setDocs: (d) => {
     const prevDocs = get().docs;
     const prevEnabled = new Map(prevDocs.map((doc) => [doc.fileId, doc.enabled] as const));
-    const nextDocs = d.map((doc) => ({
-      ...doc,
-      enabled: prevEnabled.get(doc.fileId) ?? true,
-    }));
+    const nextDocs = d.map((doc) => {
+      const normalizedVak = formatVakName(doc.vak);
+      return {
+        ...doc,
+        vak: normalizedVak,
+        enabled: prevEnabled.get(doc.fileId) ?? true,
+      };
+    });
     const prevVakSet = new Set(prevDocs.map((doc) => doc.vak));
     const newlyEnabledVakken = nextDocs
       .filter((doc) => doc.enabled && !prevVakSet.has(doc.vak))
@@ -255,10 +266,12 @@ export const useAppStore = create<State>((set, get) => ({
   },
   addDoc: (doc) => {
     const prevDocs = get().docs;
-    const next = [...prevDocs, { ...doc, enabled: true }];
-    const hadVakBefore = prevDocs.some((existing) => existing.vak === doc.vak);
+    const normalizedVak = formatVakName(doc.vak);
+    const nextDoc = { ...doc, vak: normalizedVak, enabled: true };
+    const next = [...prevDocs, nextDoc];
+    const hadVakBefore = prevDocs.some((existing) => existing.vak === normalizedVak);
     const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
-      ensure: hadVakBefore ? undefined : [doc.vak],
+      ensure: hadVakBefore ? undefined : [normalizedVak],
     });
     const nextRows = { ...get().docRows };
     if (!nextRows[doc.fileId]) {
@@ -268,8 +281,9 @@ export const useAppStore = create<State>((set, get) => ({
     set({ docs: next, mijnVakken, docRows: nextRows, weekData });
   },
   replaceDoc: (fileId, nextDoc) => {
+    const normalizedVak = formatVakName(nextDoc.vak);
     const next = get().docs.map((x) =>
-      x.fileId === fileId ? { ...nextDoc, enabled: x.enabled } : x
+      x.fileId === fileId ? { ...nextDoc, vak: normalizedVak, enabled: x.enabled } : x
     );
     const mijnVakken = computeMijnVakken(next, get().mijnVakken);
     const weekData = computeWeekAggregation(next, get().docRows);
@@ -316,8 +330,26 @@ export const useAppStore = create<State>((set, get) => ({
   // done-map
   // ----------------------------
   doneMap: {},
+  setDoneState: (key, value) =>
+    set((s) => {
+      const next = { ...s.doneMap };
+      if (value) {
+        next[key] = true;
+      } else {
+        delete next[key];
+      }
+      return { doneMap: next };
+    }),
   toggleDone: (key) =>
-    set((s) => ({ doneMap: { ...s.doneMap, [key]: !s.doneMap[key] } })),
+    set((s) => {
+      const next = { ...s.doneMap };
+      if (next[key]) {
+        delete next[key];
+      } else {
+        next[key] = true;
+      }
+      return { doneMap: next };
+    }),
 
   // ----------------------------
   // weekoverzicht (UI state)

@@ -313,8 +313,6 @@ export default function Uploads() {
               Bereik: week {detailDoc.beginWeek} – {detailDoc.eindWeek}
               {"\n"}
               Schooljaar: {detailDoc.schooljaar || "—"}
-              {"\n\n"}
-              Let op: deze metadata voedt de filters en views (Weekoverzicht/Matrix/Deadlines).
             </div>
           </div>
         </div>

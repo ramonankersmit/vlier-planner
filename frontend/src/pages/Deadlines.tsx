@@ -1,7 +1,7 @@
 import React from "react";
 import { CalendarClock, FileText } from "lucide-react";
 import { useAppStore } from "../app/store";
-import { formatHumanDate, calcCurrentWeekIdx, computeWindowStartForWeek } from "../lib/weekUtils";
+import { formatHumanDate, calcCurrentWeekIdx, formatWeekWindowLabel } from "../lib/weekUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 type Item = {
@@ -32,9 +32,10 @@ export default function Deadlines() {
   const disableWeekControls = !hasActiveDocs || !hasWeekData;
   const hasUploads = hasActiveDocs && hasWeekData;
 
-  const maxFrom = Math.max(0, allWeeks.length - dur);
-  const clampedFrom = Math.min(fromIdx, maxFrom);
+  const maxStartIdx = Math.max(0, allWeeks.length - 1);
+  const clampedFrom = Math.min(fromIdx, maxStartIdx);
   const weeks = allWeeks.slice(clampedFrom, clampedFrom + dur);
+  const windowLabel = formatWeekWindowLabel(weeks);
 
   const prev = () => {
     if (disableWeekControls) return;
@@ -42,15 +43,13 @@ export default function Deadlines() {
   };
   const next = () => {
     if (disableWeekControls) return;
-    setFromIdx((i) => Math.min(maxFrom, i + 1));
+    setFromIdx((i) => Math.min(maxStartIdx, i + 1));
   };
   const goThisWeek = React.useCallback(() => {
     if (disableWeekControls) return;
     const idx = calcCurrentWeekIdx(allWeeks);
-    const currentWeekNr = allWeeks[idx]?.nr;
-    const start = computeWindowStartForWeek(allWeeks, dur, currentWeekNr);
-    setFromIdx(start);
-  }, [allWeeks, dur, disableWeekControls]);
+    setFromIdx(idx);
+  }, [allWeeks, disableWeekControls]);
 
   // >>> Eerste load: centreer venster rond huidige week
   React.useEffect(() => {
@@ -95,6 +94,8 @@ export default function Deadlines() {
   return (
     <div>
       <div className="text-lg font-semibold mb-3">Deadlines</div>
+
+      <div className="mb-2 text-sm text-gray-600">{windowLabel}</div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
