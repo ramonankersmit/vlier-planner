@@ -1,6 +1,7 @@
 const BULLET_RE = /[•●◦▪▫]/g;
 const BASE_SPLIT_RE = /[;\n]/;
 const KEYWORD_PATTERNS = [
+  "Opg\\.?\\s*\\d+(?:\\.\\d+)*[a-z]?",
   "Opgaven\\s+\\d+",
   "Opdrachten?\\s+\\d+",
   "Par(?:agraaf)?\\s+\\d+[a-z]?",
