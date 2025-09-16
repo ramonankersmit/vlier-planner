@@ -10,6 +10,34 @@ export type DocMeta = {
   schooljaar?: string | null;
 };
 
+export type DocToets = {
+  type?: string | null;
+  weging?: string | null;
+  herkansing?: string | null;
+};
+
+export type DocResource = {
+  type?: string | null;
+  title?: string | null;
+  url?: string | null;
+};
+
+export type DocRow = {
+  week?: number | null;
+  datum?: string | null;
+  les?: string | null;
+  onderwerp?: string | null;
+  leerdoelen?: string[] | null;
+  huiswerk?: string | null;
+  opdracht?: string | null;
+  inleverdatum?: string | null;
+  toets?: DocToets | null;
+  bronnen?: DocResource[] | null;
+  notities?: string | null;
+  klas_of_groep?: string | null;
+  locatie?: string | null;
+};
+
 export const API_BASE = "http://localhost:8000";
 const BASE = API_BASE;
 
@@ -34,6 +62,14 @@ export async function apiUploadDoc(file: File): Promise<DocMeta> {
   if (!r.ok) {
     const txt = await r.text();
     throw new Error(`upload failed: ${r.status} – ${txt}`);
+  }
+  return r.json();
+}
+
+export async function apiGetDocRows(fileId: string): Promise<DocRow[]> {
+  const r = await fetch(`${BASE}/api/docs/${fileId}/rows`);
+  if (!r.ok) {
+    throw new Error(`get_rows failed: ${r.status}`);
   }
   return r.json();
 }

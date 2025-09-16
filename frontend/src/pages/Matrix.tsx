@@ -1,14 +1,7 @@
 import React from "react";
 import { FileText, CalendarClock } from "lucide-react";
 import { useAppStore, type DocRecord } from "../app/store";
-import {
-  sampleWeeks,
-  sampleByWeek,
-  formatRange,
-  calcCurrentWeekIdx,
-  deriveWeeksFromDocs,
-  computeWindowStartForWeek,
-} from "../data/sampleWeeks";
+import { formatRange, calcCurrentWeekIdx, computeWindowStartForWeek } from "../lib/weekUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 export default function Matrix() {
@@ -16,6 +9,7 @@ export default function Matrix() {
   const doneMap = useAppStore((s) => s.doneMap) ?? {};
   const toggleDone = useAppStore((s) => s.toggleDone);
   const docs = useAppStore((s) => s.docs) ?? [];
+  const weekData = useAppStore((s) => s.weekData);
   const { openPreview } = useDocumentPreview();
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
@@ -86,7 +80,26 @@ export default function Matrix() {
     [mijnVakken, docsByVak]
   );
 
-  const allWeeks = React.useMemo(() => deriveWeeksFromDocs(filteredDocs), [filteredDocs]);
+  const allowedWeekNumbers = React.useMemo(() => {
+    const numbers = new Set<number>();
+    for (const doc of filteredDocs) {
+      const start = Math.min(doc.beginWeek, doc.eindWeek);
+      const end = Math.max(doc.beginWeek, doc.eindWeek);
+      for (let wk = start; wk <= end; wk++) {
+        if (wk >= 1 && wk <= 53) {
+          numbers.add(wk);
+        }
+      }
+    }
+    return Array.from(numbers).sort((a, b) => a - b);
+  }, [filteredDocs]);
+
+  const allWeeks = React.useMemo(() => {
+    if (!allowedWeekNumbers.length) return [];
+    const infoByNr = new Map((weekData.weeks ?? []).map((w) => [w.nr, w] as const));
+    return allowedWeekNumbers.map((nr) => infoByNr.get(nr) ?? { nr, start: "", end: "" });
+  }, [allowedWeekNumbers, weekData.weeks]);
+
   const hasWeekData = allWeeks.length > 0;
   const disableWeekControls = !hasAnyDocs || !hasWeekData;
 
@@ -104,8 +117,9 @@ export default function Matrix() {
   };
   const goThisWeek = React.useCallback(() => {
     if (disableWeekControls) return;
-    const curWeekNr = sampleWeeks[calcCurrentWeekIdx()]?.nr;
-    const start = computeWindowStartForWeek(allWeeks, count, curWeekNr);
+    const idx = calcCurrentWeekIdx(allWeeks);
+    const targetWeekNr = allWeeks[idx]?.nr;
+    const start = computeWindowStartForWeek(allWeeks, count, targetWeekNr);
     setStartIdx(start);
   }, [allWeeks, count, disableWeekControls]);
 
@@ -119,7 +133,7 @@ export default function Matrix() {
   }, [disableWeekControls, goThisWeek]);
 
   const hasVisibleData = weeks.length > 0 && visibleVakken.length > 0;
-  const showNoDataForFilters = hasAnyDocs && !hasVisibleData;
+  const showNoDataForFilters = hasAnyDocs && hasWeekData && !hasVisibleData;
 
   return (
     <div>
@@ -206,6 +220,10 @@ export default function Matrix() {
         <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
           Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
         </div>
+      ) : !hasWeekData ? (
+        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
+          Nog geen weekgegevens beschikbaar. Controleer of de documenten studiewijzerdata bevatten.
+        </div>
       ) : showNoDataForFilters ? (
         <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
           Geen vakken voor deze filters. Pas de selectie aan of controleer de metadata van de documenten.
@@ -229,7 +247,7 @@ export default function Matrix() {
                 <tr key={vak} className="border-t">
                   <td className="px-4 py-2 font-medium whitespace-nowrap">{vak}</td>
                   {weeks.map((w) => {
-                    const d = (sampleByWeek[w.nr] || {})[vak] || {};
+                    const d = (weekData.byWeek?.[w.nr] || {})[vak] || {};
                     const key = `${w.nr}:${vak}`;
                     const isDone = !!doneMap[key];
                     const hasHw = d?.huiswerk && d.huiswerk !== "—";

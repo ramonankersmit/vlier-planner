@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+import logging
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -15,10 +17,17 @@ from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
-from models import DocMeta  # jij gebruikt nog models.py; laat dit zo staan
-from parsers import extract_meta_from_docx, extract_meta_from_pdf
+from models import DocMeta, DocRow  # jij gebruikt nog models.py; laat dit zo staan
+from parsers import (
+    extract_meta_from_docx,
+    extract_rows_from_docx,
+    extract_meta_from_pdf,
+    extract_rows_from_pdf,
+)
 
 app = FastAPI(title="Vlier Planner API")
+
+logger = logging.getLogger(__name__)
 
 # CORS voor local dev (pas aan indien nodig)
 app.add_middleware(
@@ -32,8 +41,14 @@ app.add_middleware(
 STORAGE = Path(__file__).parent / "storage" / "uploads"
 STORAGE.mkdir(parents=True, exist_ok=True)
 
+@dataclass
+class StoredDoc:
+    meta: DocMeta
+    rows: List[DocRow]
+
+
 # In-memory index (MVP). Later vervangen door DB.
-DOCS: dict[str, DocMeta] = {}
+DOCS: dict[str, StoredDoc] = {}
 
 # -----------------------------
 # Endpoints
@@ -77,7 +92,16 @@ def _docx_to_html(path: Path) -> str:
 
 @app.get("/api/docs", response_model=List[DocMeta])
 def list_docs():
-    return list(DOCS.values())
+    return [stored.meta for stored in DOCS.values()]
+
+
+@app.get("/api/docs/{file_id}/rows", response_model=List[DocRow])
+def get_doc_rows(file_id: str):
+    stored = DOCS.get(file_id)
+    if not stored:
+        raise HTTPException(404, "Not found")
+    return stored.rows
+
 
 @app.delete("/api/docs/{file_id}")
 def delete_doc(file_id: str):
@@ -106,11 +130,12 @@ def delete_all_docs():
 
 @app.get("/api/docs/{file_id}/content")
 def get_doc_content(file_id: str, inline: bool = False):
-    doc = DOCS.get(file_id)
-    if not doc:
+    stored = DOCS.get(file_id)
+    if not stored:
         raise HTTPException(404, "Not found")
 
-    suffix = Path(doc.bestand).suffix.lower()
+    meta = stored.meta
+    suffix = Path(meta.bestand).suffix.lower()
     file_path = STORAGE / f"{file_id}{suffix}"
     if not file_path.exists():
         # fallback: zoek naar willekeurige match voor het geval de suffix verschilt
@@ -124,13 +149,13 @@ def get_doc_content(file_id: str, inline: bool = False):
     response = FileResponse(
         file_path,
         media_type=media_type or "application/octet-stream",
-        filename=None if inline else doc.bestand,
+        filename=None if inline else meta.bestand,
     )
 
     if inline:
-        safe_filename = doc.bestand.replace("\"", "\\\"")
+        safe_filename = meta.bestand.replace("\"", "\\\"")
         disposition = f'inline; filename="{safe_filename}"'
-        quoted = quote(doc.bestand)
+        quoted = quote(meta.bestand)
         if quoted:
             disposition = f"{disposition}; filename*=UTF-8''{quoted}"
         response.headers["Content-Disposition"] = disposition
@@ -140,11 +165,12 @@ def get_doc_content(file_id: str, inline: bool = False):
 
 @app.get("/api/docs/{file_id}/preview")
 def get_doc_preview(file_id: str):
-    doc = DOCS.get(file_id)
-    if not doc:
+    stored = DOCS.get(file_id)
+    if not stored:
         raise HTTPException(404, "Not found")
 
-    suffix = Path(doc.bestand).suffix.lower()
+    meta = stored.meta
+    suffix = Path(meta.bestand).suffix.lower()
     file_path = STORAGE / f"{file_id}{suffix}"
     if not file_path.exists():
         match = next(STORAGE.glob(f"{file_id}.*"), None)
@@ -159,13 +185,13 @@ def get_doc_preview(file_id: str):
         return {
             "mediaType": "text/html",
             "html": html,
-            "filename": doc.bestand,
+            "filename": meta.bestand,
         }
 
     return {
         "mediaType": media_type or "application/octet-stream",
         "url": f"/api/docs/{file_id}/content?inline=1",
-        "filename": doc.bestand,
+        "filename": meta.bestand,
     }
 
 @app.post("/api/uploads", response_model=DocMeta)
@@ -183,10 +209,23 @@ async def upload_doc(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, fh)
 
     # Parse metadata
+    rows: List[DocRow] = []
     if suffix.endswith(".docx"):
         meta = extract_meta_from_docx(str(temp_path), file.filename)
+        if meta:
+            try:
+                rows = extract_rows_from_docx(str(temp_path), file.filename)
+            except Exception as exc:  # pragma: no cover - afhankelijk van docx lib
+                logger.warning("Kon rijen niet extraheren uit %s: %s", file.filename, exc)
+                rows = []
     else:
         meta = extract_meta_from_pdf(str(temp_path), file.filename)
+        if meta and extract_rows_from_pdf:
+            try:
+                rows = extract_rows_from_pdf(str(temp_path), file.filename)
+            except Exception as exc:  # pragma: no cover - afhankelijk van pdf lib
+                logger.warning("Kon rijen niet extraheren uit %s: %s", file.filename, exc)
+                rows = []
 
     if not meta:
         # opruimen temp
@@ -195,6 +234,9 @@ async def upload_doc(file: UploadFile = File(...)):
         except Exception:
             pass
         raise HTTPException(422, "Could not extract metadata")
+
+    if rows is None:
+        rows = []
 
     # Forceer uniek fileId (voorkomt naam-collisie)
     meta.fileId = uuid.uuid4().hex[:12]
@@ -205,5 +247,5 @@ async def upload_doc(file: UploadFile = File(...)):
         final_path.unlink()
     temp_path.rename(final_path)
 
-    DOCS[meta.fileId] = meta
+    DOCS[meta.fileId] = StoredDoc(meta=meta, rows=rows)
     return meta
