@@ -48,8 +48,10 @@ export const calcCurrentWeekIdx = (weeks: WeekInfo[], today: Date = new Date()):
   const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const todayMs = base.getTime();
   const currentWeekNr = getIsoWeek(base);
-  let bestIdx = 0;
-  let bestDist = Number.POSITIVE_INFINITY;
+  let bestPastIdx: number | null = null;
+  let bestPastDist = Number.POSITIVE_INFINITY;
+  let bestFutureIdx: number | null = null;
+  let bestFutureDist = Number.POSITIVE_INFINITY;
 
   for (let i = 0; i < weeks.length; i++) {
     const w = weeks[i];
@@ -58,44 +60,66 @@ export const calcCurrentWeekIdx = (weeks: WeekInfo[], today: Date = new Date()):
     const hasStart = Number.isFinite(startMs);
     const hasEnd = Number.isFinite(endMs);
 
-    if (hasStart && hasEnd) {
-      if (todayMs >= startMs && todayMs <= endMs) {
-        return i;
-      }
-      const dist = Math.min(Math.abs(todayMs - startMs), Math.abs(todayMs - endMs));
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
+    if (hasStart && hasEnd && startMs <= todayMs && todayMs <= endMs) {
+      return i;
+    }
+
+    if (hasEnd && endMs < todayMs) {
+      const dist = todayMs - endMs;
+      if (dist < bestPastDist) {
+        bestPastDist = dist;
+        bestPastIdx = i;
       }
       continue;
     }
 
-    if (hasStart) {
-      const dist = Math.abs(todayMs - startMs);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
+    if (hasStart && startMs > todayMs) {
+      const dist = startMs - todayMs;
+      if (dist < bestFutureDist) {
+        bestFutureDist = dist;
+        bestFutureIdx = i;
       }
       continue;
     }
 
-    if (hasEnd) {
-      const dist = Math.abs(todayMs - endMs);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
+    if (hasStart && startMs <= todayMs) {
+      const dist = todayMs - startMs;
+      if (dist < bestPastDist) {
+        bestPastDist = dist;
+        bestPastIdx = i;
       }
       continue;
     }
 
-    const dist = Math.abs(w.nr - currentWeekNr);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestIdx = i;
+    if (hasEnd && endMs >= todayMs) {
+      const dist = endMs - todayMs;
+      if (dist < bestFutureDist) {
+        bestFutureDist = dist;
+        bestFutureIdx = i;
+      }
+      continue;
+    }
+
+    const diff = w.nr - currentWeekNr;
+    const dist = Math.abs(diff);
+    if (diff <= 0) {
+      if (dist < bestPastDist) {
+        bestPastDist = dist;
+        bestPastIdx = i;
+      }
+    } else if (dist < bestFutureDist) {
+      bestFutureDist = dist;
+      bestFutureIdx = i;
     }
   }
 
-  return bestIdx;
+  if (bestPastIdx != null) {
+    return bestPastIdx;
+  }
+  if (bestFutureIdx != null) {
+    return bestFutureIdx;
+  }
+  return 0;
 };
 
 export const computeWindowStartForWeek = (

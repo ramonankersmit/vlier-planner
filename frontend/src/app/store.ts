@@ -84,9 +84,25 @@ type WeekAccumulator = {
   dates: string[];
 };
 
-const normalizeText = (value?: string | null) => {
+type NormalizeOptions = {
+  preserveLineBreaks?: boolean;
+};
+
+const normalizeText = (value?: string | null, options?: NormalizeOptions) => {
   if (value == null) return undefined;
-  const cleaned = value.replace(/\s+/g, " ").trim();
+  const normalizedLineBreaks = value.replace(/\r\n?/g, "\n");
+  let cleaned: string;
+
+  if (options?.preserveLineBreaks) {
+    const lines = normalizedLineBreaks
+      .split("\n")
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .filter((line) => line.length > 0);
+    cleaned = lines.join("\n");
+  } else {
+    cleaned = normalizedLineBreaks.replace(/\s+/g, " ").trim();
+  }
+
   if (!cleaned) return undefined;
   const lowered = cleaned.toLowerCase();
   if (cleaned === "—" || cleaned === "-" || lowered === "geen" || lowered === "n.v.t.") {
@@ -140,8 +156,8 @@ const computeWeekAggregation = (
         perVak[doc.vak] ??
         (perVak[doc.vak] = { lesstof: [], huiswerk: [], deadlines: [], opmerkingen: [], dates: [] });
 
-      const add = (arr: string[], value?: string | null) => {
-        const normalized = normalizeText(value);
+      const add = (arr: string[], value?: string | null, options?: NormalizeOptions) => {
+        const normalized = normalizeText(value, options);
         if (normalized) arr.push(normalized);
       };
 
@@ -149,8 +165,8 @@ const computeWeekAggregation = (
       if ((!row.onderwerp && !row.les) && row.leerdoelen?.length) {
         add(accum.lesstof, row.leerdoelen.join("; "));
       }
-      add(accum.huiswerk, row.huiswerk);
-      add(accum.huiswerk, row.opdracht);
+      add(accum.huiswerk, row.huiswerk, { preserveLineBreaks: true });
+      add(accum.huiswerk, row.opdracht, { preserveLineBreaks: true });
 
       const toetsType = row.toets?.type;
       if (toetsType) {
@@ -194,7 +210,7 @@ const computeWeekAggregation = (
       const sortedDates = Array.from(new Set(acc.dates)).sort();
       resultByWeek[weekNr][vak] = {
         lesstof: uniqJoin(acc.lesstof, "\n"),
-        huiswerk: uniqJoin(acc.huiswerk, "; "),
+        huiswerk: uniqJoin(acc.huiswerk, "\n"),
         deadlines: uniqJoin(acc.deadlines, "; "),
         opmerkingen: uniqJoin(acc.opmerkingen, "\n"),
         date: sortedDates[0],
