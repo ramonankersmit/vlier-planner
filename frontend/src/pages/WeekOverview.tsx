@@ -309,8 +309,11 @@ export default function WeekOverview() {
 
   return (
     <div>
-      <div className="mb-2 text-sm text-gray-600">
-        Week {week?.nr ?? "—"} · {week ? formatRange(week) : "Geen data"}
+      <div className="mb-4">
+        <h1 className="text-lg font-semibold">Weekoverzicht</h1>
+        <div className="mt-1 text-sm text-gray-600">
+          Week {week?.nr ?? "—"} · {week ? formatRange(week) : "Geen data"}
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2 items-center">

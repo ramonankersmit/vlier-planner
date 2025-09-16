@@ -299,7 +299,10 @@ export default function Matrix() {
 
   return (
     <div>
-      <div className="mb-2 text-sm text-gray-600">{windowLabel}</div>
+      <div className="mb-4">
+        <h1 className="text-lg font-semibold">Matrix</h1>
+        <div className="mt-1 text-sm text-gray-600">{windowLabel}</div>
+      </div>
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
           onClick={goThisWeek}
