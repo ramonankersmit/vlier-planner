@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { DocMeta as ApiDocMeta, DocRow } from "../lib/api";
 import {
   deriveIsoYearForWeek,
@@ -90,6 +91,7 @@ type State = {
   setNiveauWO: (n: "HAVO" | "VWO" | "ALLE") => void;
   leerjaarWO: string;
   setLeerjaarWO: (j: string) => void;
+  resetAppState: () => void;
 };
 
 const uniqSorted = (arr: string[]) => Array.from(new Set(arr)).sort();
@@ -308,158 +310,198 @@ const computeWeekAggregation = (
   return { weeks, byWeek: resultByWeek };
 };
 
-export const useAppStore = create<State>((set, get) => ({
-  // ----------------------------
-  // documenten
-  // ----------------------------
-  docs: [], // start leeg; wordt gehydrate via API
+const createInitialState = (): Pick<
+  State,
+  | "docs"
+  | "docRows"
+  | "weekData"
+  | "mijnVakken"
+  | "huiswerkWeergave"
+  | "theme"
+  | "backgroundImage"
+  | "doneMap"
+  | "weekIdxWO"
+  | "niveauWO"
+  | "leerjaarWO"
+> => ({
+  docs: [],
   docRows: {},
   weekData: { weeks: [], byWeek: {} },
-  setDocs: (d) => {
-    const prevDocs = get().docs;
-    const prevEnabled = new Map(prevDocs.map((doc) => [doc.fileId, doc.enabled] as const));
-    const nextDocs = d.map((doc) => {
-      const normalizedVak = formatVakName(doc.vak);
-      return {
-        ...doc,
-        vak: normalizedVak,
-        enabled: prevEnabled.get(doc.fileId) ?? true,
-      };
-    });
-    const prevVakSet = new Set(prevDocs.map((doc) => doc.vak));
-    const newlyEnabledVakken = nextDocs
-      .filter((doc) => doc.enabled && !prevVakSet.has(doc.vak))
-      .map((doc) => doc.vak);
-    const mijnVakken = computeMijnVakken(nextDocs, get().mijnVakken, {
-      ensure: newlyEnabledVakken,
-    });
-    const nextDocIds = new Set(nextDocs.map((doc) => doc.fileId));
-    const currentRows = get().docRows;
-    const filteredRows: Record<string, DocRow[]> = {};
-    for (const [fileId, rows] of Object.entries(currentRows)) {
-      if (nextDocIds.has(fileId)) {
-        filteredRows[fileId] = rows;
-      }
-    }
-    const weekData = computeWeekAggregation(nextDocs, filteredRows);
-    set({ docs: nextDocs, mijnVakken, docRows: filteredRows, weekData });
-  },
-  removeDoc: (fileId) => {
-    const next = get()
-      .docs
-      .filter((x) => x.fileId !== fileId);
-    const mijnVakken = computeMijnVakken(next, get().mijnVakken);
-    const nextRows = { ...get().docRows };
-    delete nextRows[fileId];
-    const weekData = computeWeekAggregation(next, nextRows);
-    set({ docs: next, mijnVakken, docRows: nextRows, weekData });
-  },
-  addDoc: (doc) => {
-    const prevDocs = get().docs;
-    const normalizedVak = formatVakName(doc.vak);
-    const nextDoc = { ...doc, vak: normalizedVak, enabled: true };
-    const next = [...prevDocs, nextDoc];
-    const hadVakBefore = prevDocs.some((existing) => existing.vak === normalizedVak);
-    const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
-      ensure: hadVakBefore ? undefined : [normalizedVak],
-    });
-    const nextRows = { ...get().docRows };
-    if (!nextRows[doc.fileId]) {
-      nextRows[doc.fileId] = [];
-    }
-    const weekData = computeWeekAggregation(next, nextRows);
-    set({ docs: next, mijnVakken, docRows: nextRows, weekData });
-  },
-  replaceDoc: (fileId, nextDoc) => {
-    const normalizedVak = formatVakName(nextDoc.vak);
-    const next = get().docs.map((x) =>
-      x.fileId === fileId ? { ...nextDoc, vak: normalizedVak, enabled: x.enabled } : x
-    );
-    const mijnVakken = computeMijnVakken(next, get().mijnVakken);
-    const weekData = computeWeekAggregation(next, get().docRows);
-    set({ docs: next, mijnVakken, weekData });
-  },
-  setDocEnabled: (fileId, enabled) => {
-    let ensuredVak: string | undefined;
-    const next = get().docs.map((doc) => {
-      if (doc.fileId !== fileId) {
-        return doc;
-      }
-      if (enabled && !doc.enabled) {
-        ensuredVak = doc.vak;
-      }
-      return { ...doc, enabled };
-    });
-    const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
-      ensure: ensuredVak ? [ensuredVak] : undefined,
-    });
-    const weekData = computeWeekAggregation(next, get().docRows);
-    set({ docs: next, mijnVakken, weekData });
-  },
-  setDocRows: (fileId, rows) => {
-    const nextRows = { ...get().docRows, [fileId]: rows };
-    const weekData = computeWeekAggregation(get().docs, nextRows);
-    set({ docRows: nextRows, weekData });
-  },
-  setDocRowsBulk: (entries) => {
-    const nextRows = { ...get().docRows };
-    for (const [fileId, rows] of Object.entries(entries)) {
-      nextRows[fileId] = rows;
-    }
-    const weekData = computeWeekAggregation(get().docs, nextRows);
-    set({ docRows: nextRows, weekData });
-  },
-
-  // ----------------------------
-  // instellingen
-  // ----------------------------
-  mijnVakken: [], // start leeg; wordt gezet bij setDocs()
-  setMijnVakken: (v) => set({ mijnVakken: v }),
+  mijnVakken: [],
   huiswerkWeergave: "perOpdracht",
-  setHuiswerkWeergave: (mode) => set({ huiswerkWeergave: mode }),
   theme: { ...defaultTheme },
-  setThemeColor: (key, value) =>
-    set((state) => ({ theme: { ...state.theme, [key]: value } })),
-  resetTheme: () => set({ theme: { ...defaultTheme } }),
   backgroundImage: null,
-  setBackgroundImage: (value) => set({ backgroundImage: value }),
-  resetBackgroundImage: () => set({ backgroundImage: null }),
-
-  // ----------------------------
-  // done-map
-  // ----------------------------
   doneMap: {},
-  setDoneState: (key, value) =>
-    set((s) => {
-      const next = { ...s.doneMap };
-      if (value) {
-        next[key] = true;
-      } else {
-        delete next[key];
-      }
-      return { doneMap: next };
-    }),
-  toggleDone: (key) =>
-    set((s) => {
-      const next = { ...s.doneMap };
-      if (next[key]) {
-        delete next[key];
-      } else {
-        next[key] = true;
-      }
-      return { doneMap: next };
-    }),
-
-  // ----------------------------
-  // weekoverzicht (UI state)
-  // ----------------------------
   weekIdxWO: 0,
-  setWeekIdxWO: (n) => set({ weekIdxWO: n }),
   niveauWO: "ALLE",
-  setNiveauWO: (n) => set({ niveauWO: n }),
   leerjaarWO: "ALLE",
-  setLeerjaarWO: (j) => set({ leerjaarWO: j }),
-}));
+});
+
+export const useAppStore = create<State>()(
+  persist(
+    (set, get) => ({
+      ...createInitialState(),
+      setDocs: (d) => {
+        const prevDocs = get().docs;
+        const prevEnabled = new Map(prevDocs.map((doc) => [doc.fileId, doc.enabled] as const));
+        const nextDocs = d.map((doc) => {
+          const normalizedVak = formatVakName(doc.vak);
+          return {
+            ...doc,
+            vak: normalizedVak,
+            enabled: prevEnabled.get(doc.fileId) ?? true,
+          };
+        });
+        const prevVakSet = new Set(prevDocs.map((doc) => doc.vak));
+        const newlyEnabledVakken = nextDocs
+          .filter((doc) => doc.enabled && !prevVakSet.has(doc.vak))
+          .map((doc) => doc.vak);
+        const mijnVakken = computeMijnVakken(nextDocs, get().mijnVakken, {
+          ensure: newlyEnabledVakken,
+        });
+        const nextDocIds = new Set(nextDocs.map((doc) => doc.fileId));
+        const currentRows = get().docRows;
+        const filteredRows: Record<string, DocRow[]> = {};
+        for (const [fileId, rows] of Object.entries(currentRows)) {
+          if (nextDocIds.has(fileId)) {
+            filteredRows[fileId] = rows;
+          }
+        }
+        const weekData = computeWeekAggregation(nextDocs, filteredRows);
+        set({ docs: nextDocs, mijnVakken, docRows: filteredRows, weekData });
+      },
+      removeDoc: (fileId) => {
+        const next = get()
+          .docs
+          .filter((x) => x.fileId !== fileId);
+        const mijnVakken = computeMijnVakken(next, get().mijnVakken);
+        const nextRows = { ...get().docRows };
+        delete nextRows[fileId];
+        const weekData = computeWeekAggregation(next, nextRows);
+        set({ docs: next, mijnVakken, docRows: nextRows, weekData });
+      },
+      addDoc: (doc) => {
+        const prevDocs = get().docs;
+        const normalizedVak = formatVakName(doc.vak);
+        const nextDoc = { ...doc, vak: normalizedVak, enabled: true };
+        const next = [...prevDocs, nextDoc];
+        const hadVakBefore = prevDocs.some((existing) => existing.vak === normalizedVak);
+        const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
+          ensure: hadVakBefore ? undefined : [normalizedVak],
+        });
+        const nextRows = { ...get().docRows };
+        if (!nextRows[doc.fileId]) {
+          nextRows[doc.fileId] = [];
+        }
+        const weekData = computeWeekAggregation(next, nextRows);
+        set({ docs: next, mijnVakken, docRows: nextRows, weekData });
+      },
+      replaceDoc: (fileId, nextDoc) => {
+        const normalizedVak = formatVakName(nextDoc.vak);
+        const next = get().docs.map((x) =>
+          x.fileId === fileId ? { ...nextDoc, vak: normalizedVak, enabled: x.enabled } : x
+        );
+        const mijnVakken = computeMijnVakken(next, get().mijnVakken);
+        const weekData = computeWeekAggregation(next, get().docRows);
+        set({ docs: next, mijnVakken, weekData });
+      },
+      setDocEnabled: (fileId, enabled) => {
+        let ensuredVak: string | undefined;
+        const next = get().docs.map((doc) => {
+          if (doc.fileId !== fileId) {
+            return doc;
+          }
+          if (enabled && !doc.enabled) {
+            ensuredVak = doc.vak;
+          }
+          return { ...doc, enabled };
+        });
+        const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
+          ensure: ensuredVak ? [ensuredVak] : undefined,
+        });
+        const weekData = computeWeekAggregation(next, get().docRows);
+        set({ docs: next, mijnVakken, weekData });
+      },
+      setDocRows: (fileId, rows) => {
+        const nextRows = { ...get().docRows, [fileId]: rows };
+        const weekData = computeWeekAggregation(get().docs, nextRows);
+        set({ docRows: nextRows, weekData });
+      },
+      setDocRowsBulk: (entries) => {
+        const nextRows = { ...get().docRows };
+        for (const [fileId, rows] of Object.entries(entries)) {
+          nextRows[fileId] = rows;
+        }
+        const weekData = computeWeekAggregation(get().docs, nextRows);
+        set({ docRows: nextRows, weekData });
+      },
+
+      // ----------------------------
+      // instellingen
+      // ----------------------------
+      setMijnVakken: (v) => set({ mijnVakken: v }),
+      setHuiswerkWeergave: (mode) => set({ huiswerkWeergave: mode }),
+      setThemeColor: (key, value) =>
+        set((state) => ({ theme: { ...state.theme, [key]: value } })),
+      resetTheme: () => set({ theme: { ...defaultTheme } }),
+      setBackgroundImage: (value) => set({ backgroundImage: value }),
+      resetBackgroundImage: () => set({ backgroundImage: null }),
+
+      // ----------------------------
+      // done-map
+      // ----------------------------
+      setDoneState: (key, value) =>
+        set((s) => {
+          const next = { ...s.doneMap };
+          if (value) {
+            next[key] = true;
+          } else {
+            delete next[key];
+          }
+          return { doneMap: next };
+        }),
+      toggleDone: (key) =>
+        set((s) => {
+          const next = { ...s.doneMap };
+          if (next[key]) {
+            delete next[key];
+          } else {
+            next[key] = true;
+          }
+          return { doneMap: next };
+        }),
+
+      // ----------------------------
+      // weekoverzicht (UI state)
+      // ----------------------------
+      setWeekIdxWO: (n) => set({ weekIdxWO: n }),
+      setNiveauWO: (n) => set({ niveauWO: n }),
+      setLeerjaarWO: (j) => set({ leerjaarWO: j }),
+
+      resetAppState: () => {
+        const initial = createInitialState();
+        set(initial);
+      },
+    }),
+    {
+      name: "vlier-planner-state",
+      version: 1,
+      partialize: (state) => ({
+        docs: state.docs,
+        docRows: state.docRows,
+        weekData: state.weekData,
+        mijnVakken: state.mijnVakken,
+        huiswerkWeergave: state.huiswerkWeergave,
+        theme: state.theme,
+        backgroundImage: state.backgroundImage,
+        doneMap: state.doneMap,
+        weekIdxWO: state.weekIdxWO,
+        niveauWO: state.niveauWO,
+        leerjaarWO: state.leerjaarWO,
+      }),
+    }
+  )
+);
 
 /**
  * Helper om bij app-start de docs uit de backend te laden.
