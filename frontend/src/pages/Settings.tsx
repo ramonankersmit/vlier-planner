@@ -14,6 +14,9 @@ export default function Settings() {
     backgroundImage,
     setBackgroundImage,
     resetBackgroundImage,
+    surfaceOpacity,
+    setSurfaceOpacity,
+    resetSurfaceOpacity,
     resetAppState,
   } = useAppStore();
   const docs = useAppStore((s) => s.docs) ?? [];
@@ -100,6 +103,7 @@ export default function Settings() {
   const resetAllAppearance = () => {
     resetTheme();
     resetBackgroundImage();
+    resetSurfaceOpacity();
   };
 
   const handleResetApplication = async () => {
@@ -268,6 +272,26 @@ export default function Settings() {
           ) : (
             <div className="text-sm theme-muted">Er is nog geen achtergrond ingesteld.</div>
           )}
+          <div className="space-y-1">
+            <label className="text-sm font-medium theme-text" htmlFor="surface-opacity">
+              Doorzichtigheid kaarten
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                id="surface-opacity"
+                type="range"
+                min={0}
+                max={100}
+                value={surfaceOpacity}
+                onChange={(event) => setSurfaceOpacity(Number(event.target.value))}
+                className="h-2 w-full accent-slate-900"
+              />
+              <span className="w-12 text-right text-sm font-medium theme-text">{surfaceOpacity}%</span>
+            </div>
+            <div className="text-xs theme-muted">
+              Bepaalt hoe sterk kaarten en panelen het achtergrondbeeld afdekken.
+            </div>
+          </div>
         </div>
       </div>
 

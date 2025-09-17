@@ -261,7 +261,7 @@ function Card({
   };
 
   return (
-    <div className="rounded-2xl border theme-border theme-surface shadow-sm p-4 flex flex-col gap-3">
+    <div className="rounded-2xl border theme-border theme-surface shadow-sm p-4 flex h-full flex-col gap-3">
       <div className="flex items-center justify-between">
         <div className="font-semibold">{vak}</div>
         <div className="flex items-center gap-2">
@@ -523,7 +523,7 @@ function Card({
       {!adding && !editing && (
         <button
           type="button"
-          className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900"
+          className="mt-auto flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900"
           onClick={startAdd}
           title="Eigen huiswerk toevoegen"
           aria-label={`Voeg huiswerk toe voor ${vak}`}

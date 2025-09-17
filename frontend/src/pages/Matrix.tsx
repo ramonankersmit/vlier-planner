@@ -264,7 +264,7 @@ function MatrixCell({
 
   return (
     <td className="px-4 py-2 align-top">
-      <div className="flex flex-col gap-2 min-w-[14rem]">
+      <div className="flex h-full min-w-[14rem] flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2 text-xs theme-muted">
           {hasOpmerkingen && (
             <span
@@ -510,7 +510,7 @@ function MatrixCell({
         {!adding && !editing && (
           <button
             type="button"
-            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
+            className="mt-auto flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
             onClick={startAdd}
             title="Eigen huiswerk toevoegen"
             aria-label={`Voeg huiswerk toe voor ${vak}`}
