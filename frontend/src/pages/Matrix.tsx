@@ -1,5 +1,5 @@
 import React from "react";
-import { FileText, CalendarClock } from "lucide-react";
+import { FileText, CalendarClock, MessageCircle, BookOpen, CheckSquare } from "lucide-react";
 import { useAppStore, type DocRecord, type WeekInfo, type WeekData } from "../app/store";
 import {
   formatRange,
@@ -10,6 +10,7 @@ import {
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
+import { hasMeaningfulContent } from "../lib/contentUtils";
 
 function MatrixCell({
   vak,
@@ -36,7 +37,7 @@ function MatrixCell({
       ? data.huiswerkItems
       : undefined;
   const homeworkItems = (storedItems ?? splitHomeworkItems(data?.huiswerk)).map((item) => item.trim());
-  const filteredHomeworkItems = homeworkItems.filter((item) => item.length > 0);
+  const filteredHomeworkItems = homeworkItems.filter((item) => hasMeaningfulContent(item));
   const itemKeys = filteredHomeworkItems.map((_, idx) => `${baseKey}:${idx}`);
   const hasItemState = itemKeys.some((itemKey) =>
     Object.prototype.hasOwnProperty.call(doneMap, itemKey)
@@ -79,11 +80,15 @@ function MatrixCell({
   };
 
   const aggregatedHomework =
-    data?.huiswerk && data.huiswerk.trim().length
-      ? data.huiswerk
+    hasMeaningfulContent(data?.huiswerk)
+      ? data?.huiswerk ?? ""
       : filteredHomeworkItems.join("\n");
-
-  const deadlineLabel = data?.deadlines || "Geen toets/deadline";
+  const hasAggregatedHomework = hasMeaningfulContent(aggregatedHomework);
+  const hasOpmerkingen = hasMeaningfulContent(data?.opmerkingen);
+  const hasLesstof = hasMeaningfulContent(data?.lesstof);
+  const hasDeadlines = hasMeaningfulContent(data?.deadlines);
+  const deadlineLabel = hasDeadlines ? data?.deadlines : "-";
+  const deadlineTitle = hasDeadlines ? data?.date || data?.deadlines || "" : "";
 
   return (
     <td className="px-4 py-2 align-top">
@@ -114,9 +119,9 @@ function MatrixCell({
                   })}
                 </ul>
               ) : (
-                <div className="theme-muted">Geen huiswerk</div>
+                <div className="theme-muted">-</div>
               )
-            ) : aggregatedHomework ? (
+            ) : hasAggregatedHomework ? (
               <label className="flex items-start gap-2">
                 <input
                   aria-label={`Huiswerk ${vak}`}
@@ -130,20 +135,54 @@ function MatrixCell({
                 </span>
               </label>
             ) : (
-              <div className="theme-muted">Geen huiswerk</div>
+              <div className="theme-muted">-</div>
             )}
           </div>
-          <button
-            title={doc ? `Bron: ${doc.bestand}` : "Geen bron voor dit vak"}
-            aria-label={doc ? `Bron: ${doc.bestand}` : `Geen bron voor ${vak}`}
-            className="theme-muted disabled:opacity-40"
-            disabled={!onOpenDoc}
-            onClick={onOpenDoc}
-          >
-            <FileText size={14} />
-          </button>
+          <div className="flex items-center gap-1 self-start">
+            {hasOpmerkingen && (
+              <span
+                role="img"
+                aria-label={`Opmerkingen voor ${vak}`}
+                title={data?.opmerkingen || ""}
+                className="text-sky-600"
+              >
+                <MessageCircle size={14} aria-hidden="true" />
+              </span>
+            )}
+            {hasLesstof && (
+              <span
+                role="img"
+                aria-label={`Lesstof voor ${vak}`}
+                title={data?.lesstof || ""}
+                className="text-emerald-600"
+              >
+                <BookOpen size={14} aria-hidden="true" />
+              </span>
+            )}
+            {hasDeadlines && (
+              <span
+                role="img"
+                aria-label={`Toets of deadline voor ${vak}`}
+                title={data?.deadlines || ""}
+                className="text-amber-600"
+              >
+                <CheckSquare size={14} aria-hidden="true" />
+              </span>
+            )}
+            <button
+              title={doc ? `Bron: ${doc.bestand}` : "Geen bron voor dit vak"}
+              aria-label={doc ? `Bron: ${doc.bestand}` : `Geen bron voor ${vak}`}
+              className="theme-muted disabled:opacity-40"
+              disabled={!onOpenDoc}
+              onClick={onOpenDoc}
+            >
+              <FileText size={14} />
+            </button>
+          </div>
         </div>
-        <div className={`text-xs theme-muted ${allDone ? "opacity-80" : ""}`}>{deadlineLabel}</div>
+        <div className={`text-xs theme-muted ${allDone ? "opacity-80" : ""}`} title={deadlineTitle}>
+          {deadlineLabel}
+        </div>
       </div>
     </td>
   );

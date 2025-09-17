@@ -1,5 +1,23 @@
 import type { WeekInfo } from "../app/store";
 
+const dayMonthFormatter = new Intl.DateTimeFormat("nl-NL", {
+  day: "numeric",
+  month: "short",
+});
+
+const dayMonthYearFormatter = new Intl.DateTimeFormat("nl-NL", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+const toDate = (iso?: string) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+};
+
 export const formatRange = (w: WeekInfo) => {
   const hasStart = !!w.start;
   const hasEnd = !!w.end;
@@ -7,6 +25,21 @@ export const formatRange = (w: WeekInfo) => {
   if (hasStart) return w.start;
   if (hasEnd) return w.end;
   return `Week ${w.nr}`;
+};
+
+export const formatWeekDateRange = (w: WeekInfo): string | null => {
+  const start = toDate(w.start);
+  const end = toDate(w.end);
+  if (start && end) {
+    if (start.getFullYear() === end.getFullYear()) {
+      const base = `${dayMonthFormatter.format(start)} – ${dayMonthFormatter.format(end)}`;
+      return `${base} ${start.getFullYear()}`;
+    }
+    return `${dayMonthYearFormatter.format(start)} – ${dayMonthYearFormatter.format(end)}`;
+  }
+  if (start) return dayMonthYearFormatter.format(start);
+  if (end) return dayMonthYearFormatter.format(end);
+  return null;
 };
 
 export const formatWeekWindowLabel = (weeks: WeekInfo[]): string => {

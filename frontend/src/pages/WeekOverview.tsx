@@ -1,10 +1,18 @@
 import React from "react";
-import { Info, FileText, CheckSquare, CalendarClock } from "lucide-react";
+import {
+  Info,
+  FileText,
+  CheckSquare,
+  CalendarClock,
+  MessageCircle,
+  BookOpen,
+} from "lucide-react";
 import { useAppStore, type DocRecord, type WeekInfo, type WeekData } from "../app/store";
 import { formatRange, calcCurrentWeekIdx } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 import { deriveIsoYearForWeek } from "../lib/calendar";
+import { hasMeaningfulContent } from "../lib/contentUtils";
 
 function Card({
   vak,
@@ -34,7 +42,7 @@ function Card({
       ? data.huiswerkItems
       : undefined;
   const homeworkItems = (storedItems ?? splitHomeworkItems(data?.huiswerk)).map((item) => item.trim());
-  const filteredHomeworkItems = homeworkItems.filter((item) => item.length > 0);
+  const filteredHomeworkItems = homeworkItems.filter((item) => hasMeaningfulContent(item));
   const itemKeys = filteredHomeworkItems.map((_, idx) => `${baseKey}:${idx}`);
   const hasItemState = itemKeys.some((itemKey) =>
     Object.prototype.hasOwnProperty.call(doneMap, itemKey)
@@ -77,19 +85,54 @@ function Card({
   };
 
   const aggregatedHomework =
-    data?.huiswerk && data.huiswerk.trim().length
-      ? data.huiswerk
+    hasMeaningfulContent(data?.huiswerk)
+      ? data?.huiswerk ?? ""
       : filteredHomeworkItems.join("\n");
+  const hasAggregatedHomework = hasMeaningfulContent(aggregatedHomework);
+  const hasOpmerkingen = hasMeaningfulContent(data?.opmerkingen);
+  const hasLesstof = hasMeaningfulContent(data?.lesstof);
+  const hasDeadlines = hasMeaningfulContent(data?.deadlines);
+  const deadlineLabel = hasDeadlines ? data?.deadlines : "-";
+  const deadlineTitle = hasDeadlines ? data?.date || data?.deadlines || "" : "";
 
   return (
     <div className="rounded-2xl border theme-border theme-surface shadow-sm p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div className="font-semibold">{vak}</div>
-        <div className="flex gap-2">
-          {data?.deadlines && data.deadlines !== "—" && (
-            <CheckSquare size={16} className="text-amber-600" title="Toets/Deadline aanwezig" />
-          )}
-          {(data?.lesstof || data?.opmerkingen) && (
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            {hasOpmerkingen && (
+              <span
+                role="img"
+                aria-label={`Opmerkingen voor ${vak}`}
+                title={data?.opmerkingen || ""}
+                className="text-sky-600"
+              >
+                <MessageCircle size={16} aria-hidden="true" />
+              </span>
+            )}
+            {hasLesstof && (
+              <span
+                role="img"
+                aria-label={`Lesstof voor ${vak}`}
+                title={data?.lesstof || ""}
+                className="text-emerald-600"
+              >
+                <BookOpen size={16} aria-hidden="true" />
+              </span>
+            )}
+            {hasDeadlines && (
+              <span
+                role="img"
+                aria-label={`Toets of deadline voor ${vak}`}
+                title={data?.deadlines || ""}
+                className="text-amber-600"
+              >
+                <CheckSquare size={16} aria-hidden="true" />
+              </span>
+            )}
+          </div>
+          {(hasLesstof || hasOpmerkingen) && (
             <button
               onClick={() => setOpen(true)}
               title="Toon details (lesstof/opmerkingen)"
@@ -134,9 +177,9 @@ function Card({
             })}
           </ul>
         ) : (
-          <div className="text-sm theme-muted">Geen huiswerk</div>
+          <div className="text-sm theme-muted">-</div>
         )
-      ) : aggregatedHomework ? (
+      ) : hasAggregatedHomework ? (
         <label className="flex items-start gap-2 text-sm">
           <input
             aria-label={`Huiswerk ${vak}`}
@@ -152,11 +195,11 @@ function Card({
           </span>
         </label>
       ) : (
-        <div className="text-sm theme-muted">Geen huiswerk</div>
+        <div className="text-sm theme-muted">-</div>
       )}
 
-      <div className={`text-sm theme-muted ${allDone ? "opacity-80" : ""}`} title={data?.date || ""}>
-        {data?.deadlines || "Geen toets/deadline"}
+      <div className={`text-sm theme-muted ${allDone ? "opacity-80" : ""}`} title={deadlineTitle}>
+        {deadlineLabel}
       </div>
 
       {open && (
