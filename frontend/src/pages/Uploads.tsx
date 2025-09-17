@@ -61,6 +61,10 @@ export default function Uploads() {
     return byVak && byNiv && byLeer && byPer;
   });
 
+  const gridTemplate =
+    "grid-cols-[90px_minmax(220px,3fr)_minmax(180px,2fr)_minmax(70px,0.7fr)_minmax(80px,0.7fr)" +
+    "_minmax(60px,0.6fr)_minmax(70px,0.6fr)_minmax(70px,0.6fr)_repeat(2,minmax(90px,0.9fr))]";
+
   async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
     const files = ev.target.files;
     if (!files?.length) return;
@@ -84,10 +88,14 @@ export default function Uploads() {
     ev.target.value = "";
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(doc: DocRecord) {
+    const confirmed = window.confirm(
+      `Weet je zeker dat je "${doc.bestand}" wilt verwijderen?`
+    );
+    if (!confirmed) return;
     try {
-      await apiDeleteDoc(id);
-      removeDoc(id); // verwijder uit globale store
+      await apiDeleteDoc(doc.fileId);
+      removeDoc(doc.fileId); // verwijder uit globale store
     } catch (e: any) {
       console.warn(e);
       setError(e?.message || "Verwijderen mislukt");
@@ -218,7 +226,9 @@ export default function Uploads() {
 
       {/* Tabel */}
       <div className="rounded-2xl border theme-border theme-surface">
-        <div className="grid grid-cols-[90px_minmax(0,2fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))] gap-2 text-xs font-medium theme-muted border-b theme-border pb-2 px-4 pt-3">
+        <div
+          className={`grid ${gridTemplate} gap-2 text-xs font-medium theme-muted border-b theme-border pb-2 px-4 pt-3`}
+        >
           <div className="flex justify-center">Gebruik</div>
           <div>Bestand</div>
           <div>Vak</div>
@@ -236,7 +246,7 @@ export default function Uploads() {
           filtered.map((d, i) => (
             <div
               key={d.fileId}
-              className={`grid grid-cols-[90px_minmax(0,2fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))] gap-2 text-sm items-center px-4 py-3 ${
+              className={`grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
                 i > 0 ? "border-t theme-border" : ""
               }`}
             >
@@ -258,7 +268,7 @@ export default function Uploads() {
                   }
                 />
               </div>
-              <div className="truncate" title={d.bestand}>
+              <div className="break-words" title={d.bestand}>
                 {d.bestand}
               </div>
               <div>{d.vak}</div>
@@ -283,7 +293,7 @@ export default function Uploads() {
                   <Info size={16} />
                 </button>
                 <button
-                  onClick={() => handleDelete(d.fileId)}
+                  onClick={() => handleDelete(d)}
                   title="Verwijder"
                   className="rounded-lg border theme-border theme-surface p-1 text-red-600"
                 >

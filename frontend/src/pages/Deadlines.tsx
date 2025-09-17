@@ -1,7 +1,12 @@
 import React from "react";
 import { CalendarClock, FileText } from "lucide-react";
 import { useAppStore, type DocRecord, type WeekInfo } from "../app/store";
-import { formatHumanDate, calcCurrentWeekIdx, formatWeekWindowLabel } from "../lib/weekUtils";
+import {
+  formatHumanDate,
+  calcCurrentWeekIdx,
+  formatWeekWindowLabel,
+  formatWeekDateRange,
+} from "../lib/weekUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 import { deriveIsoYearForWeek } from "../lib/calendar";
 
@@ -9,6 +14,7 @@ type Item = {
   id: string;
   week: number;
   isoYear: number;
+  weekRange?: string;
   type: "Toets" | "Deadline";
   vak: string;
   title: string;
@@ -102,11 +108,13 @@ export default function Deadlines() {
           const type: Item["type"] =
             String(d.deadlines).toLowerCase().includes("toets") ? "Toets" : "Deadline";
           const doc = findDocForWeek(vakNaam, w);
+          const weekRange = formatWeekDateRange(w) ?? undefined;
           return [
             {
               id: `${vakNaam}-${w.id}`,
               week: w.nr,
               isoYear: w.isoYear,
+              weekRange,
               type,
               vak: vakNaam,
               title: d.deadlines,
@@ -218,6 +226,9 @@ export default function Deadlines() {
                     <td className="px-4 py-2 align-top">
                       wk {it.week}
                       <span className="text-xs theme-muted"> ({it.isoYear})</span>
+                      {it.weekRange && (
+                        <div className="text-xs theme-muted">{it.weekRange}</div>
+                      )}
                     </td>
                     <td className="px-4 py-2 align-top">
                       <span className="rounded-full border theme-border theme-surface px-2 py-0.5">{it.type}</span>
