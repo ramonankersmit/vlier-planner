@@ -1,5 +1,6 @@
 import React from "react";
 import { useAppStore, type ThemeSettings, hydrateDocsFromApi } from "../app/store";
+import { apiDeleteAllDocs } from "../lib/api";
 
 export default function Settings() {
   const {
@@ -101,7 +102,7 @@ export default function Settings() {
     resetBackgroundImage();
   };
 
-  const handleResetApplication = () => {
+  const handleResetApplication = async () => {
     const confirmed = window.confirm(
       "Weet je zeker dat je alle gegevens wilt wissen en terug wilt naar de beginstatus? " +
         "Instellingen, selecties en afgevinkte items gaan verloren."
@@ -110,7 +111,16 @@ export default function Settings() {
       return;
     }
     resetAppState();
-    void hydrateDocsFromApi();
+    try {
+      await apiDeleteAllDocs();
+    } catch (error) {
+      console.error("Kon backend-documenten niet wissen", error);
+    }
+    try {
+      await hydrateDocsFromApi();
+    } catch (error) {
+      console.error("Kon plannerdata niet herladen", error);
+    }
   };
 
   return (

@@ -1,9 +1,10 @@
 from dataclasses import dataclass
+import json
 import logging
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from typing import List
+from typing import Any, List, Union
 from pathlib import Path
 import mimetypes
 import shutil
@@ -40,6 +41,8 @@ app.add_middleware(
 # Bestandsopslag (simple disk storage)
 STORAGE = Path(__file__).parent / "storage" / "uploads"
 STORAGE.mkdir(parents=True, exist_ok=True)
+STATE_FILE = Path(__file__).parent / "storage" / "state.json"
+STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 @dataclass
 class StoredDoc:
@@ -49,6 +52,76 @@ class StoredDoc:
 
 # In-memory index (MVP). Later vervangen door DB.
 DOCS: dict[str, StoredDoc] = {}
+
+
+def _row_to_dict(row: Union[DocRow, dict[str, Any]]) -> dict[str, Any]:
+    if isinstance(row, DocRow):
+        return row.dict()
+    return dict(row)
+
+
+def _save_state() -> None:
+    if not DOCS:
+        try:
+            STATE_FILE.unlink(missing_ok=True)
+        except Exception as exc:  # pragma: no cover - best-effort opruimen
+            logger.warning("Kon state-bestand niet verwijderen: %s", exc)
+        return
+
+    payload: dict[str, dict[str, Any]] = {}
+    for file_id, stored in DOCS.items():
+        payload[file_id] = {
+            "meta": stored.meta.dict(),
+            "rows": [_row_to_dict(row) for row in stored.rows],
+        }
+
+    try:
+        STATE_FILE.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:  # pragma: no cover - IO afhankelijk
+        logger.warning("Kon state-bestand niet schrijven: %s", exc)
+
+
+def _load_state() -> None:
+    if not STATE_FILE.exists():
+        return
+
+    try:
+        data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:  # pragma: no cover - IO afhankelijk
+        logger.warning("Kon state-bestand niet lezen: %s", exc)
+        return
+
+    if not isinstance(data, dict):
+        logger.warning("State-bestand heeft onverwacht formaat")
+        return
+
+    DOCS.clear()
+    for file_id, entry in data.items():
+        if not isinstance(entry, dict):
+            logger.warning("State entry %s heeft onverwacht formaat", file_id)
+            continue
+        meta_data = entry.get("meta")
+        rows_data = entry.get("rows", [])
+        try:
+            meta = DocMeta(**meta_data)
+            rows = [DocRow(**row) for row in rows_data]
+        except Exception as exc:
+            logger.warning("Kon state entry %s niet herstellen: %s", file_id, exc)
+            continue
+        suffix = Path(meta.bestand).suffix.lower()
+        file_path = STORAGE / f"{file_id}{suffix}"
+        if not file_path.exists():
+            fallback = next(STORAGE.glob(f"{file_id}.*"), None)
+            if not fallback or not fallback.exists():
+                logger.warning("Bestand voor %s ontbreekt; sla entry over", file_id)
+                continue
+        DOCS[file_id] = StoredDoc(meta=meta, rows=rows)
+
+
+_load_state()
 
 # -----------------------------
 # Endpoints
@@ -114,6 +187,7 @@ def delete_doc(file_id: str):
     except Exception:
         pass
     del DOCS[file_id]
+    _save_state()
     return {"ok": True}
 
 @app.delete("/api/docs")
@@ -125,6 +199,7 @@ def delete_all_docs():
             p.unlink(missing_ok=True)
         except Exception:
             pass
+    _save_state()
     return {"ok": True}
 
 
@@ -248,4 +323,5 @@ async def upload_doc(file: UploadFile = File(...)):
     temp_path.rename(final_path)
 
     DOCS[meta.fileId] = StoredDoc(meta=meta, rows=rows)
+    _save_state()
     return meta
