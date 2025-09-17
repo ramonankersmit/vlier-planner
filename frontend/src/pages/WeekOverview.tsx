@@ -783,7 +783,8 @@ export default function WeekOverview() {
             const data = dataForActiveWeek[vak];
             const docsForVak = docsByVak.get(vak) ?? [];
             const doc = findDocForWeek(docsForVak, week);
-            const onOpenDoc = doc
+            const canOpen = !!doc?.hasSource;
+            const onOpenDoc = canOpen && doc
               ? () => openPreview({ fileId: doc.fileId, filename: doc.bestand })
               : undefined;
             const customEntries = customHomework[weekKey]?.[vak] ?? [];
@@ -798,7 +799,7 @@ export default function WeekOverview() {
                 setDoneState={setDoneState}
                 mode={huiswerkWeergave}
                 onOpenDoc={onOpenDoc}
-                docName={doc?.bestand}
+                docName={canOpen ? doc?.bestand : undefined}
                 customHomework={customEntries}
                 onAddCustom={(text) => addCustomHomework(weekKey, vak, text)}
                 onRemoveCustom={(entryId) => removeCustomHomework(weekKey, vak, entryId)}

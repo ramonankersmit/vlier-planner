@@ -47,6 +47,7 @@ def test_docs_flow(parsed_document):
     assert docs
     doc = next((d for d in docs if d["fileId"] == parsed_document), None)
     assert doc is not None
+    assert doc.get("hasSource") is True
 
     rows = client.get(f"/api/docs/{parsed_document}/rows")
     assert rows.status_code == 200
@@ -55,8 +56,19 @@ def test_docs_flow(parsed_document):
     preview = client.get(f"/api/docs/{parsed_document}/preview")
     assert preview.status_code == 200
     preview_payload = preview.json()
-    assert preview_payload["mediaType"].startswith("text/html")
-    assert "html" in preview_payload
+    assert preview_payload["mediaType"].startswith(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert preview_payload["url"].endswith(f"/api/docs/{parsed_document}/source")
+    assert "summaryHtml" in preview_payload
+
+    source_resp = client.get(preview_payload["url"])
+    assert source_resp.status_code == 200
+    assert (
+        source_resp.headers["content-type"].startswith(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    )
 
     delete_res = client.delete(f"/api/docs/{parsed_document}")
     assert delete_res.status_code == 200
@@ -64,3 +76,6 @@ def test_docs_flow(parsed_document):
 
     after = client.get("/api/docs")
     assert parsed_document not in [d["fileId"] for d in after.json()]
+
+    missing_source = client.get(f"/api/docs/{parsed_document}/source")
+    assert missing_source.status_code == 404

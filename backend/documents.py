@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 from html import escape
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from backend.paths import parsed_data_dir
+from backend.paths import parsed_data_dir, sources_dir
 from backend.schemas.normalized import NormalizedModel
 
 DATA_DIR = parsed_data_dir()
+SOURCES_DIR = sources_dir()
 INDEX_FILE = DATA_DIR / "index.json"
 
 
@@ -56,7 +58,13 @@ def _collect_weeks_and_years(model: NormalizedModel) -> tuple[list[int], list[in
     return weeks, years
 
 
-def build_doc_meta(parse_id: str, source_file: str, model: NormalizedModel) -> dict[str, Any]:
+def build_doc_meta(
+    parse_id: str,
+    source_file: str,
+    model: NormalizedModel,
+    *,
+    has_source: bool = False,
+) -> dict[str, Any]:
     """Construct the document metadata expected by the frontend."""
 
     study_unit = model.study_units[0] if model.study_units else None
@@ -92,6 +100,7 @@ def build_doc_meta(parse_id: str, source_file: str, model: NormalizedModel) -> d
         "eindWeek": eind_week,
         "schooljaar": schooljaar,
         "parsedAt": model.meta.parsed_at,
+        "hasSource": has_source,
     }
 
 
@@ -239,5 +248,25 @@ def find_index_entry(parse_id: str, index: Sequence[Mapping[str, Any]]) -> Mappi
     for entry in index:
         if entry.get("id") == parse_id:
             return entry
+    return None
+
+
+def resolve_source_path(entry: Mapping[str, Any]) -> Path | None:
+    """Return the archived source document for an index entry, if any."""
+
+    stored_name = entry.get("stored_source")
+    if stored_name:
+        candidate = SOURCES_DIR / stored_name
+        if candidate.exists():
+            return candidate
+
+    parse_id = entry.get("id")
+    if not parse_id:
+        return None
+
+    for candidate in SOURCES_DIR.glob(f"{parse_id}.*"):
+        if candidate.is_file():
+            return candidate
+
     return None
 

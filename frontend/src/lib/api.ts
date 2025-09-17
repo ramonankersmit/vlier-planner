@@ -8,6 +8,15 @@ export type DocMeta = {
   beginWeek: number;
   eindWeek: number;
   schooljaar?: string | null;
+  parsedAt?: string | null;
+  hasSource?: boolean;
+  warnings?: NormalizedWarning[];
+};
+
+export type NormalizedWarning = {
+  code: string;
+  message: string;
+  context: Record<string, unknown>;
 };
 
 export type DocToets = {
@@ -91,12 +100,26 @@ export type DocPreview = {
   url?: string;
   html?: string;
   filename?: string;
+  summaryHtml?: string;
 };
 
 export async function apiGetDocPreview(fileId: string): Promise<DocPreview> {
   const r = await fetch(`${BASE}/api/docs/${fileId}/preview`);
   if (!r.ok) {
     throw new Error(`preview_doc failed: ${r.status}`);
+  }
+  return r.json();
+}
+
+export type ParseInfo = {
+  meta?: { source?: string; parsed_at?: string };
+  warnings: NormalizedWarning[];
+};
+
+export async function apiGetParse(parseId: string): Promise<ParseInfo> {
+  const r = await fetch(`${BASE}/api/parses/${parseId}`);
+  if (!r.ok) {
+    throw new Error(`get_parse failed: ${r.status}`);
   }
   return r.json();
 }

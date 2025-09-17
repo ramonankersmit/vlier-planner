@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import shutil
 from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable, List, Tuple
@@ -14,7 +16,7 @@ from backend.parsers import (
     extract_rows_from_docx,
     extract_rows_from_pdf,
 )
-from backend.paths import parsed_data_dir
+from backend.paths import parsed_data_dir, sources_dir
 from backend.schemas.normalized import (
     NormalizedModel,
     Resource,
@@ -26,6 +28,8 @@ from backend.schemas.normalized import (
 
 
 DATA_DIR = parsed_data_dir()
+SOURCES_DIR = sources_dir()
+logger = logging.getLogger(__name__)
 
 
 def _parse_schooljaar(value: str | None) -> tuple[int | None, int | None]:
@@ -225,6 +229,16 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
     with out_path.open("w", encoding="utf-8") as fh:
         fh.write(model.model_dump_json(indent=2))
 
+    stored_name: str | None = None
+    try:
+        suffix = source_path.suffix.lower() or ""
+        stored_name = f"{parse_id}{suffix}"
+        dest_path = SOURCES_DIR / stored_name
+        shutil.copyfile(source_path, dest_path)
+    except OSError as exc:  # pragma: no cover - exercised in deployment
+        logger.warning("Kon bronbestand niet opslaan: %s", exc)
+        stored_name = None
+
     index = load_index()
     index.append(
         {
@@ -232,6 +246,7 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
             "source_file": source,
             "created_at": parsed_at,
             "status": "ready",
+            "stored_source": stored_name,
         }
     )
     save_index(index)

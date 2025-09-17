@@ -43,3 +43,10 @@ def uploads_dir() -> Path:
     """Directory used for temporarily storing uploaded files."""
 
     return _ensure_dir(runtime_base_dir() / "uploads")
+
+
+@lru_cache()
+def sources_dir() -> Path:
+    """Directory where original uploaded documents are archived."""
+
+    return _ensure_dir(runtime_base_dir() / "data" / "sources")

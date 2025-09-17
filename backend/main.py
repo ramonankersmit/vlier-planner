@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import mimetypes
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
@@ -23,6 +25,7 @@ from backend.documents import (
     find_index_entry,
     load_index,
     load_normalized_model,
+    resolve_source_path,
     save_index,
 )
 from backend.schemas.normalized import NormalizedModel
@@ -79,7 +82,10 @@ async def upload(file: UploadFile = File(...)):
         except OSError:
             shutil.rmtree(temp_root, ignore_errors=True)
 
-    doc_meta = build_doc_meta(parse_id, original_name, model)
+    index = load_index()
+    entry = find_index_entry(parse_id, index)
+    has_source = bool(entry and resolve_source_path(entry))
+    doc_meta = build_doc_meta(parse_id, original_name, model, has_source=has_source)
     warnings = [w.model_dump() for w in model.warnings]
     return {**doc_meta, "warnings": warnings}
 
@@ -180,7 +186,8 @@ def list_docs():
             logger.warning("Skipping index entry %s: missing normalized payload", parse_id)
             continue
         source_name = entry.get("source_file", parse_id)
-        docs.append(build_doc_meta(parse_id, source_name, model))
+        has_source = bool(resolve_source_path(entry))
+        docs.append(build_doc_meta(parse_id, source_name, model, has_source=has_source))
     return docs
 
 
@@ -190,13 +197,42 @@ def get_doc_rows(parse_id: str):
     return build_doc_rows(model)
 
 
+@app.get("/api/docs/{parse_id}/source")
+def get_doc_source(parse_id: str):
+    entry, _ = _ensure_parse_exists(parse_id)
+    path = resolve_source_path(entry)
+    if path is None or not path.exists():
+        raise HTTPException(404, "Bronbestand niet gevonden")
+    media_type, _ = mimetypes.guess_type(path.name)
+    filename = entry.get("source_file") or path.name
+    return FileResponse(path, media_type=media_type or "application/octet-stream", filename=filename)
+
+
 @app.get("/api/docs/{parse_id}/preview")
 def get_doc_preview(parse_id: str):
     entry, model = _ensure_parse_exists(parse_id)
-    meta = build_doc_meta(parse_id, entry.get("source_file", parse_id), model)
+    source_path = resolve_source_path(entry)
+    has_source = source_path is not None
+    meta = build_doc_meta(
+        parse_id,
+        entry.get("source_file", parse_id),
+        model,
+        has_source=has_source,
+    )
     rows = build_doc_rows(model)
-    html = build_doc_preview_html(meta, rows, (w.model_dump() for w in model.warnings))
-    return {"mediaType": "text/html", "html": html, "filename": meta["bestand"]}
+    warnings = [w.model_dump() for w in model.warnings]
+    summary_html = build_doc_preview_html(meta, rows, warnings)
+
+    if source_path is not None and source_path.exists():
+        media_type, _ = mimetypes.guess_type(source_path.name)
+        return {
+            "mediaType": media_type or "application/octet-stream",
+            "url": f"/api/docs/{parse_id}/source",
+            "filename": meta["bestand"],
+            "summaryHtml": summary_html,
+        }
+
+    return {"mediaType": "text/html", "html": summary_html, "filename": meta["bestand"]}
 
 
 @app.delete("/api/docs/{parse_id}")
@@ -209,6 +245,10 @@ def delete_doc(parse_id: str):
     path = DATA_DIR / f"{parse_id}.json"
     if path.exists():
         path.unlink()
+
+    source_path = resolve_source_path(entry)
+    if source_path and source_path.exists():
+        source_path.unlink()
 
     next_index = [item for item in index if item.get("id") != parse_id]
     save_index(next_index)
@@ -225,6 +265,9 @@ def delete_all_docs():
         path = DATA_DIR / f"{parse_id}.json"
         if path.exists():
             path.unlink()
+        source_path = resolve_source_path(entry)
+        if source_path and source_path.exists():
+            source_path.unlink()
     save_index([])
     return {"status": "cleared"}
 
