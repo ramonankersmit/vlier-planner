@@ -35,6 +35,13 @@ body {
   border-color: var(--app-border) !important;
 }
 
+.theme-divider {
+  width: 100%;
+  height: 1px;
+  background-color: var(--app-border);
+  opacity: 0.7;
+}
+
 .theme-text {
   color: var(--app-text) !important;
 }

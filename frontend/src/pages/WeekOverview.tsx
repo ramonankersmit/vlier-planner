@@ -318,6 +318,8 @@ function Card({
         </div>
       </div>
 
+      <div className="theme-divider" aria-hidden="true" />
+
       <div className="flex flex-1 flex-col gap-3">
         {mode === "perOpdracht" ? (
           hasAnyItems ? (

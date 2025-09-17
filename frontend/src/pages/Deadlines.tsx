@@ -15,7 +15,7 @@ type Item = {
   week: number;
   isoYear: number;
   weekRange?: string;
-  type: "Toets" | "Deadline";
+  type: "Toets" | "Deadline" | "Vakantie";
   vak: string;
   title: string;
   date?: string;
@@ -105,8 +105,13 @@ export default function Deadlines() {
           if (mijnVakken.length && !mijnVakken.includes(vakNaam)) return [];
           if (vak !== "ALLE" && vakNaam !== vak) return [];
           if (!d?.deadlines || d.deadlines === "—") return [];
-          const type: Item["type"] =
-            String(d.deadlines).toLowerCase().includes("toets") ? "Toets" : "Deadline";
+          const deadlineLabel = String(d.deadlines);
+          const lowered = deadlineLabel.toLowerCase();
+          const type: Item["type"] = lowered.includes("vakantie")
+            ? "Vakantie"
+            : lowered.includes("toets")
+              ? "Toets"
+              : "Deadline";
           const doc = findDocForWeek(vakNaam, w);
           const weekRange = formatWeekDateRange(w) ?? undefined;
           return [
