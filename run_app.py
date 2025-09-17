@@ -7,6 +7,8 @@ from pathlib import Path
 
 import uvicorn
 
+from backend import main as backend_main
+
 FALSE_VALUES = {"0", "false", "no", "off"}
 
 
@@ -33,7 +35,12 @@ def main() -> None:
     if should_enable(os.getenv("VLIER_OPEN_BROWSER")):
         open_browser(host, port)
 
-    uvicorn.run("backend.main:app", host=host, port=port, log_level=os.getenv("UVICORN_LOG_LEVEL", "info"))
+    uvicorn.run(
+        backend_main.app,
+        host=host,
+        port=port,
+        log_level=os.getenv("UVICORN_LOG_LEVEL", "info"),
+    )
 
 
 if __name__ == "__main__":
