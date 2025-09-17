@@ -111,6 +111,15 @@ type State = {
   setNiveauWO: (n: "HAVO" | "VWO" | "ALLE") => void;
   leerjaarWO: string;
   setLeerjaarWO: (j: string) => void;
+  // ==== matrix (UI state) ====
+  matrixStartIdx: number;
+  setMatrixStartIdx: (n: number) => void;
+  matrixCount: number;
+  setMatrixCount: (n: number) => void;
+  matrixNiveau: "HAVO" | "VWO" | "ALLE";
+  setMatrixNiveau: (n: "HAVO" | "VWO" | "ALLE") => void;
+  matrixLeerjaar: string;
+  setMatrixLeerjaar: (j: string) => void;
   resetAppState: () => void;
 };
 
@@ -345,6 +354,10 @@ const createInitialState = (): Pick<
   | "weekIdxWO"
   | "niveauWO"
   | "leerjaarWO"
+  | "matrixStartIdx"
+  | "matrixCount"
+  | "matrixNiveau"
+  | "matrixLeerjaar"
 > => ({
   docs: [],
   docRows: {},
@@ -359,6 +372,10 @@ const createInitialState = (): Pick<
   weekIdxWO: 0,
   niveauWO: "ALLE",
   leerjaarWO: "ALLE",
+  matrixStartIdx: -1,
+  matrixCount: 3,
+  matrixNiveau: "ALLE",
+  matrixLeerjaar: "ALLE",
 });
 
 export const useAppStore = create<State>()(
@@ -654,6 +671,23 @@ export const useAppStore = create<State>()(
       setWeekIdxWO: (n) => set({ weekIdxWO: n }),
       setNiveauWO: (n) => set({ niveauWO: n }),
       setLeerjaarWO: (j) => set({ leerjaarWO: j }),
+      setMatrixStartIdx: (value) =>
+        set(() => {
+          const numeric = Number.isFinite(value) ? Math.floor(value) : -1;
+          return { matrixStartIdx: Math.max(-1, numeric) };
+        }),
+      setMatrixCount: (value) =>
+        set(() => {
+          const numeric = Number.isFinite(value) ? Math.floor(value) : 3;
+          const clamped = Math.min(6, Math.max(1, numeric));
+          return { matrixCount: clamped };
+        }),
+      setMatrixNiveau: (n) =>
+        set({ matrixNiveau: n === "HAVO" || n === "VWO" || n === "ALLE" ? n : "ALLE" }),
+      setMatrixLeerjaar: (j) => {
+        const next = j && j.trim() ? j : "ALLE";
+        set({ matrixLeerjaar: next });
+      },
 
       resetAppState: () => {
         const initial = createInitialState();
@@ -677,6 +711,10 @@ export const useAppStore = create<State>()(
         weekIdxWO: state.weekIdxWO,
         niveauWO: state.niveauWO,
         leerjaarWO: state.leerjaarWO,
+        matrixStartIdx: state.matrixStartIdx,
+        matrixCount: state.matrixCount,
+        matrixNiveau: state.matrixNiveau,
+        matrixLeerjaar: state.matrixLeerjaar,
       }),
     }
   )

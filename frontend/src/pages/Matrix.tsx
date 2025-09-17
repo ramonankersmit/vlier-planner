@@ -170,7 +170,7 @@ function MatrixCell({
   const hasOpmerkingen = hasMeaningfulContent(data?.opmerkingen);
   const hasLesstof = hasMeaningfulContent(data?.lesstof);
   const hasDeadlines = hasMeaningfulContent(data?.deadlines);
-  const deadlineLabel = hasDeadlines ? data?.deadlines : "-";
+  const deadlineLabel = hasDeadlines ? data?.deadlines ?? "" : "";
   const deadlineTitle = hasDeadlines ? data?.date || data?.deadlines || "" : "";
   const combinedItems = [
     ...autoItems.map((item, idx) => ({
@@ -265,22 +265,135 @@ function MatrixCell({
   return (
     <td className="px-4 py-2 align-top">
       <div className="flex flex-col gap-2 min-w-[14rem]">
-        <div className="flex items-start gap-2">
-          <div className="flex-1 text-sm">
-            {mode === "perOpdracht" ? (
-              hasAnyItems ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs theme-muted">
+          {hasOpmerkingen && (
+            <span
+              role="img"
+              aria-label={`Opmerkingen voor ${vak}`}
+              title={data?.opmerkingen || ""}
+              className="text-sky-600"
+            >
+              <MessageCircle size={14} aria-hidden="true" />
+            </span>
+          )}
+          {hasLesstof && (
+            <span
+              role="img"
+              aria-label={`Lesstof voor ${vak}`}
+              title={data?.lesstof || ""}
+              className="text-emerald-600"
+            >
+              <BookOpen size={14} aria-hidden="true" />
+            </span>
+          )}
+          {hasDeadlines && (
+            <span
+              role="img"
+              aria-label={`Toets of deadline voor ${vak}`}
+              title={data?.deadlines || ""}
+              className="text-amber-600"
+            >
+              <CheckSquare size={14} aria-hidden="true" />
+            </span>
+          )}
+          <button
+            title={doc ? `Bron: ${doc.bestand}` : "Geen bron voor dit vak"}
+            aria-label={doc ? `Bron: ${doc.bestand}` : `Geen bron voor ${vak}`}
+            className="theme-muted disabled:opacity-40"
+            disabled={!onOpenDoc}
+            onClick={onOpenDoc}
+          >
+            <FileText size={14} />
+          </button>
+        </div>
+        <div className="text-sm">
+          {mode === "perOpdracht" ? (
+            hasAnyItems ? (
+              <ul className="space-y-1">
+                {combinedItems.map((item) => (
+                  <li key={item.doneKey} className="flex items-start gap-2">
+                    <label className="flex items-start gap-2 flex-1">
+                      <input
+                        aria-label={`Huiswerk ${vak}: ${item.text}`}
+                        type="checkbox"
+                        checked={item.checked}
+                        onChange={() => toggleItem(item)}
+                        className="mt-0.5"
+                      />
+                      <span className={`flex-1 ${item.checked ? "line-through theme-muted opacity-80" : ""}`}>
+                        {item.text}
+                      </span>
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="theme-muted hover:text-slate-700"
+                        onClick={() => startEditItem(item)}
+                        aria-label={`Bewerk huiswerk voor ${vak}`}
+                        title="Bewerk huiswerk"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="theme-muted hover:text-rose-600"
+                        onClick={() => handleRemoveItem(item)}
+                        aria-label={`Verwijder huiswerk voor ${vak}`}
+                        title="Verwijder huiswerk"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="theme-muted">-</div>
+            )
+          ) : (
+            <div className="flex flex-col gap-2">
+              {autoItems.length > 0 && hasAggregatedHomework && (
+                <label className="flex items-start gap-2">
+                  <input
+                    aria-label={`Huiswerk ${vak}`}
+                    type="checkbox"
+                    checked={allDone}
+                    onChange={toggleCombined}
+                    className="mt-0.5"
+                  />
+                  <span
+                    className={`flex-1 whitespace-pre-line ${
+                      allDone ? "line-through theme-muted opacity-80" : ""
+                    }`}
+                  >
+                    {aggregatedHomework}
+                  </span>
+                </label>
+              )}
+              {hasCustomItems && (
                 <ul className="space-y-1">
-                  {combinedItems.map((item) => (
+                  {customItems.map((item, idx) => (
                     <li key={item.doneKey} className="flex items-start gap-2">
                       <label className="flex items-start gap-2 flex-1">
                         <input
                           aria-label={`Huiswerk ${vak}: ${item.text}`}
                           type="checkbox"
-                          checked={item.checked}
-                          onChange={() => toggleItem(item)}
+                          checked={displayCustomDoneStates[idx]}
+                          onChange={() =>
+                            toggleItem({
+                              ...item,
+                              checked: displayCustomDoneStates[idx],
+                            })
+                          }
                           className="mt-0.5"
                         />
-                        <span className={`flex-1 ${item.checked ? "line-through theme-muted opacity-80" : ""}`}>
+                        <span
+                          className={`flex-1 ${
+                            displayCustomDoneStates[idx]
+                              ? "line-through theme-muted opacity-80"
+                              : ""
+                          }`}
+                        >
                           {item.text}
                         </span>
                       </label>
@@ -294,144 +407,31 @@ function MatrixCell({
                         >
                           <Pencil size={14} />
                         </button>
-                        <button
-                          type="button"
-                          className="theme-muted hover:text-rose-600"
-                          onClick={() => handleRemoveItem(item)}
-                          aria-label={`Verwijder huiswerk voor ${vak}`}
-                          title="Verwijder huiswerk"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {item.entryId && (
+                          <button
+                            type="button"
+                            className="theme-muted hover:text-rose-600"
+                            onClick={() => handleRemoveItem(item)}
+                            aria-label={`Verwijder huiswerk voor ${vak}`}
+                            title="Verwijder huiswerk"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <div className="theme-muted">-</div>
-              )
-            ) : (
-              <div className="flex flex-col gap-2">
-                {autoItems.length > 0 && hasAggregatedHomework && (
-                  <label className="flex items-start gap-2">
-                    <input
-                      aria-label={`Huiswerk ${vak}`}
-                      type="checkbox"
-                      checked={allDone}
-                      onChange={toggleCombined}
-                      className="mt-0.5"
-                    />
-                    <span
-                      className={`flex-1 whitespace-pre-line ${
-                        allDone ? "line-through theme-muted opacity-80" : ""
-                      }`}
-                    >
-                      {aggregatedHomework}
-                    </span>
-                  </label>
-                )}
-                {hasCustomItems && (
-                  <ul className="space-y-1">
-                    {customItems.map((item, idx) => (
-                      <li key={item.doneKey} className="flex items-start gap-2">
-                        <label className="flex items-start gap-2 flex-1">
-                          <input
-                            aria-label={`Huiswerk ${vak}: ${item.text}`}
-                            type="checkbox"
-                            checked={displayCustomDoneStates[idx]}
-                            onChange={() =>
-                              toggleItem({
-                                ...item,
-                                checked: displayCustomDoneStates[idx],
-                              })
-                            }
-                            className="mt-0.5"
-                          />
-                          <span
-                            className={`flex-1 ${
-                              displayCustomDoneStates[idx]
-                                ? "line-through theme-muted opacity-80"
-                                : ""
-                            }`}
-                          >
-                            {item.text}
-                          </span>
-                        </label>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="theme-muted hover:text-slate-700"
-                            onClick={() => startEditItem(item)}
-                            aria-label={`Bewerk huiswerk voor ${vak}`}
-                            title="Bewerk huiswerk"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          {item.entryId && (
-                            <button
-                              type="button"
-                              className="theme-muted hover:text-rose-600"
-                              onClick={() => handleRemoveItem(item)}
-                              aria-label={`Verwijder huiswerk voor ${vak}`}
-                              title="Verwijder huiswerk"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {!hasAnyItems && <div className="theme-muted">-</div>}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-1 self-start">
-            {hasOpmerkingen && (
-              <span
-                role="img"
-                aria-label={`Opmerkingen voor ${vak}`}
-                title={data?.opmerkingen || ""}
-                className="text-sky-600"
-              >
-                <MessageCircle size={14} aria-hidden="true" />
-              </span>
-            )}
-            {hasLesstof && (
-              <span
-                role="img"
-                aria-label={`Lesstof voor ${vak}`}
-                title={data?.lesstof || ""}
-                className="text-emerald-600"
-              >
-                <BookOpen size={14} aria-hidden="true" />
-              </span>
-            )}
-            {hasDeadlines && (
-              <span
-                role="img"
-                aria-label={`Toets of deadline voor ${vak}`}
-                title={data?.deadlines || ""}
-                className="text-amber-600"
-              >
-                <CheckSquare size={14} aria-hidden="true" />
-              </span>
-            )}
-            <button
-              title={doc ? `Bron: ${doc.bestand}` : "Geen bron voor dit vak"}
-              aria-label={doc ? `Bron: ${doc.bestand}` : `Geen bron voor ${vak}`}
-              className="theme-muted disabled:opacity-40"
-              disabled={!onOpenDoc}
-              onClick={onOpenDoc}
-            >
-              <FileText size={14} />
-            </button>
-          </div>
+              )}
+              {!hasAnyItems && <div className="theme-muted">-</div>}
+            </div>
+          )}
         </div>
-        <div className={`text-xs theme-muted ${allDone ? "opacity-80" : ""}`} title={deadlineTitle}>
-          {deadlineLabel}
-        </div>
+        {hasDeadlines && (
+          <div className={`text-xs theme-muted ${allDone ? "opacity-80" : ""}`} title={deadlineTitle}>
+            {deadlineLabel}
+          </div>
+        )}
         {hiddenAutoItems.length > 0 && (
           <div className="rounded-md border border-dashed theme-border px-2 py-1 text-xs theme-muted">
             <div className="font-semibold uppercase tracking-wide text-[0.65rem]">Verborgen huiswerk</div>
@@ -534,6 +534,14 @@ export default function Matrix() {
   const customHomework = useAppStore((s) => s.customHomework);
   const addCustomHomework = useAppStore((s) => s.addCustomHomework);
   const removeCustomHomework = useAppStore((s) => s.removeCustomHomework);
+  const rawStartIdx = useAppStore((s) => s.matrixStartIdx);
+  const setStartIdx = useAppStore((s) => s.setMatrixStartIdx);
+  const count = useAppStore((s) => s.matrixCount);
+  const setCount = useAppStore((s) => s.setMatrixCount);
+  const niveau = useAppStore((s) => s.matrixNiveau);
+  const setNiveau = useAppStore((s) => s.setMatrixNiveau);
+  const leerjaar = useAppStore((s) => s.matrixLeerjaar);
+  const setLeerjaar = useAppStore((s) => s.setMatrixLeerjaar);
   const { openPreview } = useDocumentPreview();
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
@@ -550,11 +558,6 @@ export default function Matrix() {
       ),
     [activeDocs]
   );
-
-  const [startIdx, setStartIdx] = React.useState(0);
-  const [count, setCount] = React.useState(3); // 1–6
-  const [niveau, setNiveau] = React.useState<"HAVO" | "VWO" | "ALLE">("ALLE");
-  const [leerjaar, setLeerjaar] = React.useState("ALLE");
 
   React.useEffect(() => {
     if (!hasAnyDocs && niveau !== "ALLE") {
@@ -627,17 +630,18 @@ export default function Matrix() {
   const hasWeekData = allWeeks.length > 0;
   const disableWeekControls = !hasAnyDocs || !hasWeekData;
 
+  const startIdx = rawStartIdx < 0 ? 0 : rawStartIdx;
   const maxStart = Math.max(0, allWeeks.length - count);
   const clampedStart = Math.min(startIdx, maxStart);
   const weeks = allWeeks.slice(clampedStart, clampedStart + count);
 
   const prev = () => {
     if (disableWeekControls) return;
-    setStartIdx((i) => Math.max(0, i - 1));
+    setStartIdx(Math.max(0, clampedStart - 1));
   };
   const next = () => {
     if (disableWeekControls) return;
-    setStartIdx((i) => Math.min(maxStart, i + 1));
+    setStartIdx(Math.min(maxStart, clampedStart + 1));
   };
   const goThisWeek = React.useCallback(() => {
     if (disableWeekControls) return;
@@ -647,14 +651,21 @@ export default function Matrix() {
     setStartIdx(start);
   }, [allWeeks, count, disableWeekControls]);
 
-  // >>> Eerste load: centreer venster rond huidige week
   React.useEffect(() => {
     if (disableWeekControls) {
-      setStartIdx(0);
-    } else {
-      goThisWeek();
+      if (rawStartIdx !== -1) {
+        setStartIdx(-1);
+      }
+      return;
     }
-  }, [disableWeekControls, goThisWeek]);
+    if (rawStartIdx < 0) {
+      goThisWeek();
+      return;
+    }
+    if (clampedStart !== startIdx) {
+      setStartIdx(clampedStart);
+    }
+  }, [disableWeekControls, rawStartIdx, clampedStart, startIdx, goThisWeek, setStartIdx]);
 
   const hasVisibleData = weeks.length > 0 && visibleVakken.length > 0;
   const showNoDataForFilters = hasAnyDocs && hasWeekData && !hasVisibleData;

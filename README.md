@@ -46,9 +46,6 @@ npm run dev
 3. Upload één of meerdere studiewijzers via _Uploads_.
 4. Beheer huiswerk in Weekoverzicht of Matrix overzicht en bekijk events via _Belangrijke events_.
 
-## Overige info
-- De repo bevat een `.devcontainer` voor GitHub Codespaces (Python 3.11 + Node 20).
-- Exporteren naar CSV/iCal is nog niet geïmplementeerd.
 
 ## Licentie
 MIT

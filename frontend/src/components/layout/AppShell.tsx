@@ -1,10 +1,12 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
+import packageJson from "../../../package.json";
 import { useAppStore } from "../../app/store";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useAppStore((state) => state.theme);
   const backgroundImage = useAppStore((state) => state.backgroundImage);
+  const appVersion = packageJson.version ?? "0.0.0";
 
   const themeStyle = React.useMemo(() => {
     const base = {
@@ -98,7 +100,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
       <footer className="mx-auto max-w-6xl px-4 py-5 text-xs theme-muted">
-        © {new Date().getFullYear()} Het Vlier Studiewijzer Planner - made by Ramon Ankersmit
+        © {new Date().getFullYear()} Het Vlier Studiewijzer Planner · versie {appVersion} · made by Ramon Ankersmit
       </footer>
     </div>
   );
