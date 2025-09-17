@@ -7,6 +7,8 @@ import {
   CheckSquare,
   Plus,
   Trash2,
+  Pencil,
+  Undo2,
 } from "lucide-react";
 import {
   useAppStore,
@@ -25,6 +27,19 @@ import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
 import { hasMeaningfulContent } from "../lib/contentUtils";
+
+type MatrixItem = {
+  text: string;
+  originalText: string;
+  doneKey: string;
+  isCustom: boolean;
+  entryId?: string;
+  hasOverride?: boolean;
+};
+
+type EditingItem =
+  | { type: "auto"; doneKey: string; originalText: string }
+  | { type: "custom"; doneKey: string; entryId: string; originalText: string };
 
 function MatrixCell({
   vak,
@@ -53,23 +68,49 @@ function MatrixCell({
 }) {
   const [adding, setAdding] = React.useState(false);
   const [customText, setCustomText] = React.useState("");
+  const [editing, setEditing] = React.useState<EditingItem | null>(null);
+  const [editText, setEditText] = React.useState("");
   const baseKey = `${week.id}:${vak}`;
+  const homeworkAdjustments = useAppStore((s) => s.homeworkAdjustments) ?? {};
+  const hideHomeworkItem = useAppStore((s) => s.hideHomeworkItem);
+  const restoreHomeworkItem = useAppStore((s) => s.restoreHomeworkItem);
+  const overrideHomeworkItem = useAppStore((s) => s.overrideHomeworkItem);
+  const clearHomeworkOverride = useAppStore((s) => s.clearHomeworkOverride);
+  const updateCustomHomework = useAppStore((s) => s.updateCustomHomework);
   const storedItems =
     Array.isArray(data?.huiswerkItems) && data?.huiswerkItems.length
       ? data.huiswerkItems
       : undefined;
   const homeworkItems = (storedItems ?? splitHomeworkItems(data?.huiswerk)).map((item) => item.trim());
   const filteredHomeworkItems = homeworkItems.filter((item) => hasMeaningfulContent(item));
+  const adjustmentsForVak = homeworkAdjustments[week.id]?.[vak];
+  const hiddenMap = adjustmentsForVak?.hidden ?? {};
+  const overrideMap = adjustmentsForVak?.overrides ?? {};
+  const hasAdjustments = Object.keys(hiddenMap).length > 0 || Object.keys(overrideMap).length > 0;
   const normalizedCustom = customHomework
     .map((entry) => ({ ...entry, text: entry.text.trim() }))
     .filter((entry) => hasMeaningfulContent(entry.text));
-  const autoItems = filteredHomeworkItems.map((text, idx) => ({
+  const baseAutoItems: MatrixItem[] = filteredHomeworkItems.map((text, idx) => ({
     text,
+    originalText: text,
     doneKey: `${baseKey}:${idx}`,
     isCustom: false,
   }));
-  const customItems = normalizedCustom.map((entry) => ({
+  const autoItems: MatrixItem[] = baseAutoItems
+    .filter((item) => !hiddenMap[item.doneKey])
+    .map((item) => {
+      const override = overrideMap[item.doneKey];
+      return override ? { ...item, text: override, hasOverride: true } : item;
+    });
+  const hiddenAutoItems: MatrixItem[] = baseAutoItems
+    .filter((item) => hiddenMap[item.doneKey])
+    .map((item) => {
+      const override = overrideMap[item.doneKey];
+      return override ? { ...item, text: override, hasOverride: true } : item;
+    });
+  const customItems: MatrixItem[] = normalizedCustom.map((entry) => ({
     text: entry.text,
+    originalText: entry.text,
     doneKey: `${baseKey}:custom:${entry.id}`,
     isCustom: true,
     entryId: entry.id,
@@ -102,7 +143,7 @@ function MatrixCell({
     setDoneState(baseKey, false);
   }, [shouldAdoptBaseState, autoItems, baseKey, setDoneState]);
 
-  const toggleItem = (item: { doneKey: string; isCustom: boolean; checked: boolean }) => {
+  const toggleItem = (item: MatrixItem & { checked: boolean }) => {
     const next = !item.checked;
     if (!item.isCustom) {
       setDoneState(baseKey, false);
@@ -122,7 +163,7 @@ function MatrixCell({
   };
 
   const aggregatedHomework =
-    hasMeaningfulContent(data?.huiswerk)
+    hasMeaningfulContent(data?.huiswerk) && !hasAdjustments
       ? data?.huiswerk ?? ""
       : autoItems.map((item) => item.text).join("\n");
   const hasAggregatedHomework = hasMeaningfulContent(aggregatedHomework);
@@ -145,6 +186,8 @@ function MatrixCell({
   const hasCustomItems = customItems.length > 0;
 
   const startAdd = () => {
+    setEditing(null);
+    setEditText("");
     setAdding(true);
   };
 
@@ -162,6 +205,61 @@ function MatrixCell({
     onAddCustom(trimmed);
     setCustomText("");
     setAdding(false);
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setEditText("");
+  };
+
+  const startEditItem = (item: MatrixItem) => {
+    if (item.isCustom && !item.entryId) {
+      return;
+    }
+    setAdding(false);
+    if (item.isCustom && item.entryId) {
+      setEditing({ type: "custom", doneKey: item.doneKey, entryId: item.entryId, originalText: item.originalText });
+    } else {
+      setEditing({ type: "auto", doneKey: item.doneKey, originalText: item.originalText });
+    }
+    setEditText(item.text);
+  };
+
+  const submitEdit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editing) return;
+    const trimmed = editText.trim();
+    if (!hasMeaningfulContent(trimmed)) {
+      return;
+    }
+    if (editing.type === "custom") {
+      updateCustomHomework(week.id, vak, editing.entryId, trimmed);
+    } else {
+      if (trimmed === editing.originalText) {
+        clearHomeworkOverride(week.id, vak, editing.doneKey);
+      } else {
+        overrideHomeworkItem(week.id, vak, editing.doneKey, trimmed);
+      }
+    }
+    cancelEdit();
+  };
+
+  const handleRemoveItem = (item: MatrixItem) => {
+    if (item.isCustom && item.entryId) {
+      onRemoveCustom(item.entryId);
+    } else {
+      hideHomeworkItem(week.id, vak, item.doneKey);
+    }
+    if (editing?.doneKey === item.doneKey) {
+      cancelEdit();
+    }
+  };
+
+  const handleRestore = (itemKey: string) => {
+    restoreHomeworkItem(week.id, vak, itemKey);
+    if (editing?.doneKey === itemKey) {
+      cancelEdit();
+    }
   };
 
   return (
@@ -186,16 +284,26 @@ function MatrixCell({
                           {item.text}
                         </span>
                       </label>
-                      {item.isCustom && item.entryId && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="theme-muted hover:text-slate-700"
+                          onClick={() => startEditItem(item)}
+                          aria-label={`Bewerk huiswerk voor ${vak}`}
+                          title="Bewerk huiswerk"
+                        >
+                          <Pencil size={14} />
+                        </button>
                         <button
                           type="button"
                           className="theme-muted hover:text-rose-600"
-                          onClick={() => onRemoveCustom(item.entryId!)}
-                          aria-label={`Verwijder eigen huiswerk voor ${vak}`}
+                          onClick={() => handleRemoveItem(item)}
+                          aria-label={`Verwijder huiswerk voor ${vak}`}
+                          title="Verwijder huiswerk"
                         >
                           <Trash2 size={14} />
                         </button>
-                      )}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -233,8 +341,7 @@ function MatrixCell({
                             checked={displayCustomDoneStates[idx]}
                             onChange={() =>
                               toggleItem({
-                                doneKey: item.doneKey,
-                                isCustom: true,
+                                ...item,
                                 checked: displayCustomDoneStates[idx],
                               })
                             }
@@ -250,16 +357,28 @@ function MatrixCell({
                             {item.text}
                           </span>
                         </label>
-                        {item.entryId && (
+                        <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className="theme-muted hover:text-rose-600"
-                            onClick={() => onRemoveCustom(item.entryId!)}
-                            aria-label={`Verwijder eigen huiswerk voor ${vak}`}
+                            className="theme-muted hover:text-slate-700"
+                            onClick={() => startEditItem(item)}
+                            aria-label={`Bewerk huiswerk voor ${vak}`}
+                            title="Bewerk huiswerk"
                           >
-                            <Trash2 size={14} />
+                            <Pencil size={14} />
                           </button>
-                        )}
+                          {item.entryId && (
+                            <button
+                              type="button"
+                              className="theme-muted hover:text-rose-600"
+                              onClick={() => handleRemoveItem(item)}
+                              aria-label={`Verwijder huiswerk voor ${vak}`}
+                              title="Verwijder huiswerk"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -300,13 +419,6 @@ function MatrixCell({
               </span>
             )}
             <button
-              onClick={adding ? cancelAdd : startAdd}
-              title="Eigen huiswerk toevoegen"
-              aria-label={`Voeg huiswerk toe voor ${vak}`}
-            >
-              <Plus size={14} className="theme-muted" />
-            </button>
-            <button
               title={doc ? `Bron: ${doc.bestand}` : "Geen bron voor dit vak"}
               aria-label={doc ? `Bron: ${doc.bestand}` : `Geen bron voor ${vak}`}
               className="theme-muted disabled:opacity-40"
@@ -320,6 +432,54 @@ function MatrixCell({
         <div className={`text-xs theme-muted ${allDone ? "opacity-80" : ""}`} title={deadlineTitle}>
           {deadlineLabel}
         </div>
+        {hiddenAutoItems.length > 0 && (
+          <div className="rounded-md border border-dashed theme-border px-2 py-1 text-xs theme-muted">
+            <div className="font-semibold uppercase tracking-wide text-[0.65rem]">Verborgen huiswerk</div>
+            <ul className="mt-1 space-y-1">
+              {hiddenAutoItems.map((item) => (
+                <li key={`hidden-${item.doneKey}`} className="flex items-center gap-2">
+                  <span className="flex-1 line-through">{item.text}</span>
+                  <button
+                    type="button"
+                    className="theme-muted hover:text-slate-700"
+                    onClick={() => handleRestore(item.doneKey)}
+                    aria-label={`Herstel huiswerk voor ${vak}`}
+                    title="Herstel huiswerk"
+                  >
+                    <Undo2 size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {editing && (
+          <form onSubmit={submitEdit} className="flex flex-col gap-2 text-xs">
+            <textarea
+              className="w-full rounded-md border theme-border px-2 py-1"
+              rows={2}
+              value={editText}
+              onChange={(event) => setEditText(event.target.value)}
+              placeholder="Huiswerk aanpassen"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                className="rounded-md border theme-border theme-surface px-2 py-1"
+                onClick={cancelEdit}
+              >
+                Annuleren
+              </button>
+              <button
+                type="submit"
+                className="rounded-md bg-slate-900 text-white px-3 py-1 disabled:opacity-40"
+                disabled={!hasMeaningfulContent(editText)}
+              >
+                Opslaan
+              </button>
+            </div>
+          </form>
+        )}
         {adding && (
           <form onSubmit={submitCustom} className="flex flex-col gap-2 text-xs">
             <textarea
@@ -346,6 +506,18 @@ function MatrixCell({
               </button>
             </div>
           </form>
+        )}
+        {!adding && !editing && (
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
+            onClick={startAdd}
+            title="Eigen huiswerk toevoegen"
+            aria-label={`Voeg huiswerk toe voor ${vak}`}
+          >
+            <Plus size={14} />
+            <span>Eigen huiswerk toevoegen</span>
+          </button>
         )}
       </div>
     </td>
@@ -506,7 +678,7 @@ export default function Matrix() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-lg font-semibold theme-text">Matrix</h1>
+        <h1 className="text-lg font-semibold theme-text">Matrix overzicht</h1>
         <div className="mt-1 text-sm theme-muted">{windowLabel}</div>
       </div>
       <div className="mb-4 flex flex-wrap gap-2 items-center">
