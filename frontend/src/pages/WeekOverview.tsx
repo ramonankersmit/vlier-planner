@@ -544,11 +544,13 @@ function Card({
                 ✕
               </button>
             </div>
-            <div className="text-sm whitespace-pre-wrap">
-              Lesstof: {data?.lesstof || "—"}
-              {"
-"}
-              Opmerkingen: {data?.opmerkingen || "—"}
+            <div className="text-sm space-y-2">
+              <p className="whitespace-pre-wrap">
+                <span className="font-medium">Lesstof:</span> {data?.lesstof || "—"}
+              </p>
+              <p className="whitespace-pre-wrap">
+                <span className="font-medium">Opmerkingen:</span> {data?.opmerkingen || "—"}
+              </p>
             </div>
           </div>
         </div>
