@@ -1,4 +1,6 @@
-from typing import List, Optional, Dict, Literal
+from datetime import date
+from typing import Dict, List, Optional, Literal
+
 from pydantic import BaseModel
 
 SessionType = Literal["lecture", "workshop", "exam", "deadline", "other"]
@@ -34,10 +36,18 @@ class Session(BaseModel):
     study_unit_id: str
     week: int
     year: int
-    date: str
+    date: date
     type: SessionType
     topic: Optional[str] = None
     location: Optional[str] = None
+    label: Optional[str] = None
+    objectives: Optional[List[str]] = None
+    homework: Optional[str] = None
+    assignment: Optional[str] = None
+    deadline: Optional[date] = None
+    test: Optional[Dict[str, Optional[str]]] = None
+    notes: Optional[str] = None
+    class_group: Optional[str] = None
     resources: List[Resource] = []
 
 

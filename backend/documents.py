@@ -62,7 +62,10 @@ def build_doc_meta(parse_id: str, source_file: str, model: NormalizedModel) -> d
     study_unit = model.study_units[0] if model.study_units else None
     vak = study_unit.name if study_unit else source_file
     niveau = (study_unit.level or "Onbekend").upper() if study_unit else "ONBEKEND"
-    leerjaar = str(study_unit.year) if study_unit and study_unit.year is not None else ""
+    if study_unit and study_unit.year and study_unit.year > 0:
+        leerjaar = str(study_unit.year)
+    else:
+        leerjaar = ""
     periode = study_unit.period if study_unit and study_unit.period is not None else 1
 
     weeks, years = _collect_weeks_and_years(model)
@@ -95,24 +98,32 @@ def build_doc_meta(parse_id: str, source_file: str, model: NormalizedModel) -> d
 def _session_to_row(session) -> dict[str, Any]:  # type: ignore[no-untyped-def]
     resources = [
         {"type": "link", "title": res.label, "url": res.url}
-        for res in session.resources
+        for res in getattr(session, "resources", [])
         if getattr(res, "label", None) or getattr(res, "url", None)
     ]
 
+    datum = getattr(session, "date", None)
+    if datum is not None and hasattr(datum, "isoformat"):
+        datum = datum.isoformat()
+
+    deadline = getattr(session, "deadline", None)
+    if deadline is not None and hasattr(deadline, "isoformat"):
+        deadline = deadline.isoformat()
+
     return {
-        "week": session.week,
-        "datum": session.date,
-        "les": session.type.capitalize() if session.type else None,
-        "onderwerp": session.topic,
-        "leerdoelen": None,
-        "huiswerk": None,
-        "opdracht": None,
-        "inleverdatum": None,
-        "toets": None,
+        "week": getattr(session, "week", None),
+        "datum": datum,
+        "les": getattr(session, "label", None) or (session.type.capitalize() if getattr(session, "type", None) else None),
+        "onderwerp": getattr(session, "topic", None),
+        "leerdoelen": getattr(session, "objectives", None),
+        "huiswerk": getattr(session, "homework", None),
+        "opdracht": getattr(session, "assignment", None),
+        "inleverdatum": deadline,
+        "toets": getattr(session, "test", None),
         "bronnen": resources or None,
-        "notities": None,
-        "klas_of_groep": None,
-        "locatie": session.location,
+        "notities": getattr(session, "notes", None),
+        "klas_of_groep": getattr(session, "class_group", None),
+        "locatie": getattr(session, "location", None),
     }
 
 

@@ -1,7 +1,7 @@
 from docx import Document
 from typing import Optional, List, Tuple, Iterable, Dict
 import re
-from models import DocMeta, DocRow  # importeer uit models
+from backend.models import DocMeta, DocRow
 
 # ---------------------------
 # Regex patronen & helpers
