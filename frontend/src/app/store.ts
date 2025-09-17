@@ -98,6 +98,9 @@ type State = {
   backgroundImage: string | null;
   setBackgroundImage: (value: string | null) => void;
   resetBackgroundImage: () => void;
+  surfaceOpacity: number;
+  setSurfaceOpacity: (value: number) => void;
+  resetSurfaceOpacity: () => void;
 
   // ==== afvinkstatus gedeeld ====
   doneMap: Record<string, boolean>;
@@ -350,6 +353,7 @@ const createInitialState = (): Pick<
   | "huiswerkWeergave"
   | "theme"
   | "backgroundImage"
+  | "surfaceOpacity"
   | "doneMap"
   | "weekIdxWO"
   | "niveauWO"
@@ -368,6 +372,7 @@ const createInitialState = (): Pick<
   huiswerkWeergave: "perOpdracht",
   theme: { ...defaultTheme },
   backgroundImage: null,
+  surfaceOpacity: 100,
   doneMap: {},
   weekIdxWO: 0,
   niveauWO: "ALLE",
@@ -640,6 +645,13 @@ export const useAppStore = create<State>()(
       resetTheme: () => set({ theme: { ...defaultTheme } }),
       setBackgroundImage: (value) => set({ backgroundImage: value }),
       resetBackgroundImage: () => set({ backgroundImage: null }),
+      setSurfaceOpacity: (value) =>
+        set(() => {
+          const numeric = Number.isFinite(value) ? Math.round(value) : 100;
+          const clamped = Math.min(100, Math.max(0, numeric));
+          return { surfaceOpacity: clamped };
+        }),
+      resetSurfaceOpacity: () => set({ surfaceOpacity: 100 }),
 
       // ----------------------------
       // done-map
@@ -707,6 +719,7 @@ export const useAppStore = create<State>()(
         huiswerkWeergave: state.huiswerkWeergave,
         theme: state.theme,
         backgroundImage: state.backgroundImage,
+        surfaceOpacity: state.surfaceOpacity,
         doneMap: state.doneMap,
         weekIdxWO: state.weekIdxWO,
         niveauWO: state.niveauWO,
