@@ -62,8 +62,7 @@ export default function Uploads() {
   });
 
   const gridTemplate =
-    "grid-cols-[90px_minmax(220px,3fr)_minmax(180px,2fr)_minmax(70px,0.7fr)_minmax(80px,0.7fr)" +
-    "_minmax(60px,0.6fr)_minmax(70px,0.6fr)_minmax(70px,0.6fr)_repeat(2,minmax(90px,0.9fr))]";
+    "grid-cols-[90px_minmax(260px,3fr)_minmax(220px,2.2fr)_repeat(5,minmax(0,1fr))_repeat(2,minmax(90px,0.9fr))]";
 
   async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
     const files = ev.target.files;
