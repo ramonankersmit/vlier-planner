@@ -5,6 +5,8 @@ import threading
 import webbrowser
 from pathlib import Path
 
+os.environ.setdefault("SERVE_FRONTEND", "1")
+
 import uvicorn
 
 from backend import main as backend_main
@@ -29,8 +31,6 @@ def main() -> None:
 
     host = os.getenv("VLIER_HOST", "127.0.0.1")
     port = int(os.getenv("VLIER_PORT", "8000"))
-
-    os.environ.setdefault("SERVE_FRONTEND", "1")
 
     if should_enable(os.getenv("VLIER_OPEN_BROWSER")):
         open_browser(host, port)

@@ -21,6 +21,8 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="Vlier Planner API")
 serve_frontend = os.getenv("SERVE_FRONTEND", "0").lower() in {"1", "true", "yes", "on"}
 
+logger.info("SERVE_FRONTEND resolved to %s", serve_frontend)
+
 if not serve_frontend:
     app.add_middleware(
         CORSMiddleware,
@@ -133,13 +135,16 @@ def get_assessments(period: int, year: int):
 if serve_frontend:
     if hasattr(sys, "_MEIPASS"):
         frontend_base = Path(sys._MEIPASS) / "backend"
+        logger.info("Detected PyInstaller _MEIPASS, using base %s", frontend_base)
     else:
         frontend_base = Path(__file__).resolve().parent
+        logger.info("Using source tree base %s for frontend assets", frontend_base)
 
     FRONTEND_DIST = frontend_base / "static" / "dist"
     index_file = FRONTEND_DIST / "index.html"
 
     if FRONTEND_DIST.exists() and index_file.exists():
+        logger.info("Serving frontend build from %s", FRONTEND_DIST)
         app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
 
         @app.get("/{full_path:path}")
