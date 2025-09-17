@@ -1,4 +1,11 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const defaultBase = () => {
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+  return "http://localhost:8000";
+};
+
+const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || defaultBase();
 
 async function jsonFetch(url: string, opts?: RequestInit) {
   const res = await fetch(url, opts);

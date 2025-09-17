@@ -38,8 +38,15 @@ export type DocRow = {
   locatie?: string | null;
 };
 
-export const API_BASE = "http://localhost:8000";
-const BASE = API_BASE;
+const resolveDefaultBase = () => {
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+  return "http://localhost:8000";
+};
+
+export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? resolveDefaultBase();
+const BASE = API_BASE.replace(/\/$/, "");
 
 export async function apiListDocs(): Promise<DocMeta[]> {
   const r = await fetch(`${BASE}/api/docs`);
