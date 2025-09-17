@@ -52,9 +52,9 @@ export function DocumentPreviewProvider({
       try {
         const result = await apiGetDocPreview(doc.fileId);
         if (cancelled) return;
-        if (result.mediaType.includes("html") && result.html) {
+        if (result.html) {
           setPreview({ mediaType: result.mediaType, html: result.html });
-        } else if (result.url) {
+        } else if (result.url && result.mediaType?.toLowerCase().includes("pdf")) {
           const iframeUrl = result.url.startsWith("http")
             ? result.url
             : `${API_BASE}${result.url}`;

@@ -4,7 +4,7 @@ import logging
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from typing import Any, List, Union
+from typing import Any, List, Tuple, Union
 from pathlib import Path
 import mimetypes
 import shutil
@@ -43,6 +43,8 @@ STORAGE = Path(__file__).parent / "storage" / "uploads"
 STORAGE.mkdir(parents=True, exist_ok=True)
 STATE_FILE = Path(__file__).parent / "storage" / "state.json"
 STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+INLINE_PREVIEW_MEDIA_TYPES = {"application/pdf"}
 
 @dataclass
 class StoredDoc:
@@ -127,6 +129,124 @@ _load_state()
 # Endpoints
 # -----------------------------
 
+
+def _resolve_doc_file(file_id: str, meta: DocMeta) -> Tuple[Path, str]:
+    suffix = Path(meta.bestand).suffix.lower()
+    file_path = STORAGE / f"{file_id}{suffix}"
+    if not file_path.exists():
+        match = next(STORAGE.glob(f"{file_id}.*"), None)
+        if not match or not match.exists():
+            raise HTTPException(404, "File missing")
+        file_path = match
+        suffix = file_path.suffix.lower()
+    return file_path, suffix
+
+
+def _build_file_response(file_id: str, stored: StoredDoc, inline: bool) -> FileResponse:
+    file_path, _ = _resolve_doc_file(file_id, stored.meta)
+    media_type, _ = mimetypes.guess_type(file_path.name)
+    response = FileResponse(
+        file_path,
+        media_type=media_type or "application/octet-stream",
+        filename=None if inline else stored.meta.bestand,
+    )
+
+    if inline:
+        safe_filename = stored.meta.bestand.replace("\"", "\\\"")
+        disposition = f'inline; filename="{safe_filename}"'
+        quoted = quote(stored.meta.bestand)
+        if quoted:
+            disposition = f"{disposition}; filename*=UTF-8''{quoted}"
+        response.headers["Content-Disposition"] = disposition
+
+    return response
+
+
+def _format_cell_value(value: Any) -> str:
+    if value is None:
+        return "&nbsp;"
+    if isinstance(value, str):
+        escaped = escape(value).replace("\n", "<br/>")
+        return escaped or "&nbsp;"
+    if isinstance(value, (int, float)):
+        return escape(str(value))
+    if isinstance(value, list):
+        rendered = "<br/>".join(
+            escape(str(item)).replace("\n", "<br/>")
+            for item in value
+            if item not in (None, "")
+        )
+        return rendered or "&nbsp;"
+    if isinstance(value, dict):
+        pieces = []
+        for key, val in value.items():
+            if val in (None, ""):
+                continue
+            pieces.append(
+                "<div><strong>{}:</strong> {}</div>".format(
+                    escape(str(key)), escape(str(val)).replace("\n", "<br/>")
+                )
+            )
+        return "".join(pieces) or "&nbsp;"
+    return escape(str(value))
+
+
+def _render_rows_summary_html(stored: StoredDoc) -> str:
+    meta = stored.meta
+    parts: list[str] = ["<article class=\"doc-summary\">"]
+
+    title = escape(meta.bestand or meta.fileId)
+    parts.append(f"<h2>{title}</h2>")
+
+    meta_pairs: list[Tuple[str, Any]] = [
+        ("Vak", meta.vak),
+        ("Niveau", meta.niveau),
+        ("Leerjaar", meta.leerjaar),
+        ("Periode", meta.periode),
+        ("Begin week", meta.beginWeek),
+        ("Eind week", meta.eindWeek),
+    ]
+    if meta.schooljaar:
+        meta_pairs.append(("Schooljaar", meta.schooljaar))
+
+    parts.append("<dl class=\"doc-summary__meta\">")
+    for label, value in meta_pairs:
+        parts.append(f"<dt>{escape(str(label))}</dt>")
+        parts.append(f"<dd>{_format_cell_value(value)}</dd>")
+    parts.append("</dl>")
+
+    row_fields: list[Tuple[str, str]] = [
+        ("week", "Week"),
+        ("datum", "Datum"),
+        ("les", "Les"),
+        ("onderwerp", "Onderwerp"),
+        ("huiswerk", "Huiswerk"),
+        ("opdracht", "Opdracht"),
+        ("inleverdatum", "Inleverdatum"),
+    ]
+
+    if stored.rows:
+        parts.append("<table class=\"docx-table doc-summary__table\">")
+        parts.append("<thead><tr>")
+        for _, heading in row_fields:
+            parts.append(f"<th>{escape(heading)}</th>")
+        parts.append("</tr></thead><tbody>")
+
+        for row in stored.rows:
+            data = _row_to_dict(row)
+            parts.append("<tr>")
+            for key, _ in row_fields:
+                parts.append(f"<td>{_format_cell_value(data.get(key))}</td>")
+            parts.append("</tr>")
+
+        parts.append("</tbody></table>")
+    else:
+        parts.append("<p><em>Geen gestructureerde lesgegevens beschikbaar.</em></p>")
+
+    parts.append("</article>")
+    return "".join(parts)
+
+
 def _iter_docx_blocks(document: Document):
     body = document.element.body
     for child in body.iterchildren():
@@ -208,34 +328,15 @@ def get_doc_content(file_id: str, inline: bool = False):
     stored = DOCS.get(file_id)
     if not stored:
         raise HTTPException(404, "Not found")
+    return _build_file_response(file_id, stored, inline)
 
-    meta = stored.meta
-    suffix = Path(meta.bestand).suffix.lower()
-    file_path = STORAGE / f"{file_id}{suffix}"
-    if not file_path.exists():
-        # fallback: zoek naar willekeurige match voor het geval de suffix verschilt
-        match = next(STORAGE.glob(f"{file_id}.*"), None)
-        if not match or not match.exists():
-            raise HTTPException(404, "File missing")
-        file_path = match
-        suffix = file_path.suffix.lower()
 
-    media_type, _ = mimetypes.guess_type(file_path.name)
-    response = FileResponse(
-        file_path,
-        media_type=media_type or "application/octet-stream",
-        filename=None if inline else meta.bestand,
-    )
-
-    if inline:
-        safe_filename = meta.bestand.replace("\"", "\\\"")
-        disposition = f'inline; filename="{safe_filename}"'
-        quoted = quote(meta.bestand)
-        if quoted:
-            disposition = f"{disposition}; filename*=UTF-8''{quoted}"
-        response.headers["Content-Disposition"] = disposition
-
-    return response
+@app.get("/api/docs/{file_id}/source")
+def get_doc_source(file_id: str):
+    stored = DOCS.get(file_id)
+    if not stored:
+        raise HTTPException(404, "Not found")
+    return _build_file_response(file_id, stored, inline=False)
 
 
 @app.get("/api/docs/{file_id}/preview")
@@ -245,16 +346,9 @@ def get_doc_preview(file_id: str):
         raise HTTPException(404, "Not found")
 
     meta = stored.meta
-    suffix = Path(meta.bestand).suffix.lower()
-    file_path = STORAGE / f"{file_id}{suffix}"
-    if not file_path.exists():
-        match = next(STORAGE.glob(f"{file_id}.*"), None)
-        if not match or not match.exists():
-            raise HTTPException(404, "File missing")
-        file_path = match
-        suffix = file_path.suffix.lower()
-
+    file_path, suffix = _resolve_doc_file(file_id, stored.meta)
     media_type, _ = mimetypes.guess_type(file_path.name)
+
     if suffix == ".docx":
         html = _docx_to_html(file_path)
         return {
@@ -263,9 +357,17 @@ def get_doc_preview(file_id: str):
             "filename": meta.bestand,
         }
 
+    if media_type in INLINE_PREVIEW_MEDIA_TYPES:
+        return {
+            "mediaType": media_type or "application/octet-stream",
+            "url": f"/api/docs/{file_id}/content?inline=1",
+            "filename": meta.bestand,
+        }
+
+    html = _render_rows_summary_html(stored)
     return {
-        "mediaType": media_type or "application/octet-stream",
-        "url": f"/api/docs/{file_id}/content?inline=1",
+        "mediaType": "text/html",
+        "html": html,
         "filename": meta.bestand,
     }
 
