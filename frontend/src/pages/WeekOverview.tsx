@@ -168,7 +168,7 @@ function Card({
   const hasOpmerkingen = hasMeaningfulContent(data?.opmerkingen);
   const hasLesstof = hasMeaningfulContent(data?.lesstof);
   const hasDeadlines = hasMeaningfulContent(data?.deadlines);
-  const deadlineLabel = hasDeadlines ? data?.deadlines : "-";
+  const deadlineLabel = hasDeadlines ? data?.deadlines ?? "" : "";
   const deadlineTitle = hasDeadlines ? data?.date || data?.deadlines || "" : "";
   const combinedItems = [
     ...autoItems.map((item, idx) => ({
@@ -318,93 +318,21 @@ function Card({
         </div>
       </div>
 
-      {mode === "perOpdracht" ? (
-        hasAnyItems ? (
-          <ul className="space-y-1 text-sm">
-            {combinedItems.map((item) => (
-              <li key={item.doneKey} className="flex items-start gap-2">
-                <label className="flex items-start gap-2 flex-1">
-                  <input
-                    aria-label={`Huiswerk ${vak}: ${item.text}`}
-                    type="checkbox"
-                    checked={item.checked}
-                    onChange={() => toggleItem(item)}
-                    className="mt-0.5"
-                  />
-                  <span className={`flex-1 ${item.checked ? "line-through theme-muted opacity-80" : ""}`}>
-                    {item.text}
-                  </span>
-                </label>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    className="theme-muted hover:text-slate-700"
-                    onClick={() => startEditItem(item)}
-                    aria-label={`Bewerk huiswerk voor ${vak}`}
-                    title="Bewerk huiswerk"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    className="theme-muted hover:text-rose-600"
-                    onClick={() => handleRemoveItem(item)}
-                    aria-label={`Verwijder huiswerk voor ${vak}`}
-                    title="Verwijder huiswerk"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="text-sm theme-muted">-</div>
-        )
-      ) : (
-        <div className="flex flex-col gap-2 text-sm">
-          {autoItems.length > 0 && hasAggregatedHomework && (
-            <label className="flex items-start gap-2">
-              <input
-                aria-label={`Huiswerk ${vak}`}
-                type="checkbox"
-                checked={allDone}
-                onChange={toggleCombined}
-                className="mt-0.5"
-              />
-              <span
-                className={`flex-1 whitespace-pre-line ${
-                  allDone ? "line-through theme-muted opacity-80" : ""
-                }`}
-              >
-                {aggregatedHomework}
-              </span>
-            </label>
-          )}
-          {hasCustomItems && (
-            <ul className="space-y-1">
-              {customItems.map((item, idx) => (
+      <div className="flex flex-1 flex-col gap-3">
+        {mode === "perOpdracht" ? (
+          hasAnyItems ? (
+            <ul className="space-y-1 text-sm">
+              {combinedItems.map((item) => (
                 <li key={item.doneKey} className="flex items-start gap-2">
                   <label className="flex items-start gap-2 flex-1">
                     <input
                       aria-label={`Huiswerk ${vak}: ${item.text}`}
                       type="checkbox"
-                      checked={displayCustomDoneStates[idx]}
-                      onChange={() =>
-                        toggleItem({
-                          ...item,
-                          checked: displayCustomDoneStates[idx],
-                        })
-                      }
+                      checked={item.checked}
+                      onChange={() => toggleItem(item)}
                       className="mt-0.5"
                     />
-                    <span
-                      className={`flex-1 ${
-                        displayCustomDoneStates[idx]
-                          ? "line-through theme-muted opacity-80"
-                          : ""
-                      }`}
-                    >
+                    <span className={`flex-1 ${item.checked ? "line-through theme-muted opacity-80" : ""}`}>
                       {item.text}
                     </span>
                   </label>
@@ -418,112 +346,188 @@ function Card({
                     >
                       <Pencil size={14} />
                     </button>
-                    {item.entryId && (
-                      <button
-                        type="button"
-                        className="theme-muted hover:text-rose-600"
-                        onClick={() => handleRemoveItem(item)}
-                        aria-label={`Verwijder huiswerk voor ${vak}`}
-                        title="Verwijder huiswerk"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="theme-muted hover:text-rose-600"
+                      onClick={() => handleRemoveItem(item)}
+                      aria-label={`Verwijder huiswerk voor ${vak}`}
+                      title="Verwijder huiswerk"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </li>
               ))}
             </ul>
-          )}
-          {!hasAnyItems && <div className="theme-muted">-</div>}
-        </div>
-      )}
-
-      <div className={`text-sm theme-muted ${allDone ? "opacity-80" : ""}`} title={deadlineTitle}>
-        {deadlineLabel}
-      </div>
-
-      {hiddenAutoItems.length > 0 && (
-        <div className="rounded-md border border-dashed theme-border px-2 py-1 text-xs theme-muted">
-          <div className="font-semibold uppercase tracking-wide text-[0.65rem]">Verborgen huiswerk</div>
-          <ul className="mt-1 space-y-1">
-            {hiddenAutoItems.map((item) => (
-              <li key={`hidden-${item.doneKey}`} className="flex items-center gap-2">
-                <span className="flex-1 line-through">{item.text}</span>
-                <button
-                  type="button"
-                  className="theme-muted hover:text-slate-700"
-                  onClick={() => handleRestore(item.doneKey)}
-                  aria-label={`Herstel huiswerk voor ${vak}`}
-                  title="Herstel huiswerk"
+          ) : (
+            <div className="text-sm theme-muted">-</div>
+          )
+        ) : (
+          <div className="flex flex-col gap-2 text-sm">
+            {autoItems.length > 0 && hasAggregatedHomework && (
+              <label className="flex items-start gap-2">
+                <input
+                  aria-label={`Huiswerk ${vak}`}
+                  type="checkbox"
+                  checked={allDone}
+                  onChange={toggleCombined}
+                  className="mt-0.5"
+                />
+                <span
+                  className={`flex-1 whitespace-pre-line ${
+                    allDone ? "line-through theme-muted opacity-80" : ""
+                  }`}
                 >
-                  <Undo2 size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {editing && (
-        <form onSubmit={submitEdit} className="flex flex-col gap-2 text-sm">
-          <textarea
-            className="w-full rounded-md border theme-border px-2 py-1"
-            rows={2}
-            value={editText}
-            onChange={(event) => setEditText(event.target.value)}
-            placeholder="Huiswerk aanpassen"
-          />
-          <div className="flex gap-2 justify-end">
-            <button
-              type="button"
-              className="rounded-md border theme-border theme-surface px-2 py-1"
-              onClick={cancelEdit}
-            >
-              Annuleren
-            </button>
-            <button
-              type="submit"
-              className="rounded-md bg-slate-900 text-white px-3 py-1 disabled:opacity-40"
-              disabled={!hasMeaningfulContent(editText)}
-            >
-              Opslaan
-            </button>
+                  {aggregatedHomework}
+                </span>
+              </label>
+            )}
+            {hasCustomItems && (
+              <ul className="space-y-1">
+                {customItems.map((item, idx) => (
+                  <li key={item.doneKey} className="flex items-start gap-2">
+                    <label className="flex items-start gap-2 flex-1">
+                      <input
+                        aria-label={`Huiswerk ${vak}: ${item.text}`}
+                        type="checkbox"
+                        checked={displayCustomDoneStates[idx]}
+                        onChange={() =>
+                          toggleItem({
+                            ...item,
+                            checked: displayCustomDoneStates[idx],
+                          })
+                        }
+                        className="mt-0.5"
+                      />
+                      <span
+                        className={`flex-1 ${
+                          displayCustomDoneStates[idx]
+                            ? "line-through theme-muted opacity-80"
+                            : ""
+                        }`}
+                      >
+                        {item.text}
+                      </span>
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="theme-muted hover:text-slate-700"
+                        onClick={() => startEditItem(item)}
+                        aria-label={`Bewerk huiswerk voor ${vak}`}
+                        title="Bewerk huiswerk"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      {item.entryId && (
+                        <button
+                          type="button"
+                          className="theme-muted hover:text-rose-600"
+                          onClick={() => handleRemoveItem(item)}
+                          aria-label={`Verwijder huiswerk voor ${vak}`}
+                          title="Verwijder huiswerk"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!hasAnyItems && <div className="theme-muted">-</div>}
           </div>
-        </form>
-      )}
-
-      {adding && (
-        <form onSubmit={submitCustom} className="flex flex-col gap-2 text-sm">
-          <textarea
-            className="w-full rounded-md border theme-border px-2 py-1"
-            rows={2}
-            value={customText}
-            onChange={(event) => setCustomText(event.target.value)}
-            placeholder="Eigen huiswerk"
-          />
-          <div className="flex gap-2 justify-end">
-            <button
-              type="button"
-              className="rounded-md border theme-border theme-surface px-2 py-1"
-              onClick={cancelAdd}
-            >
-              Annuleren
-            </button>
-            <button
-              type="submit"
-              className="rounded-md bg-slate-900 text-white px-3 py-1 disabled:opacity-40"
-              disabled={!hasMeaningfulContent(customText)}
-            >
-              Opslaan
-            </button>
+        )}
+  
+        {hasDeadlines && (
+          <div className={`text-sm theme-muted ${allDone ? "opacity-80" : ""}`} title={deadlineTitle}>
+            {deadlineLabel}
           </div>
-        </form>
-      )}
-
+        )}
+  
+        {hiddenAutoItems.length > 0 && (
+          <div className="rounded-md border border-dashed theme-border px-2 py-1 text-xs theme-muted">
+            <div className="font-semibold uppercase tracking-wide text-[0.65rem]">Verborgen huiswerk</div>
+            <ul className="mt-1 space-y-1">
+              {hiddenAutoItems.map((item) => (
+                <li key={`hidden-${item.doneKey}`} className="flex items-center gap-2">
+                  <span className="flex-1 line-through">{item.text}</span>
+                  <button
+                    type="button"
+                    className="theme-muted hover:text-slate-700"
+                    onClick={() => handleRestore(item.doneKey)}
+                    aria-label={`Herstel huiswerk voor ${vak}`}
+                    title="Herstel huiswerk"
+                  >
+                    <Undo2 size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+  
+        {editing && (
+          <form onSubmit={submitEdit} className="flex flex-col gap-2 text-sm">
+            <textarea
+              className="w-full rounded-md border theme-border px-2 py-1"
+              rows={2}
+              value={editText}
+              onChange={(event) => setEditText(event.target.value)}
+              placeholder="Huiswerk aanpassen"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                className="rounded-md border theme-border theme-surface px-2 py-1"
+                onClick={cancelEdit}
+              >
+                Annuleren
+              </button>
+              <button
+                type="submit"
+                className="rounded-md bg-slate-900 text-white px-3 py-1 disabled:opacity-40"
+                disabled={!hasMeaningfulContent(editText)}
+              >
+                Opslaan
+              </button>
+            </div>
+          </form>
+        )}
+  
+        {adding && (
+          <form onSubmit={submitCustom} className="flex flex-col gap-2 text-sm">
+            <textarea
+              className="w-full rounded-md border theme-border px-2 py-1"
+              rows={2}
+              value={customText}
+              onChange={(event) => setCustomText(event.target.value)}
+              placeholder="Eigen huiswerk"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                className="rounded-md border theme-border theme-surface px-2 py-1"
+                onClick={cancelAdd}
+              >
+                Annuleren
+              </button>
+              <button
+                type="submit"
+                className="rounded-md bg-slate-900 text-white px-3 py-1 disabled:opacity-40"
+                disabled={!hasMeaningfulContent(customText)}
+              >
+                Opslaan
+              </button>
+            </div>
+          </form>
+        )}
+  
+      </div>
       {!adding && !editing && (
         <button
           type="button"
-          className="mt-auto flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900"
+          className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900"
           onClick={startAdd}
           title="Eigen huiswerk toevoegen"
           aria-label={`Voeg huiswerk toe voor ${vak}`}
