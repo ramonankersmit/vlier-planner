@@ -306,6 +306,7 @@ function MatrixCell({
             <FileText size={14} />
           </button>
         </div>
+        <div className="theme-divider" aria-hidden="true" />
         <div className="flex flex-1 flex-col gap-2">
           <div className="text-sm">
             {mode === "perOpdracht" ? (

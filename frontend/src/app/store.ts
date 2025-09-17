@@ -266,13 +266,28 @@ const computeWeekAggregation = (
         return normalized;
       };
 
-      addNormalized(accum.lesstof, row.onderwerp || row.les);
+      let vakantieOutsideHomework = false;
+
+      const normalizedLesstof = addNormalized(accum.lesstof, row.onderwerp || row.les);
+      if (normalizedLesstof?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
+        vakantieOutsideHomework = true;
+      }
       if ((!row.onderwerp && !row.les) && row.leerdoelen?.length) {
-        addNormalized(accum.lesstof, row.leerdoelen.join("; "));
+        const leerdoelText = addNormalized(accum.lesstof, row.leerdoelen.join("; "));
+        if (leerdoelText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
+          vakantieOutsideHomework = true;
+        }
       }
 
       const addHomework = (value?: string | null) => {
         const normalized = addNormalized(accum.huiswerk, value, { preserveLineBreaks: true });
+        if (
+          normalized &&
+          normalized.toLocaleLowerCase("nl-NL").includes("vakantie") &&
+          vakantieOutsideHomework
+        ) {
+          return;
+        }
         if (!normalized) return;
         const items = splitHomeworkItems(normalized);
         for (const item of items) {
@@ -280,14 +295,14 @@ const computeWeekAggregation = (
         }
       };
 
-      addHomework(row.huiswerk);
-      addHomework(row.opdracht);
-
       const toetsType = row.toets?.type;
       if (toetsType) {
         const normalizedType = normalizeText(toetsType);
         const normalizedWeight = normalizeText(row.toets?.weging ?? undefined);
         if (normalizedType) {
+          if (normalizedType.toLocaleLowerCase("nl-NL").includes("vakantie")) {
+            vakantieOutsideHomework = true;
+          }
           const label = normalizedWeight
             ? `${normalizedType} (weging ${normalizedWeight})`
             : normalizedType;
@@ -308,7 +323,13 @@ const computeWeekAggregation = (
       }
 
       recordDate(row.datum);
-      addNormalized(accum.opmerkingen, row.notities);
+      const opmerkingenText = addNormalized(accum.opmerkingen, row.notities);
+      if (opmerkingenText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
+        vakantieOutsideHomework = true;
+      }
+
+      addHomework(row.huiswerk);
+      addHomework(row.opdracht);
     }
   }
 
