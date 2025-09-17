@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -10,14 +11,35 @@ FRONTEND_DIR = ROOT / "frontend"
 BACKEND_STATIC_DIST = ROOT / "backend" / "static" / "dist"
 
 
+def resolve_tool(name: str) -> str:
+    """Return the absolute path to an executable, preferring Windows-specific extensions."""
+
+    candidates = [name]
+    if os.name == "nt":
+        candidates = [f"{name}.cmd", f"{name}.bat", name]
+
+    for candidate in candidates:
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+
+    pretty = ", ".join(candidates)
+    raise SystemExit(
+        f"Kon het hulpprogramma '{name}' niet vinden. Controleer of Node.js is geïnstalleerd en"
+        f" dat een van [{pretty}] in je PATH staat."
+    )
+
+
 def run(cmd: list[str], cwd: Path) -> None:
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
 def build_frontend(skip_install: bool) -> None:
+    npm = resolve_tool("npm")
+
     if not skip_install:
-        run(["npm", "install"], FRONTEND_DIR)
-    run(["npm", "run", "build"], FRONTEND_DIR)
+        run([npm, "install"], FRONTEND_DIR)
+    run([npm, "run", "build"], FRONTEND_DIR)
 
 
 def copy_dist() -> None:
