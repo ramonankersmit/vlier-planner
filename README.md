@@ -62,6 +62,31 @@ Handige omgevingsvariabelen:
 - `VLIER_OPEN_BROWSER=0` – onderdruk het automatisch openen van een browser.
 - `SERVE_FRONTEND=0` – forceer API-only modus (bijvoorbeeld voor lokale ontwikkeling met Vite).
 
+## Windows distributie bouwen met PyInstaller
+Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
+
+1. Zorg dat de frontend-build beschikbaar is in de backend:
+   ```bash
+   python tools/build_frontend.py
+   ```
+   Dit draait `npm install`, bouwt de frontend en kopieert de output naar `backend/static/dist`.
+2. Installeer PyInstaller in je (virtuele) omgeving:
+   ```bash
+   pip install pyinstaller
+   ```
+3. Bouw de executable vanuit de projectroot:
+   ```bash
+   pyinstaller run_app.py \
+     --name VlierPlanner \
+     --onefile \
+     --noconfirm \
+     --add-data "backend/static/dist;backend/static/dist" \
+     --collect-all vlier_parser \
+     --collect-all backend.parsers
+   ```
+   Pas opties als `--add-data` of `--collect-all` aan wanneer extra pakketten of assets nodig zijn.
+4. Het resultaat vind je in `dist/VlierPlanner.exe`. Kopieer dit bestand naar de Windows-machine en start het met een dubbelklik; het programma opent automatisch een browser op `http://127.0.0.1:8000`.
+
 ## Gebruik
 1. Start de backend op poort 8000.
 2. Start de frontend op poort 5173.
