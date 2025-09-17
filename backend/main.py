@@ -5,10 +5,11 @@ import logging
 import os
 from datetime import date
 from pathlib import Path
+import sys
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from vlier_parser.normalize import parse_to_normalized
 
@@ -130,7 +131,12 @@ def get_assessments(period: int, year: int):
 
 
 if serve_frontend:
-    FRONTEND_DIST = Path(__file__).resolve().parent / "static" / "dist"
+    if hasattr(sys, "_MEIPASS"):
+        frontend_base = Path(sys._MEIPASS) / "backend"
+    else:
+        frontend_base = Path(__file__).resolve().parent
+
+    FRONTEND_DIST = frontend_base / "static" / "dist"
     index_file = FRONTEND_DIST / "index.html"
 
     if FRONTEND_DIST.exists() and index_file.exists():
@@ -146,3 +152,38 @@ if serve_frontend:
             "SERVE_FRONTEND is enabled but no build directory was found at %s",
             FRONTEND_DIST,
         )
+
+        missing_frontend_message = HTMLResponse(
+            """
+            <html>
+                <head>
+                    <title>Vlier Planner</title>
+                    <style>
+                        body {font-family: system-ui, sans-serif; margin: 40px; line-height: 1.6;}
+                        code {background: #f2f2f2; padding: 2px 4px; border-radius: 4px;}
+                    </style>
+                </head>
+                <body>
+                    <h1>Frontend-build ontbreekt</h1>
+                    <p>
+                        De API draait, maar de frontend-build is niet gevonden. Bouw de frontend en kopieer
+                        deze naar <code>backend/static/dist</code> met het hulpscript:
+                    </p>
+                    <pre><code>python tools/build_frontend.py</code></pre>
+                    <p>
+                        Nadat de build beschikbaar is, start de applicatie opnieuw.
+                    </p>
+                </body>
+            </html>
+            """
+        )
+
+        @app.get("/", response_class=HTMLResponse)
+        async def frontend_missing_root() -> HTMLResponse:
+            return missing_frontend_message
+
+        @app.get("/{full_path:path}", response_class=HTMLResponse)
+        async def frontend_missing(full_path: str) -> HTMLResponse:
+            if full_path.startswith("api/"):
+                raise HTTPException(404, "Not found")
+            return missing_frontend_message
