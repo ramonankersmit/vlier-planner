@@ -14,10 +14,10 @@ from backend.schemas.normalized import (
     Week,
     Warning,
 )
+from backend.paths import parsed_data_dir
 
 
-DATA_DIR = Path("data/parsed")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR = parsed_data_dir()
 INDEX_FILE = DATA_DIR / "index.json"
 
 

@@ -13,10 +13,11 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from vlier_parser.normalize import parse_to_normalized
 
+from backend.paths import parsed_data_dir, uploads_dir
+
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path("data/parsed")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR = parsed_data_dir()
 
 app = FastAPI(title="Vlier Planner API")
 serve_frontend = os.getenv("SERVE_FRONTEND", "0").lower() in {"1", "true", "yes", "on"}
@@ -47,9 +48,7 @@ def _load_latest() -> dict:
 
 @app.post("/api/uploads")
 async def upload(file: UploadFile = File(...)):
-    tmp_dir = Path("uploads")
-    tmp_dir.mkdir(exist_ok=True)
-    tmp_path = tmp_dir / file.filename
+    tmp_path = uploads_dir() / file.filename
     with tmp_path.open("wb") as fh:
         fh.write(await file.read())
     parse_id, model = parse_to_normalized(str(tmp_path))
