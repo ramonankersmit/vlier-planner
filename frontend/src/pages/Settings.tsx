@@ -131,7 +131,7 @@ export default function Settings() {
         <div className="mb-2 font-medium theme-text">Mijn vakken</div>
 
         <div className="mb-3 text-sm theme-muted">
-          Kies welke vakken zichtbaar zijn in <strong>Weekoverzicht</strong>, <strong>Matrix</strong> en <strong>Deadlines</strong>.
+          Kies welke vakken zichtbaar zijn in <strong>Weekoverzicht</strong>, <strong>Matrix overzicht</strong> en <strong>Belangrijke events</strong>.
         </div>
 
         <div className="mb-3 flex gap-2">
@@ -174,7 +174,7 @@ export default function Settings() {
         <div className="mb-2 font-medium theme-text">Huiswerkweergave</div>
 
         <div className="mb-3 text-sm theme-muted">
-          Kies hoe huiswerk wordt getoond in <strong>Weekoverzicht</strong> en <strong>Matrix</strong>.
+          Kies hoe huiswerk wordt getoond in <strong>Weekoverzicht</strong> en <strong>Matrix overzicht</strong>.
         </div>
 
         <div className="space-y-2 text-sm">

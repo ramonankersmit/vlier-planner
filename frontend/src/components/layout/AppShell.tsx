@@ -63,7 +63,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`
               }
             >
-              Matrix
+              Matrix overzicht
             </NavLink>
             <NavLink
               to="/deadlines"
@@ -71,7 +71,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`
               }
             >
-              Deadlines
+              Belangrijke events
             </NavLink>
             <NavLink
               to="/uploads"
@@ -97,7 +97,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
-      <footer className="mx-auto max-w-6xl px-4 py-8 text-xs theme-muted">
+      <footer className="mx-auto max-w-6xl px-4 py-5 text-xs theme-muted">
         © {new Date().getFullYear()} Het Vlier Studiewijzer Planner - made by Ramon Ankersmit
       </footer>
     </div>

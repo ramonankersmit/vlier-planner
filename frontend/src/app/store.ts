@@ -40,6 +40,11 @@ export type CustomHomeworkEntry = {
   createdAt: string;
 };
 
+type HomeworkAdjustments = {
+  hidden: Record<string, boolean>;
+  overrides: Record<string, string>;
+};
+
 export type ThemeSettings = {
   background: string;
   surface: string;
@@ -75,6 +80,12 @@ type State = {
   customHomework: Record<string, Record<string, CustomHomeworkEntry[]>>;
   addCustomHomework: (weekId: string, vak: string, text: string) => void;
   removeCustomHomework: (weekId: string, vak: string, entryId: string) => void;
+  updateCustomHomework: (weekId: string, vak: string, entryId: string, text: string) => void;
+  homeworkAdjustments: Record<string, Record<string, HomeworkAdjustments>>;
+  hideHomeworkItem: (weekId: string, vak: string, itemKey: string) => void;
+  restoreHomeworkItem: (weekId: string, vak: string, itemKey: string) => void;
+  overrideHomeworkItem: (weekId: string, vak: string, itemKey: string, text: string) => void;
+  clearHomeworkOverride: (weekId: string, vak: string, itemKey: string) => void;
 
   // ==== instellingen ====
   mijnVakken: string[];
@@ -325,6 +336,7 @@ const createInitialState = (): Pick<
   | "docRows"
   | "weekData"
   | "customHomework"
+  | "homeworkAdjustments"
   | "mijnVakken"
   | "huiswerkWeergave"
   | "theme"
@@ -338,6 +350,7 @@ const createInitialState = (): Pick<
   docRows: {},
   weekData: { weeks: [], byWeek: {} },
   customHomework: {},
+  homeworkAdjustments: {},
   mijnVakken: [],
   huiswerkWeergave: "perOpdracht",
   theme: { ...defaultTheme },
@@ -495,6 +508,110 @@ export const useAppStore = create<State>()(
           return { customHomework: nextCustomHomework, doneMap: nextDoneMap };
         });
       },
+      updateCustomHomework: (weekId, vak, entryId, text) => {
+        const normalized = normalizeText(text, { preserveLineBreaks: true });
+        if (!normalized) {
+          return;
+        }
+        set((state) => {
+          const weekEntries = state.customHomework[weekId];
+          if (!weekEntries) {
+            return {};
+          }
+          const vakEntries = weekEntries[vak];
+          if (!vakEntries?.length) {
+            return {};
+          }
+          const idx = vakEntries.findIndex((entry) => entry.id === entryId);
+          if (idx === -1) {
+            return {};
+          }
+          const nextVakEntries = [...vakEntries];
+          nextVakEntries[idx] = { ...nextVakEntries[idx], text: normalized };
+          const nextWeekEntries = { ...weekEntries, [vak]: nextVakEntries };
+          return {
+            customHomework: { ...state.customHomework, [weekId]: nextWeekEntries },
+          };
+        });
+      },
+      hideHomeworkItem: (weekId, vak, itemKey) => {
+        set((state) => {
+          const nextAdjustments = { ...state.homeworkAdjustments };
+          const weekEntries = { ...(nextAdjustments[weekId] ?? {}) };
+          const current = weekEntries[vak] ?? { hidden: {}, overrides: {} };
+          const hidden = { ...current.hidden, [itemKey]: true };
+          const nextCurrent: HomeworkAdjustments = { hidden, overrides: { ...current.overrides } };
+          weekEntries[vak] = nextCurrent;
+          nextAdjustments[weekId] = weekEntries;
+          const nextDoneMap = { ...state.doneMap };
+          delete nextDoneMap[itemKey];
+          return { homeworkAdjustments: nextAdjustments, doneMap: nextDoneMap };
+        });
+      },
+      restoreHomeworkItem: (weekId, vak, itemKey) => {
+        set((state) => {
+          const nextAdjustments = { ...state.homeworkAdjustments };
+          const weekEntries = { ...(nextAdjustments[weekId] ?? {}) };
+          const current = weekEntries[vak];
+          if (!current) {
+            return {};
+          }
+          const hidden = { ...current.hidden };
+          delete hidden[itemKey];
+          const nextCurrent: HomeworkAdjustments = { hidden, overrides: { ...current.overrides } };
+          if (!Object.keys(nextCurrent.hidden).length && !Object.keys(nextCurrent.overrides).length) {
+            delete weekEntries[vak];
+          } else {
+            weekEntries[vak] = nextCurrent;
+          }
+          if (!Object.keys(weekEntries).length) {
+            delete nextAdjustments[weekId];
+          } else {
+            nextAdjustments[weekId] = weekEntries;
+          }
+          return { homeworkAdjustments: nextAdjustments };
+        });
+      },
+      overrideHomeworkItem: (weekId, vak, itemKey, text) => {
+        const normalized = normalizeText(text, { preserveLineBreaks: true });
+        if (!normalized) {
+          return;
+        }
+        set((state) => {
+          const nextAdjustments = { ...state.homeworkAdjustments };
+          const weekEntries = { ...(nextAdjustments[weekId] ?? {}) };
+          const current = weekEntries[vak] ?? { hidden: {}, overrides: {} };
+          const overrides = { ...current.overrides, [itemKey]: normalized };
+          const nextCurrent: HomeworkAdjustments = { hidden: { ...current.hidden }, overrides };
+          weekEntries[vak] = nextCurrent;
+          nextAdjustments[weekId] = weekEntries;
+          return { homeworkAdjustments: nextAdjustments };
+        });
+      },
+      clearHomeworkOverride: (weekId, vak, itemKey) => {
+        set((state) => {
+          const nextAdjustments = { ...state.homeworkAdjustments };
+          const weekEntries = { ...(nextAdjustments[weekId] ?? {}) };
+          const current = weekEntries[vak];
+          if (!current) {
+            return {};
+          }
+          const overrides = { ...current.overrides };
+          delete overrides[itemKey];
+          const nextCurrent: HomeworkAdjustments = { hidden: { ...current.hidden }, overrides };
+          if (!Object.keys(nextCurrent.hidden).length && !Object.keys(nextCurrent.overrides).length) {
+            delete weekEntries[vak];
+          } else {
+            weekEntries[vak] = nextCurrent;
+          }
+          if (!Object.keys(weekEntries).length) {
+            delete nextAdjustments[weekId];
+          } else {
+            nextAdjustments[weekId] = weekEntries;
+          }
+          return { homeworkAdjustments: nextAdjustments };
+        });
+      },
 
       // ----------------------------
       // instellingen
@@ -545,12 +662,13 @@ export const useAppStore = create<State>()(
     }),
     {
       name: "vlier-planner-state",
-      version: 1,
+      version: 2,
       partialize: (state) => ({
         docs: state.docs,
         docRows: state.docRows,
         weekData: state.weekData,
         customHomework: state.customHomework,
+        homeworkAdjustments: state.homeworkAdjustments,
         mijnVakken: state.mijnVakken,
         huiswerkWeergave: state.huiswerkWeergave,
         theme: state.theme,

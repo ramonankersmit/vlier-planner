@@ -128,7 +128,7 @@ export default function Deadlines() {
 
   return (
     <div>
-      <div className="text-lg font-semibold mb-3 theme-text">Deadlines</div>
+      <div className="text-lg font-semibold mb-3 theme-text">Belangrijke events</div>
 
       <div className="mb-2 text-sm theme-muted">{windowLabel}</div>
 

@@ -73,7 +73,7 @@ export default function Uploads() {
     for (const file of Array.from(files)) {
       try {
         const meta = await apiUploadDoc(file);
-        // Voeg direct toe aan globale store → Settings/Deadlines/Matrix volgen automatisch
+        // Voeg direct toe aan globale store → Settings/Belangrijke events/Matrix overzicht volgen automatisch
         addDoc(meta as any);
         await hydrateDocRowsFromApi(meta.fileId);
       } catch (e: any) {
