@@ -1,23 +1,32 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from vlier_parser.normalize import parse_to_normalized
+
+logger = logging.getLogger(__name__)
 
 DATA_DIR = Path("data/parsed")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Vlier Planner API")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+serve_frontend = os.getenv("SERVE_FRONTEND", "0").lower() in {"1", "true", "yes", "on"}
+
+if not serve_frontend:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 def _load_latest() -> dict:
@@ -118,3 +127,22 @@ def get_assessments(period: int, year: int):
         if a["year_due"] == year and su_map.get(a["study_unit_id"], {}).get("period") == period
     ]
     return assessments
+
+
+if serve_frontend:
+    FRONTEND_DIST = Path(__file__).resolve().parent / "static" / "dist"
+    index_file = FRONTEND_DIST / "index.html"
+
+    if FRONTEND_DIST.exists() and index_file.exists():
+        app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+
+        @app.get("/{full_path:path}")
+        async def serve_spa(full_path: str):
+            if full_path.startswith("api/"):
+                raise HTTPException(404, "Not found")
+            return FileResponse(index_file)
+    else:
+        logger.warning(
+            "SERVE_FRONTEND is enabled but no build directory was found at %s",
+            FRONTEND_DIST,
+        )
