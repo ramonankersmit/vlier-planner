@@ -1,5 +1,6 @@
 import React from "react";
-import { useAppStore, type ThemeSettings } from "../app/store";
+import { useAppStore, type ThemeSettings, hydrateDocsFromApi } from "../app/store";
+import { apiDeleteAllDocs } from "../lib/api";
 
 export default function Settings() {
   const {
@@ -13,6 +14,7 @@ export default function Settings() {
     backgroundImage,
     setBackgroundImage,
     resetBackgroundImage,
+    resetAppState,
   } = useAppStore();
   const docs = useAppStore((s) => s.docs) ?? [];
 
@@ -98,6 +100,27 @@ export default function Settings() {
   const resetAllAppearance = () => {
     resetTheme();
     resetBackgroundImage();
+  };
+
+  const handleResetApplication = async () => {
+    const confirmed = window.confirm(
+      "Weet je zeker dat je alle gegevens wilt wissen en terug wilt naar de beginstatus? " +
+        "Instellingen, selecties en afgevinkte items gaan verloren."
+    );
+    if (!confirmed) {
+      return;
+    }
+    resetAppState();
+    try {
+      await apiDeleteAllDocs();
+    } catch (error) {
+      console.error("Kon backend-documenten niet wissen", error);
+    }
+    try {
+      await hydrateDocsFromApi();
+    } catch (error) {
+      console.error("Kon plannerdata niet herladen", error);
+    }
   };
 
   return (
@@ -246,6 +269,20 @@ export default function Settings() {
             <div className="text-sm theme-muted">Er is nog geen achtergrond ingesteld.</div>
           )}
         </div>
+      </div>
+
+      <div className="rounded-2xl border theme-border theme-surface p-4 space-y-3">
+        <div className="font-medium theme-text">Applicatie resetten</div>
+        <div className="text-sm theme-muted">
+          Wis alle opgeslagen gegevens en laad de planner opnieuw alsof je de applicatie voor het eerst opent.
+          Documenten worden opnieuw opgehaald vanaf de server en persoonlijke instellingen gaan verloren.
+        </div>
+        <button
+          onClick={handleResetApplication}
+          className="w-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100"
+        >
+          Alles wissen en terug naar beginstatus
+        </button>
       </div>
     </div>
   );
