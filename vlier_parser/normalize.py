@@ -15,22 +15,10 @@ from backend.schemas.normalized import (
     Warning,
 )
 from backend.paths import parsed_data_dir
+from backend.documents import load_index, save_index
 
 
 DATA_DIR = parsed_data_dir()
-INDEX_FILE = DATA_DIR / "index.json"
-
-
-def _load_index() -> list:
-    if INDEX_FILE.exists():
-        with INDEX_FILE.open("r", encoding="utf-8") as fh:
-            return json.load(fh)
-    return []
-
-
-def _save_index(index: list) -> None:
-    with INDEX_FILE.open("w", encoding="utf-8") as fh:
-        json.dump(index, fh, indent=2)
 
 
 def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
@@ -92,7 +80,7 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
     with out_path.open("w", encoding="utf-8") as fh:
         fh.write(model.model_dump_json(indent=2))
 
-    index = _load_index()
+    index = load_index()
     index.append(
         {
             "id": parse_id,
@@ -101,6 +89,6 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
             "status": "ready",
         }
     )
-    _save_index(index)
+    save_index(index)
 
     return parse_id, model

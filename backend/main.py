@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
+import sys
 from datetime import date
 from pathlib import Path
-import sys
+from typing import Any
+from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +16,16 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from vlier_parser.normalize import parse_to_normalized
 
+from backend.documents import (
+    build_doc_meta,
+    build_doc_preview_html,
+    build_doc_rows,
+    find_index_entry,
+    load_index,
+    load_normalized_model,
+    save_index,
+)
+from backend.schemas.normalized import NormalizedModel
 from backend.paths import parsed_data_dir, uploads_dir
 
 logger = logging.getLogger(__name__)
@@ -48,15 +61,27 @@ def _load_latest() -> dict:
 
 @app.post("/api/uploads")
 async def upload(file: UploadFile = File(...)):
-    tmp_path = uploads_dir() / file.filename
-    with tmp_path.open("wb") as fh:
-        fh.write(await file.read())
-    parse_id, model = parse_to_normalized(str(tmp_path))
-    return {
-        "parse_id": parse_id,
-        "status": "ready",
-        "warnings": [w.model_dump() for w in model.warnings],
-    }
+    original_name = Path(file.filename or "upload").name
+    temp_root = uploads_dir() / uuid4().hex
+    temp_root.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_root / original_name
+
+    try:
+        contents = await file.read()
+        with temp_path.open("wb") as fh:
+            fh.write(contents)
+        parse_id, model = parse_to_normalized(str(temp_path))
+    finally:
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+            temp_root.rmdir()
+        except OSError:
+            shutil.rmtree(temp_root, ignore_errors=True)
+
+    doc_meta = build_doc_meta(parse_id, original_name, model)
+    warnings = [w.model_dump() for w in model.warnings]
+    return {**doc_meta, "warnings": warnings}
 
 
 @app.get("/api/parses/{parse_id}")
@@ -129,6 +154,79 @@ def get_assessments(period: int, year: int):
         if a["year_due"] == year and su_map.get(a["study_unit_id"], {}).get("period") == period
     ]
     return assessments
+
+
+def _ensure_parse_exists(parse_id: str) -> tuple[dict[str, Any], NormalizedModel]:
+    index = load_index()
+    entry = find_index_entry(parse_id, index)
+    if not entry:
+        raise HTTPException(404, "Not found")
+    model = load_normalized_model(parse_id)
+    if model is None:
+        raise HTTPException(404, "Not found")
+    return entry, model
+
+
+@app.get("/api/docs")
+def list_docs():
+    docs = []
+    index = load_index()
+    for entry in index:
+        parse_id = entry.get("id")
+        if not parse_id:
+            continue
+        model = load_normalized_model(parse_id)
+        if model is None:
+            logger.warning("Skipping index entry %s: missing normalized payload", parse_id)
+            continue
+        source_name = entry.get("source_file", parse_id)
+        docs.append(build_doc_meta(parse_id, source_name, model))
+    return docs
+
+
+@app.get("/api/docs/{parse_id}/rows")
+def get_doc_rows(parse_id: str):
+    _, model = _ensure_parse_exists(parse_id)
+    return build_doc_rows(model)
+
+
+@app.get("/api/docs/{parse_id}/preview")
+def get_doc_preview(parse_id: str):
+    entry, model = _ensure_parse_exists(parse_id)
+    meta = build_doc_meta(parse_id, entry.get("source_file", parse_id), model)
+    rows = build_doc_rows(model)
+    html = build_doc_preview_html(meta, rows, (w.model_dump() for w in model.warnings))
+    return {"mediaType": "text/html", "html": html, "filename": meta["bestand"]}
+
+
+@app.delete("/api/docs/{parse_id}")
+def delete_doc(parse_id: str):
+    index = load_index()
+    entry = find_index_entry(parse_id, index)
+    if not entry:
+        raise HTTPException(404, "Not found")
+
+    path = DATA_DIR / f"{parse_id}.json"
+    if path.exists():
+        path.unlink()
+
+    next_index = [item for item in index if item.get("id") != parse_id]
+    save_index(next_index)
+    return {"status": "deleted"}
+
+
+@app.delete("/api/docs")
+def delete_all_docs():
+    index = load_index()
+    for entry in index:
+        parse_id = entry.get("id")
+        if not parse_id:
+            continue
+        path = DATA_DIR / f"{parse_id}.json"
+        if path.exists():
+            path.unlink()
+    save_index([])
+    return {"status": "cleared"}
 
 
 if serve_frontend:
