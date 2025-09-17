@@ -34,6 +34,12 @@ export type WeekAggregation = {
   byWeek: Record<string, Record<string, WeekData>>;
 };
 
+export type CustomHomeworkEntry = {
+  id: string;
+  text: string;
+  createdAt: string;
+};
+
 export type ThemeSettings = {
   background: string;
   surface: string;
@@ -66,6 +72,9 @@ type State = {
   setDocRows: (fileId: string, rows: DocRow[]) => void;
   setDocRowsBulk: (entries: Record<string, DocRow[]>) => void;
   weekData: WeekAggregation;
+  customHomework: Record<string, Record<string, CustomHomeworkEntry[]>>;
+  addCustomHomework: (weekId: string, vak: string, text: string) => void;
+  removeCustomHomework: (weekId: string, vak: string, entryId: string) => void;
 
   // ==== instellingen ====
   mijnVakken: string[];
@@ -315,6 +324,7 @@ const createInitialState = (): Pick<
   | "docs"
   | "docRows"
   | "weekData"
+  | "customHomework"
   | "mijnVakken"
   | "huiswerkWeergave"
   | "theme"
@@ -327,6 +337,7 @@ const createInitialState = (): Pick<
   docs: [],
   docRows: {},
   weekData: { weeks: [], byWeek: {} },
+  customHomework: {},
   mijnVakken: [],
   huiswerkWeergave: "perOpdracht",
   theme: { ...defaultTheme },
@@ -436,6 +447,55 @@ export const useAppStore = create<State>()(
         set({ docRows: nextRows, weekData });
       },
 
+      addCustomHomework: (weekId, vak, text) => {
+        const normalized = normalizeText(text, { preserveLineBreaks: true });
+        if (!normalized) {
+          return;
+        }
+        const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        set((state) => {
+          const prevWeekEntries = state.customHomework[weekId] ?? {};
+          const prevVakEntries = prevWeekEntries[vak] ?? [];
+          const nextVakEntries = [
+            ...prevVakEntries,
+            { id, text: normalized, createdAt: new Date().toISOString() },
+          ];
+          const nextWeekEntries = { ...prevWeekEntries, [vak]: nextVakEntries };
+          return {
+            customHomework: { ...state.customHomework, [weekId]: nextWeekEntries },
+          };
+        });
+      },
+      removeCustomHomework: (weekId, vak, entryId) => {
+        set((state) => {
+          const weekEntries = state.customHomework[weekId];
+          if (!weekEntries) {
+            return {};
+          }
+          const vakEntries = weekEntries[vak];
+          if (!vakEntries?.length) {
+            return {};
+          }
+          const nextVakEntries = vakEntries.filter((entry) => entry.id !== entryId);
+          const nextWeekEntries = { ...weekEntries };
+          if (nextVakEntries.length) {
+            nextWeekEntries[vak] = nextVakEntries;
+          } else {
+            delete nextWeekEntries[vak];
+          }
+          const nextCustomHomework = { ...state.customHomework };
+          if (Object.keys(nextWeekEntries).length) {
+            nextCustomHomework[weekId] = nextWeekEntries;
+          } else {
+            delete nextCustomHomework[weekId];
+          }
+          const customKey = `${weekId}:${vak}:custom:${entryId}`;
+          const nextDoneMap = { ...state.doneMap };
+          delete nextDoneMap[customKey];
+          return { customHomework: nextCustomHomework, doneMap: nextDoneMap };
+        });
+      },
+
       // ----------------------------
       // instellingen
       // ----------------------------
@@ -490,6 +550,7 @@ export const useAppStore = create<State>()(
         docs: state.docs,
         docRows: state.docRows,
         weekData: state.weekData,
+        customHomework: state.customHomework,
         mijnVakken: state.mijnVakken,
         huiswerkWeergave: state.huiswerkWeergave,
         theme: state.theme,

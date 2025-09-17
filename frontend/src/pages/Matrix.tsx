@@ -1,6 +1,20 @@
 import React from "react";
-import { FileText, CalendarClock, MessageCircle, BookOpen, CheckSquare } from "lucide-react";
-import { useAppStore, type DocRecord, type WeekInfo, type WeekData } from "../app/store";
+import {
+  FileText,
+  CalendarClock,
+  MessageCircle,
+  BookOpen,
+  CheckSquare,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import {
+  useAppStore,
+  type DocRecord,
+  type WeekInfo,
+  type WeekData,
+  type CustomHomeworkEntry,
+} from "../app/store";
 import {
   formatRange,
   calcCurrentWeekIdx,
@@ -21,6 +35,9 @@ function MatrixCell({
   mode,
   doc,
   onOpenDoc,
+  customHomework,
+  onAddCustom,
+  onRemoveCustom,
 }: {
   vak: string;
   week: WeekInfo;
@@ -30,7 +47,12 @@ function MatrixCell({
   mode: "perOpdracht" | "gecombineerd";
   doc?: DocRecord;
   onOpenDoc?: () => void;
+  customHomework: CustomHomeworkEntry[];
+  onAddCustom: (text: string) => void;
+  onRemoveCustom: (entryId: string) => void;
 }) {
+  const [adding, setAdding] = React.useState(false);
+  const [customText, setCustomText] = React.useState("");
   const baseKey = `${week.id}:${vak}`;
   const storedItems =
     Array.isArray(data?.huiswerkItems) && data?.huiswerkItems.length
@@ -38,57 +60,109 @@ function MatrixCell({
       : undefined;
   const homeworkItems = (storedItems ?? splitHomeworkItems(data?.huiswerk)).map((item) => item.trim());
   const filteredHomeworkItems = homeworkItems.filter((item) => hasMeaningfulContent(item));
-  const itemKeys = filteredHomeworkItems.map((_, idx) => `${baseKey}:${idx}`);
-  const hasItemState = itemKeys.some((itemKey) =>
+  const normalizedCustom = customHomework
+    .map((entry) => ({ ...entry, text: entry.text.trim() }))
+    .filter((entry) => hasMeaningfulContent(entry.text));
+  const autoItems = filteredHomeworkItems.map((text, idx) => ({
+    text,
+    doneKey: `${baseKey}:${idx}`,
+    isCustom: false,
+  }));
+  const customItems = normalizedCustom.map((entry) => ({
+    text: entry.text,
+    doneKey: `${baseKey}:custom:${entry.id}`,
+    isCustom: true,
+    entryId: entry.id,
+  }));
+  const autoKeys = autoItems.map((item) => item.doneKey);
+  const customKeys = customItems.map((item) => item.doneKey);
+  const baseDone = !!doneMap[baseKey];
+  const hasAutoItemState = autoKeys.some((itemKey) =>
     Object.prototype.hasOwnProperty.call(doneMap, itemKey)
   );
-  const rawDoneStates = itemKeys.map((itemKey) => !!doneMap[itemKey]);
-  const baseDone = !!doneMap[baseKey];
-  const displayDoneStates = hasItemState
-    ? rawDoneStates
-    : filteredHomeworkItems.map(() => baseDone);
-  const allDone = filteredHomeworkItems.length
-    ? hasItemState
-      ? rawDoneStates.every(Boolean)
+  const autoDoneStates = autoKeys.map((itemKey) => !!doneMap[itemKey]);
+  const customDoneStates = customKeys.map((itemKey) => !!doneMap[itemKey]);
+  const displayAutoDoneStates = hasAutoItemState
+    ? autoDoneStates
+    : autoItems.map(() => baseDone);
+  const displayCustomDoneStates = customDoneStates;
+  const allDone = autoItems.length
+    ? hasAutoItemState
+      ? autoDoneStates.every(Boolean)
       : baseDone
     : baseDone;
   const shouldAdoptBaseState =
-    mode === "perOpdracht" && baseDone && !hasItemState && filteredHomeworkItems.length > 0;
+    mode === "perOpdracht" && baseDone && !hasAutoItemState && autoItems.length > 0;
 
   React.useEffect(() => {
     if (!shouldAdoptBaseState) return;
-    filteredHomeworkItems.forEach((_, idx) => {
-      setDoneState(`${baseKey}:${idx}`, true);
+    autoItems.forEach((item) => {
+      setDoneState(item.doneKey, true);
     });
     setDoneState(baseKey, false);
-  }, [shouldAdoptBaseState, filteredHomeworkItems, baseKey, setDoneState]);
+  }, [shouldAdoptBaseState, autoItems, baseKey, setDoneState]);
 
-  const toggleItem = (idx: number) => {
-    const itemKey = itemKeys[idx];
-    const current = hasItemState ? rawDoneStates[idx] : baseDone;
-    const next = !current;
-    setDoneState(baseKey, false);
-    setDoneState(itemKey, next);
+  const toggleItem = (item: { doneKey: string; isCustom: boolean; checked: boolean }) => {
+    const next = !item.checked;
+    if (!item.isCustom) {
+      setDoneState(baseKey, false);
+    }
+    setDoneState(item.doneKey, next);
   };
 
   const toggleCombined = () => {
+    if (!autoItems.length) {
+      return;
+    }
     const next = !allDone;
     setDoneState(baseKey, next);
-    filteredHomeworkItems.forEach((_, idx) => {
-      setDoneState(`${baseKey}:${idx}`, next);
+    autoItems.forEach((item) => {
+      setDoneState(item.doneKey, next);
     });
   };
 
   const aggregatedHomework =
     hasMeaningfulContent(data?.huiswerk)
       ? data?.huiswerk ?? ""
-      : filteredHomeworkItems.join("\n");
+      : autoItems.map((item) => item.text).join("\n");
   const hasAggregatedHomework = hasMeaningfulContent(aggregatedHomework);
   const hasOpmerkingen = hasMeaningfulContent(data?.opmerkingen);
   const hasLesstof = hasMeaningfulContent(data?.lesstof);
   const hasDeadlines = hasMeaningfulContent(data?.deadlines);
   const deadlineLabel = hasDeadlines ? data?.deadlines : "-";
   const deadlineTitle = hasDeadlines ? data?.date || data?.deadlines || "" : "";
+  const combinedItems = [
+    ...autoItems.map((item, idx) => ({
+      ...item,
+      checked: displayAutoDoneStates[idx],
+    })),
+    ...customItems.map((item, idx) => ({
+      ...item,
+      checked: displayCustomDoneStates[idx],
+    })),
+  ];
+  const hasAnyItems = combinedItems.length > 0;
+  const hasCustomItems = customItems.length > 0;
+
+  const startAdd = () => {
+    setAdding(true);
+  };
+
+  const cancelAdd = () => {
+    setCustomText("");
+    setAdding(false);
+  };
+
+  const submitCustom = (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = customText.trim();
+    if (!hasMeaningfulContent(trimmed)) {
+      return;
+    }
+    onAddCustom(trimmed);
+    setCustomText("");
+    setAdding(false);
+  };
 
   return (
     <td className="px-4 py-2 align-top">
@@ -96,46 +170,102 @@ function MatrixCell({
         <div className="flex items-start gap-2">
           <div className="flex-1 text-sm">
             {mode === "perOpdracht" ? (
-              filteredHomeworkItems.length ? (
+              hasAnyItems ? (
                 <ul className="space-y-1">
-                  {filteredHomeworkItems.map((item, idx) => {
-                    const checked = !!displayDoneStates[idx];
-                    return (
-                      <li key={`${baseKey}-${idx}`}>
-                        <label className="flex items-start gap-2">
-                          <input
-                            aria-label={`Huiswerk ${vak}: ${item}`}
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleItem(idx)}
-                            className="mt-0.5"
-                          />
-                          <span className={`flex-1 ${checked ? "line-through theme-muted opacity-80" : ""}`}>
-                            {item}
-                          </span>
-                        </label>
-                      </li>
-                    );
-                  })}
+                  {combinedItems.map((item) => (
+                    <li key={item.doneKey} className="flex items-start gap-2">
+                      <label className="flex items-start gap-2 flex-1">
+                        <input
+                          aria-label={`Huiswerk ${vak}: ${item.text}`}
+                          type="checkbox"
+                          checked={item.checked}
+                          onChange={() => toggleItem(item)}
+                          className="mt-0.5"
+                        />
+                        <span className={`flex-1 ${item.checked ? "line-through theme-muted opacity-80" : ""}`}>
+                          {item.text}
+                        </span>
+                      </label>
+                      {item.isCustom && item.entryId && (
+                        <button
+                          type="button"
+                          className="theme-muted hover:text-rose-600"
+                          onClick={() => onRemoveCustom(item.entryId!)}
+                          aria-label={`Verwijder eigen huiswerk voor ${vak}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </li>
+                  ))}
                 </ul>
               ) : (
                 <div className="theme-muted">-</div>
               )
-            ) : hasAggregatedHomework ? (
-              <label className="flex items-start gap-2">
-                <input
-                  aria-label={`Huiswerk ${vak}`}
-                  type="checkbox"
-                  checked={allDone}
-                  onChange={toggleCombined}
-                  className="mt-0.5"
-                />
-                <span className={`flex-1 whitespace-pre-line ${allDone ? "line-through theme-muted opacity-80" : ""}`}>
-                  {aggregatedHomework}
-                </span>
-              </label>
             ) : (
-              <div className="theme-muted">-</div>
+              <div className="flex flex-col gap-2">
+                {autoItems.length > 0 && hasAggregatedHomework && (
+                  <label className="flex items-start gap-2">
+                    <input
+                      aria-label={`Huiswerk ${vak}`}
+                      type="checkbox"
+                      checked={allDone}
+                      onChange={toggleCombined}
+                      className="mt-0.5"
+                    />
+                    <span
+                      className={`flex-1 whitespace-pre-line ${
+                        allDone ? "line-through theme-muted opacity-80" : ""
+                      }`}
+                    >
+                      {aggregatedHomework}
+                    </span>
+                  </label>
+                )}
+                {hasCustomItems && (
+                  <ul className="space-y-1">
+                    {customItems.map((item, idx) => (
+                      <li key={item.doneKey} className="flex items-start gap-2">
+                        <label className="flex items-start gap-2 flex-1">
+                          <input
+                            aria-label={`Huiswerk ${vak}: ${item.text}`}
+                            type="checkbox"
+                            checked={displayCustomDoneStates[idx]}
+                            onChange={() =>
+                              toggleItem({
+                                doneKey: item.doneKey,
+                                isCustom: true,
+                                checked: displayCustomDoneStates[idx],
+                              })
+                            }
+                            className="mt-0.5"
+                          />
+                          <span
+                            className={`flex-1 ${
+                              displayCustomDoneStates[idx]
+                                ? "line-through theme-muted opacity-80"
+                                : ""
+                            }`}
+                          >
+                            {item.text}
+                          </span>
+                        </label>
+                        {item.entryId && (
+                          <button
+                            type="button"
+                            className="theme-muted hover:text-rose-600"
+                            onClick={() => onRemoveCustom(item.entryId!)}
+                            aria-label={`Verwijder eigen huiswerk voor ${vak}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!hasAnyItems && <div className="theme-muted">-</div>}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-1 self-start">
@@ -170,6 +300,13 @@ function MatrixCell({
               </span>
             )}
             <button
+              onClick={adding ? cancelAdd : startAdd}
+              title="Eigen huiswerk toevoegen"
+              aria-label={`Voeg huiswerk toe voor ${vak}`}
+            >
+              <Plus size={14} className="theme-muted" />
+            </button>
+            <button
               title={doc ? `Bron: ${doc.bestand}` : "Geen bron voor dit vak"}
               aria-label={doc ? `Bron: ${doc.bestand}` : `Geen bron voor ${vak}`}
               className="theme-muted disabled:opacity-40"
@@ -183,6 +320,33 @@ function MatrixCell({
         <div className={`text-xs theme-muted ${allDone ? "opacity-80" : ""}`} title={deadlineTitle}>
           {deadlineLabel}
         </div>
+        {adding && (
+          <form onSubmit={submitCustom} className="flex flex-col gap-2 text-xs">
+            <textarea
+              className="w-full rounded-md border theme-border px-2 py-1"
+              rows={2}
+              value={customText}
+              onChange={(event) => setCustomText(event.target.value)}
+              placeholder="Eigen huiswerk"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                className="rounded-md border theme-border theme-surface px-2 py-1"
+                onClick={cancelAdd}
+              >
+                Annuleren
+              </button>
+              <button
+                type="submit"
+                className="rounded-md bg-slate-900 text-white px-3 py-1 disabled:opacity-40"
+                disabled={!hasMeaningfulContent(customText)}
+              >
+                Opslaan
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </td>
   );
@@ -195,6 +359,9 @@ export default function Matrix() {
   const huiswerkWeergave = useAppStore((s) => s.huiswerkWeergave);
   const docs = useAppStore((s) => s.docs) ?? [];
   const weekData = useAppStore((s) => s.weekData);
+  const customHomework = useAppStore((s) => s.customHomework);
+  const addCustomHomework = useAppStore((s) => s.addCustomHomework);
+  const removeCustomHomework = useAppStore((s) => s.removeCustomHomework);
   const { openPreview } = useDocumentPreview();
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
@@ -459,6 +626,7 @@ export default function Matrix() {
                     const onOpenDoc = doc
                       ? () => openPreview({ fileId: doc.fileId, filename: doc.bestand })
                       : undefined;
+                    const customEntries = customHomework[w.id]?.[vak] ?? [];
 
                     return (
                       <MatrixCell
@@ -471,6 +639,9 @@ export default function Matrix() {
                         mode={huiswerkWeergave}
                         doc={doc}
                         onOpenDoc={onOpenDoc}
+                        customHomework={customEntries}
+                        onAddCustom={(text) => addCustomHomework(w.id, vak, text)}
+                        onRemoveCustom={(entryId) => removeCustomHomework(w.id, vak, entryId)}
                       />
                     );
                   })}
