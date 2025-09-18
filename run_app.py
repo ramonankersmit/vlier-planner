@@ -7,6 +7,9 @@ from pathlib import Path
 
 import uvicorn
 
+# Ensure the backend knows it should serve the built frontend before it is imported
+os.environ.setdefault("SERVE_FRONTEND", "1")
+
 from backend import main as backend_main
 
 FALSE_VALUES = {"0", "false", "no", "off"}
@@ -29,8 +32,6 @@ def main() -> None:
 
     host = os.getenv("VLIER_HOST", "127.0.0.1")
     port = int(os.getenv("VLIER_PORT", "8000"))
-
-    os.environ.setdefault("SERVE_FRONTEND", "1")
 
     if should_enable(os.getenv("VLIER_OPEN_BROWSER")):
         open_browser(host, port)
