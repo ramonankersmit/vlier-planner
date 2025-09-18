@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import webbrowser
 from pathlib import Path
@@ -8,6 +9,11 @@ from pathlib import Path
 os.environ.setdefault("SERVE_FRONTEND", "1")
 
 import uvicorn
+
+BASE_DIR = Path(__file__).resolve().parent
+
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
 from backend import main as backend_main
 
@@ -26,8 +32,7 @@ def open_browser(host: str, port: int) -> None:
 
 
 def main() -> None:
-    base_dir = Path(__file__).resolve().parent
-    os.chdir(base_dir)
+    os.chdir(BASE_DIR)
 
     host = os.getenv("VLIER_HOST", "127.0.0.1")
     port = int(os.getenv("VLIER_PORT", "8000"))
