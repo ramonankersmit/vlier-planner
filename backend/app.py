@@ -1,16 +1,23 @@
 from dataclasses import dataclass
 import json
 import logging
+import mimetypes
+import shutil
+import sys
+import uuid
+from html import escape
+from pathlib import Path
+from urllib.parse import quote
+from typing import Any, List, Union
+
+BACKEND_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BACKEND_DIR.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from typing import Any, List, Union
-from pathlib import Path
-import mimetypes
-import shutil
-import uuid
-from html import escape
-from urllib.parse import quote
 
 from docx import Document
 from docx.oxml.table import CT_Tbl
