@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 import mimetypes
 import shutil
@@ -62,10 +63,34 @@ if not serve_frontend:
     )
 
 # Bestandsopslag (simple disk storage)
-STORAGE = Path(__file__).parent / "storage" / "uploads"
+
+
+def _user_data_base() -> Path:
+    if sys.platform == "win32":
+        root = os.getenv("LOCALAPPDATA") or Path.home() / "AppData" / "Local"
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    else:
+        root = os.getenv("XDG_DATA_HOME") or Path.home() / ".local" / "share"
+    return Path(root) / "VlierPlanner"
+
+
+def _storage_root() -> Path:
+    custom = os.getenv("VLIER_STORAGE_DIR")
+    if custom:
+        return Path(custom)
+
+    if getattr(sys, "frozen", False):
+        return _user_data_base() / "storage"
+
+    return Path(__file__).resolve().parent / "storage"
+
+
+STORAGE_BASE = _storage_root()
+STORAGE_BASE.mkdir(parents=True, exist_ok=True)
+STORAGE = STORAGE_BASE / "uploads"
 STORAGE.mkdir(parents=True, exist_ok=True)
-STATE_FILE = Path(__file__).parent / "storage" / "state.json"
-STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+STATE_FILE = STORAGE_BASE / "state.json"
 
 @dataclass
 class StoredDoc:
