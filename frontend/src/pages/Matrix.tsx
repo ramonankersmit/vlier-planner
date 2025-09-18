@@ -77,6 +77,8 @@ function MatrixCell({
   const overrideHomeworkItem = useAppStore((s) => s.overrideHomeworkItem);
   const clearHomeworkOverride = useAppStore((s) => s.clearHomeworkOverride);
   const updateCustomHomework = useAppStore((s) => s.updateCustomHomework);
+  const enableHomeworkEditing = useAppStore((s) => s.enableHomeworkEditing);
+  const enableCustomHomework = useAppStore((s) => s.enableCustomHomework);
   const storedItems =
     Array.isArray(data?.huiswerkItems) && data?.huiswerkItems.length
       ? data.huiswerkItems
@@ -186,6 +188,9 @@ function MatrixCell({
   const hasCustomItems = customItems.length > 0;
 
   const startAdd = () => {
+    if (!enableCustomHomework) {
+      return;
+    }
     setEditing(null);
     setEditText("");
     setAdding(true);
@@ -198,6 +203,9 @@ function MatrixCell({
 
   const submitCustom = (event: React.FormEvent) => {
     event.preventDefault();
+    if (!enableCustomHomework) {
+      return;
+    }
     const trimmed = customText.trim();
     if (!hasMeaningfulContent(trimmed)) {
       return;
@@ -213,6 +221,9 @@ function MatrixCell({
   };
 
   const startEditItem = (item: MatrixItem) => {
+    if (!enableHomeworkEditing) {
+      return;
+    }
     if (item.isCustom && !item.entryId) {
       return;
     }
@@ -227,7 +238,7 @@ function MatrixCell({
 
   const submitEdit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!editing) return;
+    if (!enableHomeworkEditing || !editing) return;
     const trimmed = editText.trim();
     if (!hasMeaningfulContent(trimmed)) {
       return;
@@ -245,6 +256,9 @@ function MatrixCell({
   };
 
   const handleRemoveItem = (item: MatrixItem) => {
+    if (!enableHomeworkEditing) {
+      return;
+    }
     if (item.isCustom && item.entryId) {
       onRemoveCustom(item.entryId);
     } else {
@@ -261,6 +275,20 @@ function MatrixCell({
       cancelEdit();
     }
   };
+
+  React.useEffect(() => {
+    if (!enableCustomHomework) {
+      setAdding(false);
+      setCustomText("");
+    }
+  }, [enableCustomHomework]);
+
+  React.useEffect(() => {
+    if (!enableHomeworkEditing) {
+      setEditing(null);
+      setEditText("");
+    }
+  }, [enableHomeworkEditing]);
 
   return (
     <td className="relative h-full px-4 py-2 align-top">
@@ -326,26 +354,28 @@ function MatrixCell({
                           {item.text}
                         </span>
                       </label>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          className="theme-muted hover:text-slate-700"
-                          onClick={() => startEditItem(item)}
-                          aria-label={`Bewerk huiswerk voor ${vak}`}
-                          title="Bewerk huiswerk"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="theme-muted hover:text-rose-600"
-                          onClick={() => handleRemoveItem(item)}
-                          aria-label={`Verwijder huiswerk voor ${vak}`}
-                          title="Verwijder huiswerk"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      {enableHomeworkEditing && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className="theme-muted hover:text-slate-700"
+                            onClick={() => startEditItem(item)}
+                            aria-label={`Bewerk huiswerk voor ${vak}`}
+                            title="Bewerk huiswerk"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="theme-muted hover:text-rose-600"
+                            onClick={() => handleRemoveItem(item)}
+                            aria-label={`Verwijder huiswerk voor ${vak}`}
+                            title="Verwijder huiswerk"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -399,28 +429,30 @@ function MatrixCell({
                             {item.text}
                           </span>
                         </label>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="theme-muted hover:text-slate-700"
-                            onClick={() => startEditItem(item)}
-                            aria-label={`Bewerk huiswerk voor ${vak}`}
-                            title="Bewerk huiswerk"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          {item.entryId && (
+                        {enableHomeworkEditing && (
+                          <div className="flex items-center gap-1">
                             <button
                               type="button"
-                              className="theme-muted hover:text-rose-600"
-                              onClick={() => handleRemoveItem(item)}
-                              aria-label={`Verwijder huiswerk voor ${vak}`}
-                              title="Verwijder huiswerk"
+                              className="theme-muted hover:text-slate-700"
+                              onClick={() => startEditItem(item)}
+                              aria-label={`Bewerk huiswerk voor ${vak}`}
+                              title="Bewerk huiswerk"
                             >
-                              <Trash2 size={14} />
+                              <Pencil size={14} />
                             </button>
-                          )}
-                        </div>
+                            {item.entryId && (
+                              <button
+                                type="button"
+                                className="theme-muted hover:text-rose-600"
+                                onClick={() => handleRemoveItem(item)}
+                                aria-label={`Verwijder huiswerk voor ${vak}`}
+                                title="Verwijder huiswerk"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -455,7 +487,7 @@ function MatrixCell({
               </ul>
             </div>
           )}
-          {editing && (
+          {editing && enableHomeworkEditing && (
             <form onSubmit={submitEdit} className="flex flex-col gap-2 text-xs">
               <textarea
                 className="w-full rounded-md border theme-border px-2 py-1"
@@ -482,7 +514,7 @@ function MatrixCell({
               </div>
             </form>
           )}
-          {adding && (
+          {adding && enableCustomHomework && (
             <form onSubmit={submitCustom} className="flex flex-col gap-2 text-xs">
               <textarea
                 className="w-full rounded-md border theme-border px-2 py-1"
@@ -511,7 +543,7 @@ function MatrixCell({
           )}
         </div>
       </div>
-      {!adding && !editing && (
+      {!adding && !editing && enableCustomHomework && (
         <div className="pointer-events-none absolute inset-x-4 bottom-2 flex justify-start">
           <button
             type="button"
