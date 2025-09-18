@@ -1,7 +1,10 @@
 from docx import Document
 from typing import Optional, List, Tuple, Iterable, Dict
 import re
-from backend.models import DocMeta, DocRow
+try:
+    from backend.models import DocMeta, DocRow
+except ModuleNotFoundError:  # pragma: no cover - support running from backend/ directory
+    from models import DocMeta, DocRow  # type: ignore
 
 # ---------------------------
 # Regex patronen & helpers

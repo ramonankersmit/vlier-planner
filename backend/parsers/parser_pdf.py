@@ -20,7 +20,10 @@ try:  # eenvoudige fallback wanneer pdfplumber ontbreekt
 except Exception:  # pragma: no cover - PyPDF2 kan ontbreken
     PdfReader = None  # type: ignore
 
-from backend.models import DocMeta, DocRow
+try:
+    from backend.models import DocMeta, DocRow
+except ModuleNotFoundError:  # pragma: no cover - support running from backend/ directory
+    from models import DocMeta, DocRow  # type: ignore
 from .parser_docx import (
     BRON_HEADERS,
     DATE_HEADER_KEYWORDS,
