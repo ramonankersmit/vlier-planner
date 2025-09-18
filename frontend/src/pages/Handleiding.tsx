@@ -28,9 +28,9 @@ const stappen = [
     icon: Wand2,
   },
   {
-    title: "Upload belangrijke bestanden",
+    title: "Upload je studiewijzer",
     description:
-      "Bewaar samenvattingen, verslagen of andere documenten bij je weekplanning. Je opent ze daarna direct vanuit de app.",
+      "Voeg de studiewijzer van je vak toe. Zo heb je altijd de actuele planning en afspraken in beeld.",
     icon: Upload,
   },
   {
@@ -53,9 +53,34 @@ const tips = [
       "Onder \"Belangrijke events\" staan belangrijke momenten zoals toetsen of inleverdata. Plan je week hierop vooruit.",
   },
   {
+    title: "Houd je studiewijzer actueel",
+    text:
+      "Upload alleen de nieuwste studiewijzer per vak. Zo weet je zeker dat je planning klopt met wat de docent verwacht.",
+  },
+  {
     title: "Werk samen met klasgenoten",
     text:
       "Moet je samenwerken? Deel je scherm of maak samen een planning terwijl jullie dezelfde week bekijken.",
+  },
+];
+
+const demoScreens = [
+  {
+    title: "Weekoverzicht",
+    description: "Zie per dag wat je moet doen en vink opdrachten af zodra ze klaar zijn.",
+    caption:
+      "Handig: klik op een dag om extra taken toe te voegen of een afspraak te verplaatsen.",
+  },
+  {
+    title: "Matrix",
+    description: "Bekijk per vak welke grote opdrachten of toetsen eraan komen.",
+    caption: "Gebruik dit scherm om vooruit te plannen voor projecten en toetsweken.",
+  },
+  {
+    title: "Studiewijzer uploaden",
+    description: "Voeg de PDF van je studiewijzer toe zodat je alles op één plek hebt.",
+    caption:
+      "Let op: alleen studiewijzers mogen worden geüpload. Andere documenten sla je buiten de planner op.",
   },
 ];
 
@@ -91,6 +116,28 @@ export default function Handleiding() {
       </section>
 
       <section className="space-y-4">
+        <h2 className="text-2xl font-semibold theme-text">Bekijk voorbeeldschermen</h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          {demoScreens.map((screen) => (
+            <figure
+              key={screen.title}
+              className="flex h-full flex-col justify-between rounded-xl border theme-border theme-surface p-4 shadow-sm"
+            >
+              <div className="space-y-3">
+                <div className="rounded-lg bg-gradient-to-br from-[var(--app-accent)]/20 via-transparent to-[var(--app-accent)]/40 p-4 text-sm text-[var(--app-muted)]">
+                  <p className="text-sm font-medium theme-text">{screen.title}</p>
+                  <p className="mt-2 text-sm leading-relaxed">{screen.description}</p>
+                </div>
+                <figcaption className="text-xs leading-relaxed text-[var(--app-muted)]">
+                  {screen.caption}
+                </figcaption>
+              </div>
+            </figure>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
         <h2 className="text-2xl font-semibold theme-text">Snelle tips</h2>
         <div className="grid gap-4 md:grid-cols-3">
           {tips.map((tip) => (
@@ -116,7 +163,7 @@ export default function Handleiding() {
           </li>
         </ol>
         <p className="text-sm leading-relaxed text-[var(--app-muted)]">
-          Tip: vergeet niet om nieuwe documenten meteen te uploaden. Zo heb je altijd alles bij de hand, ook op schoolcomputers.
+          Tip: upload alleen de studiewijzers van je vakken en vervang ze zodra er een nieuwe versie is. Zo blijf je precies werken met wat de docent verwacht.
         </p>
       </section>
     </div>
