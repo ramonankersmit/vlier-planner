@@ -510,6 +510,18 @@ function MatrixCell({
             </form>
           )}
         </div>
+        {!adding && !editing && (
+          <button
+            type="button"
+            className="mt-auto flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
+            onClick={startAdd}
+            title="Eigen huiswerk toevoegen"
+            aria-label={`Voeg huiswerk toe voor ${vak}`}
+          >
+            <Plus size={14} />
+            <span>Eigen huiswerk toevoegen</span>
+          </button>
+        )}
       </div>
       {!adding && !editing && (
         <button
