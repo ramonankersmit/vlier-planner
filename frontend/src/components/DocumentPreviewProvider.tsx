@@ -19,8 +19,6 @@ type PreviewState = {
   mediaType: string;
   iframeUrl?: string;
   html?: string;
-  downloadUrl?: string;
-  summaryHtml?: string;
 };
 
 const DocumentPreviewContext = createContext<DocumentPreviewContextValue | undefined>(
@@ -60,12 +58,7 @@ export function DocumentPreviewProvider({
           const iframeUrl = result.url.startsWith("http")
             ? result.url
             : `${API_BASE}${result.url}`;
-          setPreview({
-            mediaType: result.mediaType,
-            iframeUrl,
-            downloadUrl: iframeUrl,
-            summaryHtml: result.summaryHtml,
-          });
+          setPreview({ mediaType: result.mediaType, iframeUrl });
         } else {
           setError("Geen voorvertoning beschikbaar");
         }
@@ -109,9 +102,6 @@ export function DocumentPreviewProvider({
   );
 
   const hasHtml = !!preview?.html;
-  const isEmbeddable =
-    !!preview?.iframeUrl &&
-    (preview.mediaType.startsWith("application/pdf") || preview.mediaType.startsWith("image/"));
 
   return (
     <DocumentPreviewContext.Provider value={value}>
@@ -124,25 +114,13 @@ export function DocumentPreviewProvider({
               <div className="truncate text-sm font-medium" title={doc.filename}>
                 {doc.filename}
               </div>
-              <div className="flex items-center gap-2">
-                {preview?.downloadUrl && (
-                  <a
-                    href={preview.downloadUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-md border theme-border theme-surface px-3 py-1 text-sm"
-                  >
-                    Download origineel
-                  </a>
-                )}
-                <button
-                  onClick={closePreview}
-                  className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
-                  aria-label="Sluiten"
-                >
-                  ✕
-                </button>
-              </div>
+              <button
+                onClick={closePreview}
+                className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+                aria-label="Sluiten"
+              >
+                ✕
+              </button>
             </div>
             <div className="max-h-[75vh] overflow-auto theme-soft">
               {loading ? (
@@ -155,25 +133,11 @@ export function DocumentPreviewProvider({
                   dangerouslySetInnerHTML={{ __html: preview?.html || "" }}
                 />
               ) : preview?.iframeUrl ? (
-                isEmbeddable ? (
-                  <iframe
-                    title={doc.filename}
-                    src={preview.iframeUrl}
-                    className="h-[75vh] w-full"
-                  />
-                ) : (
-                  <div className="space-y-4 px-6 py-4 text-sm">
-                    <p className="theme-muted">
-                      Download het originele bestand via de knop hierboven om de bron te bekijken.
-                    </p>
-                    {preview?.summaryHtml && (
-                      <div
-                        className="prose max-w-none"
-                        dangerouslySetInnerHTML={{ __html: preview.summaryHtml }}
-                      />
-                    )}
-                  </div>
-                )
+                <iframe
+                  title={doc.filename}
+                  src={preview.iframeUrl}
+                  className="h-[75vh] w-full"
+                />
               ) : (
                 <div className="p-6 text-sm theme-muted">Geen voorvertoning beschikbaar.</div>
               )}

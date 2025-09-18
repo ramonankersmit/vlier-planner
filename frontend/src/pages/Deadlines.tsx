@@ -113,7 +113,6 @@ export default function Deadlines() {
               ? "Toets"
               : "Deadline";
           const doc = findDocForWeek(vakNaam, w);
-          const hasSource = !!doc?.hasSource;
           const weekRange = formatWeekDateRange(w) ?? undefined;
           return [
             {
@@ -125,8 +124,8 @@ export default function Deadlines() {
               vak: vakNaam,
               title: d.deadlines,
               date: d.date,
-              src: hasSource ? doc?.bestand : undefined,
-              fileId: hasSource ? doc?.fileId : undefined,
+              src: doc?.bestand,
+              fileId: doc?.fileId,
             } as Item,
           ];
         });

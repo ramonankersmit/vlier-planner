@@ -3,42 +3,22 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
-import sys
 from datetime import date
 from pathlib import Path
-from typing import Any
-from uuid import uuid4
-
-import mimetypes
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from vlier_parser.normalize import parse_to_normalized
 
-from backend.documents import (
-    build_doc_meta,
-    build_doc_preview_html,
-    build_doc_rows,
-    find_index_entry,
-    load_index,
-    load_normalized_model,
-    resolve_source_path,
-    save_index,
-)
-from backend.schemas.normalized import NormalizedModel
-from backend.paths import parsed_data_dir, uploads_dir
-
 logger = logging.getLogger(__name__)
 
-DATA_DIR = parsed_data_dir()
+DATA_DIR = Path("data/parsed")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Vlier Planner API")
 serve_frontend = os.getenv("SERVE_FRONTEND", "0").lower() in {"1", "true", "yes", "on"}
-
-logger.info("SERVE_FRONTEND resolved to %s", serve_frontend)
 
 if not serve_frontend:
     app.add_middleware(
@@ -64,30 +44,17 @@ def _load_latest() -> dict:
 
 @app.post("/api/uploads")
 async def upload(file: UploadFile = File(...)):
-    original_name = Path(file.filename or "upload").name
-    temp_root = uploads_dir() / uuid4().hex
-    temp_root.mkdir(parents=True, exist_ok=True)
-    temp_path = temp_root / original_name
-
-    try:
-        contents = await file.read()
-        with temp_path.open("wb") as fh:
-            fh.write(contents)
-        parse_id, model = parse_to_normalized(str(temp_path))
-    finally:
-        try:
-            if temp_path.exists():
-                temp_path.unlink()
-            temp_root.rmdir()
-        except OSError:
-            shutil.rmtree(temp_root, ignore_errors=True)
-
-    index = load_index()
-    entry = find_index_entry(parse_id, index)
-    has_source = bool(entry and resolve_source_path(entry))
-    doc_meta = build_doc_meta(parse_id, original_name, model, has_source=has_source)
-    warnings = [w.model_dump() for w in model.warnings]
-    return {**doc_meta, "warnings": warnings}
+    tmp_dir = Path("uploads")
+    tmp_dir.mkdir(exist_ok=True)
+    tmp_path = tmp_dir / file.filename
+    with tmp_path.open("wb") as fh:
+        fh.write(await file.read())
+    parse_id, model = parse_to_normalized(str(tmp_path))
+    return {
+        "parse_id": parse_id,
+        "status": "ready",
+        "warnings": [w.model_dump() for w in model.warnings],
+    }
 
 
 @app.get("/api/parses/{parse_id}")
@@ -162,129 +129,11 @@ def get_assessments(period: int, year: int):
     return assessments
 
 
-def _ensure_parse_exists(parse_id: str) -> tuple[dict[str, Any], NormalizedModel]:
-    index = load_index()
-    entry = find_index_entry(parse_id, index)
-    if not entry:
-        raise HTTPException(404, "Not found")
-    model = load_normalized_model(parse_id)
-    if model is None:
-        raise HTTPException(404, "Not found")
-    return entry, model
-
-
-@app.get("/api/docs")
-def list_docs():
-    docs = []
-    index = load_index()
-    for entry in index:
-        parse_id = entry.get("id")
-        if not parse_id:
-            continue
-        model = load_normalized_model(parse_id)
-        if model is None:
-            logger.warning("Skipping index entry %s: missing normalized payload", parse_id)
-            continue
-        source_name = entry.get("source_file", parse_id)
-        has_source = bool(resolve_source_path(entry))
-        docs.append(build_doc_meta(parse_id, source_name, model, has_source=has_source))
-    return docs
-
-
-@app.get("/api/docs/{parse_id}/rows")
-def get_doc_rows(parse_id: str):
-    _, model = _ensure_parse_exists(parse_id)
-    return build_doc_rows(model)
-
-
-@app.get("/api/docs/{parse_id}/source")
-def get_doc_source(parse_id: str):
-    entry, _ = _ensure_parse_exists(parse_id)
-    path = resolve_source_path(entry)
-    if path is None or not path.exists():
-        raise HTTPException(404, "Bronbestand niet gevonden")
-    media_type, _ = mimetypes.guess_type(path.name)
-    filename = entry.get("source_file") or path.name
-    return FileResponse(path, media_type=media_type or "application/octet-stream", filename=filename)
-
-
-@app.get("/api/docs/{parse_id}/preview")
-def get_doc_preview(parse_id: str):
-    entry, model = _ensure_parse_exists(parse_id)
-    source_path = resolve_source_path(entry)
-    has_source = source_path is not None
-    meta = build_doc_meta(
-        parse_id,
-        entry.get("source_file", parse_id),
-        model,
-        has_source=has_source,
-    )
-    rows = build_doc_rows(model)
-    warnings = [w.model_dump() for w in model.warnings]
-    summary_html = build_doc_preview_html(meta, rows, warnings)
-
-    if source_path is not None and source_path.exists():
-        media_type, _ = mimetypes.guess_type(source_path.name)
-        return {
-            "mediaType": media_type or "application/octet-stream",
-            "url": f"/api/docs/{parse_id}/source",
-            "filename": meta["bestand"],
-            "summaryHtml": summary_html,
-        }
-
-    return {"mediaType": "text/html", "html": summary_html, "filename": meta["bestand"]}
-
-
-@app.delete("/api/docs/{parse_id}")
-def delete_doc(parse_id: str):
-    index = load_index()
-    entry = find_index_entry(parse_id, index)
-    if not entry:
-        raise HTTPException(404, "Not found")
-
-    path = DATA_DIR / f"{parse_id}.json"
-    if path.exists():
-        path.unlink()
-
-    source_path = resolve_source_path(entry)
-    if source_path and source_path.exists():
-        source_path.unlink()
-
-    next_index = [item for item in index if item.get("id") != parse_id]
-    save_index(next_index)
-    return {"status": "deleted"}
-
-
-@app.delete("/api/docs")
-def delete_all_docs():
-    index = load_index()
-    for entry in index:
-        parse_id = entry.get("id")
-        if not parse_id:
-            continue
-        path = DATA_DIR / f"{parse_id}.json"
-        if path.exists():
-            path.unlink()
-        source_path = resolve_source_path(entry)
-        if source_path and source_path.exists():
-            source_path.unlink()
-    save_index([])
-    return {"status": "cleared"}
-
-
 if serve_frontend:
-    if hasattr(sys, "_MEIPASS"):
-        frontend_base = Path(sys._MEIPASS) / "backend"
-        logger.info("Detected PyInstaller _MEIPASS, using base %s", frontend_base)
-    else:
-        frontend_base = Path(__file__).resolve().parent
-        logger.info("Using source tree base %s for frontend assets", frontend_base)
-
-    FRONTEND_DIST = frontend_base / "static" / "dist"
+    FRONTEND_DIST = Path(__file__).resolve().parent / "static" / "dist"
     index_file = FRONTEND_DIST / "index.html"
 
     if FRONTEND_DIST.exists() and index_file.exists():
-        logger.info("Serving frontend build from %s", FRONTEND_DIST)
         app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
 
         @app.get("/{full_path:path}")
@@ -297,38 +146,3 @@ if serve_frontend:
             "SERVE_FRONTEND is enabled but no build directory was found at %s",
             FRONTEND_DIST,
         )
-
-        missing_frontend_message = HTMLResponse(
-            """
-            <html>
-                <head>
-                    <title>Vlier Planner</title>
-                    <style>
-                        body {font-family: system-ui, sans-serif; margin: 40px; line-height: 1.6;}
-                        code {background: #f2f2f2; padding: 2px 4px; border-radius: 4px;}
-                    </style>
-                </head>
-                <body>
-                    <h1>Frontend-build ontbreekt</h1>
-                    <p>
-                        De API draait, maar de frontend-build is niet gevonden. Bouw de frontend en kopieer
-                        deze naar <code>backend/static/dist</code> met het hulpscript:
-                    </p>
-                    <pre><code>python tools/build_frontend.py</code></pre>
-                    <p>
-                        Nadat de build beschikbaar is, start de applicatie opnieuw.
-                    </p>
-                </body>
-            </html>
-            """
-        )
-
-        @app.get("/", response_class=HTMLResponse)
-        async def frontend_missing_root() -> HTMLResponse:
-            return missing_frontend_message
-
-        @app.get("/{full_path:path}", response_class=HTMLResponse)
-        async def frontend_missing(full_path: str) -> HTMLResponse:
-            if full_path.startswith("api/"):
-                raise HTTPException(404, "Not found")
-            return missing_frontend_message

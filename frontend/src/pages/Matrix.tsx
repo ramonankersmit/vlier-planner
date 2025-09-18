@@ -809,8 +809,7 @@ export default function Matrix() {
                     const data = perWeek[vak];
                     const docsForVak = docsByVak.get(vak) ?? [];
                     const doc = findDocForWeek(docsForVak, w);
-                    const canOpen = !!doc?.hasSource;
-                    const onOpenDoc = canOpen && doc
+                    const onOpenDoc = doc
                       ? () => openPreview({ fileId: doc.fileId, filename: doc.bestand })
                       : undefined;
                     const customEntries = customHomework[w.id]?.[vak] ?? [];

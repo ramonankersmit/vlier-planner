@@ -1,21 +1,11 @@
 from __future__ import annotations
 
 import os
-import sys
 import threading
 import webbrowser
 from pathlib import Path
 
-os.environ.setdefault("SERVE_FRONTEND", "1")
-
 import uvicorn
-
-BASE_DIR = Path(__file__).resolve().parent
-
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
-
-from backend import main as backend_main
 
 FALSE_VALUES = {"0", "false", "no", "off"}
 
@@ -32,20 +22,18 @@ def open_browser(host: str, port: int) -> None:
 
 
 def main() -> None:
-    os.chdir(BASE_DIR)
+    base_dir = Path(__file__).resolve().parent
+    os.chdir(base_dir)
 
     host = os.getenv("VLIER_HOST", "127.0.0.1")
     port = int(os.getenv("VLIER_PORT", "8000"))
 
+    os.environ.setdefault("SERVE_FRONTEND", "1")
+
     if should_enable(os.getenv("VLIER_OPEN_BROWSER")):
         open_browser(host, port)
 
-    uvicorn.run(
-        backend_main.app,
-        host=host,
-        port=port,
-        log_level=os.getenv("UVICORN_LOG_LEVEL", "info"),
-    )
+    uvicorn.run("backend.main:app", host=host, port=port, log_level=os.getenv("UVICORN_LOG_LEVEL", "info"))
 
 
 if __name__ == "__main__":

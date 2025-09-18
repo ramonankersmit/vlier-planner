@@ -2,7 +2,7 @@ import React from "react";
 import { Info, FileText, Trash2, XCircle } from "lucide-react";
 import type { DocRecord } from "../app/store";
 import { useAppStore, hydrateDocRowsFromApi } from "../app/store";
-import { apiUploadDoc, apiDeleteDoc, apiGetParse, type NormalizedWarning } from "../lib/api";
+import { apiUploadDoc, apiDeleteDoc } from "../lib/api";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 type Filters = {
@@ -29,7 +29,6 @@ function useMetadata(docs: DocRecord[]) {
 export default function Uploads() {
   // Globale docs + acties uit de store
   const { docs, addDoc, removeDoc, setDocEnabled } = useAppStore();
-  const docRowsMap = useAppStore((s) => s.docRows) ?? {};
   const { openPreview } = useDocumentPreview();
 
   // Lokale UI state
@@ -40,69 +39,10 @@ export default function Uploads() {
     periode: "",
   });
   const [detailDoc, setDetailDoc] = React.useState<DocMeta | null>(null);
-  const [detailWarnings, setDetailWarnings] = React.useState<NormalizedWarning[] | null>(null);
-  const [detailMetaInfo, setDetailMetaInfo] = React.useState<{ parsed_at?: string } | null>(null);
-  const [detailLoading, setDetailLoading] = React.useState(false);
-  const [detailError, setDetailError] = React.useState<string | null>(null);
   const [isUploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const meta = useMetadata(docs);
-  const detailRows = detailDoc ? docRowsMap[detailDoc.fileId] : undefined;
-  const parsedAtIso = detailDoc?.parsedAt ?? detailMetaInfo?.parsed_at ?? null;
-  let parsedAtDisplay = "—";
-  if (parsedAtIso) {
-    const parsedDate = new Date(parsedAtIso);
-    parsedAtDisplay = Number.isNaN(parsedDate.getTime())
-      ? parsedAtIso
-      : parsedDate.toLocaleString("nl-NL");
-  }
-  const warnings = detailWarnings ?? [];
-
-  React.useEffect(() => {
-    if (!detailDoc) {
-      setDetailWarnings(null);
-      setDetailMetaInfo(null);
-      setDetailError(null);
-      setDetailLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    const load = async () => {
-      setDetailLoading(true);
-      setDetailError(null);
-      try {
-        const info = await apiGetParse(detailDoc.fileId);
-        if (cancelled) return;
-        setDetailWarnings(info.warnings ?? []);
-        setDetailMetaInfo(info.meta ?? null);
-      } catch (e: any) {
-        if (!cancelled) {
-          setDetailError(e?.message || "Kon details niet laden");
-          setDetailWarnings(null);
-          setDetailMetaInfo(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setDetailLoading(false);
-        }
-      }
-    };
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [detailDoc]);
-
-  React.useEffect(() => {
-    if (!detailDoc) return;
-    if (!detailRows) {
-      hydrateDocRowsFromApi(detailDoc.fileId);
-    }
-  }, [detailDoc, detailRows]);
 
   const reset = () =>
     setFilters({
@@ -134,7 +74,7 @@ export default function Uploads() {
       try {
         const meta = await apiUploadDoc(file);
         // Voeg direct toe aan globale store → Settings/Belangrijke events/Matrix overzicht volgen automatisch
-        addDoc(meta);
+        addDoc(meta as any);
         await hydrateDocRowsFromApi(meta.fileId);
       } catch (e: any) {
         errors.push(`${file.name}: ${e?.message || "Upload mislukt"}`);
@@ -338,16 +278,9 @@ export default function Uploads() {
               <div>{d.eindWeek}</div>
               <div className="flex gap-2 col-span-2">
                 <button
-                  title={
-                    d.hasSource
-                      ? `Bron: ${d.bestand}`
-                      : `Geen bronbestand beschikbaar voor ${d.bestand}`
-                  }
-                  className="rounded-lg border theme-border theme-surface p-1 disabled:opacity-40"
-                  disabled={!d.hasSource}
-                  onClick={() =>
-                    d.hasSource && openPreview({ fileId: d.fileId, filename: d.bestand })
-                  }
+                  title={`Bron: ${d.bestand}`}
+                  className="rounded-lg border theme-border theme-surface p-1"
+                  onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
                 >
                   <FileText size={16} />
                 </button>
@@ -381,78 +314,18 @@ export default function Uploads() {
                 ✕
               </button>
             </div>
-            <div className="space-y-4 text-sm">
-              <div className="whitespace-pre-wrap">
-                Vak: {detailDoc.vak}
-                {"\n"}
-                Niveau: {detailDoc.niveau}
-                {"\n"}
-                Leerjaar: {detailDoc.leerjaar}
-                {"\n"}
-                Periode: {detailDoc.periode}
-                {"\n"}
-                Bereik: week {detailDoc.beginWeek} – {detailDoc.eindWeek}
-                {"\n"}
-                Schooljaar: {detailDoc.schooljaar || "—"}
-                {"\n"}
-                Geparsed op: {parsedAtDisplay}
-                {"\n"}
-                Bronbestand: {detailDoc.hasSource ? "beschikbaar" : "niet beschikbaar"}
-              </div>
-
-              <div>
-                <div className="font-medium mb-1">Waarschuwingen</div>
-                {detailLoading ? (
-                  <div className="theme-muted">Bezig met laden…</div>
-                ) : detailError ? (
-                  <div className="text-red-600">{detailError}</div>
-                ) : warnings.length ? (
-                  <ul className="list-disc space-y-1 pl-4">
-                    {warnings.map((w, idx) => (
-                      <li key={`${w.code}-${idx}`}>
-                        <span className="font-medium">{w.code}</span>: {w.message}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="theme-muted">Geen waarschuwingen.</div>
-                )}
-              </div>
-
-              <div>
-                <div className="font-medium mb-1">Voorbeeldregels</div>
-                {detailRows && detailRows.length ? (
-                  <div className="max-h-60 overflow-auto rounded border theme-border">
-                    <table className="min-w-full text-xs">
-                      <thead className="theme-soft">
-                        <tr>
-                          <th className="px-3 py-1 text-left">Week</th>
-                          <th className="px-3 py-1 text-left">Datum</th>
-                          <th className="px-3 py-1 text-left">Les</th>
-                          <th className="px-3 py-1 text-left">Onderwerp</th>
-                          <th className="px-3 py-1 text-left">Locatie</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detailRows.slice(0, 10).map((row, idx) => (
-                          <tr
-                            key={`${detailDoc.fileId}-${idx}`}
-                            className={idx > 0 ? "border-t theme-border" : ""}
-                          >
-                            <td className="px-3 py-1">{row.week ?? "—"}</td>
-                            <td className="px-3 py-1">{row.datum ?? "—"}</td>
-                            <td className="px-3 py-1">{row.les ?? "—"}</td>
-                            <td className="px-3 py-1">{row.onderwerp ?? "—"}</td>
-                            <td className="px-3 py-1">{row.locatie ?? "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="theme-muted">Geen voorbeeldregels beschikbaar.</div>
-                )}
-              </div>
+            <div className="text-sm whitespace-pre-wrap">
+              Vak: {detailDoc.vak}
+              {"\n"}
+              Niveau: {detailDoc.niveau}
+              {"\n"}
+              Leerjaar: {detailDoc.leerjaar}
+              {"\n"}
+              Periode: {detailDoc.periode}
+              {"\n"}
+              Bereik: week {detailDoc.beginWeek} – {detailDoc.eindWeek}
+              {"\n"}
+              Schooljaar: {detailDoc.schooljaar || "—"}
             </div>
           </div>
         </div>
