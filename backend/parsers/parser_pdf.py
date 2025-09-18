@@ -20,7 +20,10 @@ try:  # eenvoudige fallback wanneer pdfplumber ontbreekt
 except Exception:  # pragma: no cover - PyPDF2 kan ontbreken
     PdfReader = None  # type: ignore
 
-from models import DocMeta, DocRow
+try:  # pragma: no cover - prefer package-relative imports when available
+    from ..models import DocMeta, DocRow
+except ImportError:  # pragma: no cover
+    from models import DocMeta, DocRow  # type: ignore
 from .parser_docx import (
     BRON_HEADERS,
     DATE_HEADER_KEYWORDS,

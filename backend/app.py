@@ -21,13 +21,25 @@ from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
-from models import DocMeta, DocRow  # jij gebruikt nog models.py; laat dit zo staan
-from parsers import (
-    extract_meta_from_docx,
-    extract_rows_from_docx,
-    extract_meta_from_pdf,
-    extract_rows_from_pdf,
-)
+try:  # pragma: no cover - fallback for legacy execution styles
+    from .models import DocMeta, DocRow
+except ImportError:  # pragma: no cover
+    from models import DocMeta, DocRow  # type: ignore
+
+try:  # pragma: no cover - fallback for legacy execution styles
+    from .parsers import (
+        extract_meta_from_docx,
+        extract_rows_from_docx,
+        extract_meta_from_pdf,
+        extract_rows_from_pdf,
+    )
+except ImportError:  # pragma: no cover
+    from parsers import (  # type: ignore
+        extract_meta_from_docx,
+        extract_rows_from_docx,
+        extract_meta_from_pdf,
+        extract_rows_from_pdf,
+    )
 
 app = FastAPI(title="Vlier Planner API")
 
