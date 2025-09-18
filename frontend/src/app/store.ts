@@ -127,6 +127,8 @@ type State = {
   setMatrixNiveau: (n: "HAVO" | "VWO" | "ALLE") => void;
   matrixLeerjaar: string;
   setMatrixLeerjaar: (j: string) => void;
+  lastVisitedRoute: string;
+  setLastVisitedRoute: (path: string) => void;
   resetAppState: () => void;
 };
 
@@ -389,6 +391,7 @@ const createInitialState = (): Pick<
   | "matrixCount"
   | "matrixNiveau"
   | "matrixLeerjaar"
+  | "lastVisitedRoute"
 > => ({
   docs: [],
   docRows: {},
@@ -410,6 +413,7 @@ const createInitialState = (): Pick<
   matrixCount: 3,
   matrixNiveau: "ALLE",
   matrixLeerjaar: "ALLE",
+  lastVisitedRoute: "/",
 });
 
 export const useAppStore = create<State>()(
@@ -733,6 +737,14 @@ export const useAppStore = create<State>()(
         const next = j && j.trim() ? j : "ALLE";
         set({ matrixLeerjaar: next });
       },
+      setLastVisitedRoute: (path) =>
+        set((state) => {
+          const sanitized = path && path.trim() ? path : "/";
+          if (state.lastVisitedRoute === sanitized) {
+            return {};
+          }
+          return { lastVisitedRoute: sanitized };
+        }),
 
       resetAppState: () => {
         const initial = createInitialState();
@@ -763,6 +775,7 @@ export const useAppStore = create<State>()(
         matrixCount: state.matrixCount,
         matrixNiveau: state.matrixNiveau,
         matrixLeerjaar: state.matrixLeerjaar,
+        lastVisitedRoute: state.lastVisitedRoute,
       }),
     }
   )
