@@ -263,8 +263,8 @@ function MatrixCell({
   };
 
   return (
-    <td className="h-full px-4 py-2 align-top">
-      <div className="flex h-full min-w-[14rem] flex-col gap-2">
+    <td className="relative h-full px-4 py-2 align-top">
+      <div className="flex h-full min-w-[14rem] flex-col gap-2 pb-8">
         <div className="flex flex-wrap items-center gap-2 text-xs theme-muted">
           {hasOpmerkingen && (
             <span
@@ -510,19 +510,19 @@ function MatrixCell({
             </form>
           )}
         </div>
-        {!adding && !editing && (
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
-            onClick={startAdd}
-            title="Eigen huiswerk toevoegen"
-            aria-label={`Voeg huiswerk toe voor ${vak}`}
-          >
-            <Plus size={14} />
-            <span>Eigen huiswerk toevoegen</span>
-          </button>
-        )}
       </div>
+      {!adding && !editing && (
+        <button
+          type="button"
+          className="absolute bottom-2 left-4 flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
+          onClick={startAdd}
+          title="Eigen huiswerk toevoegen"
+          aria-label={`Voeg huiswerk toe voor ${vak}`}
+        >
+          <Plus size={14} />
+          <span>Eigen huiswerk toevoegen</span>
+        </button>
+      )}
     </td>
   );
 }
