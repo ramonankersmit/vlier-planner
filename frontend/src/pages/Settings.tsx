@@ -216,12 +216,12 @@ export default function Settings() {
               onChange={(event) => setEnableHomeworkEditing(event.target.checked)}
               className="mt-1"
             />
-            <span className="flex-1 space-y-1">
-              <span className="text-sm font-medium theme-text">Bewerken en verwijderen toestaan</span>
-              <span className="text-xs leading-snug theme-muted">
+            <div className="flex-1">
+              <div className="text-sm font-medium theme-text">Bewerken en verwijderen toestaan</div>
+              <div className="text-xs leading-snug theme-muted">
                 Verberg de potlood- en prullenbakknoppen bij huiswerk wanneer dit is uitgeschakeld.
-              </span>
-            </span>
+              </div>
+            </div>
           </label>
           <label className="flex items-start gap-3 rounded-md border theme-border theme-soft p-3">
             <input
@@ -230,12 +230,12 @@ export default function Settings() {
               onChange={(event) => setEnableCustomHomework(event.target.checked)}
               className="mt-1"
             />
-            <span className="flex-1 space-y-1">
-              <span className="text-sm font-medium theme-text">Eigen huiswerk toevoegen</span>
-              <span className="text-xs leading-snug theme-muted">
+            <div className="flex-1">
+              <div className="text-sm font-medium theme-text">Eigen huiswerk toevoegen</div>
+              <div className="text-xs leading-snug theme-muted">
                 Toon de knop om zelf extra huiswerkregels toe te voegen aan een week.
-              </span>
-            </span>
+              </div>
+            </div>
           </label>
         </div>
       </div>
