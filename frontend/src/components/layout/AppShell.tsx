@@ -103,6 +103,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               Uploads
             </NavLink>
             <NavLink
+              to="/uitleg"
+              className={({ isActive }) =>
+                `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`
+              }
+            >
+              Uitleg
+            </NavLink>
+            <NavLink
               to="/settings"
               className={({ isActive }) =>
                 `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`

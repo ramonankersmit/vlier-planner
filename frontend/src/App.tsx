@@ -6,6 +6,7 @@ import Matrix from "./pages/Matrix";
 import Deadlines from "./pages/Deadlines";
 import Uploads from "./pages/Uploads";
 import Settings from "./pages/Settings";
+import Handleiding from "./pages/Handleiding";
 import { hydrateDocsFromApi } from "./app/store";
 import { DocumentPreviewProvider } from "./components/DocumentPreviewProvider";
 
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/agenda" element={<Deadlines />} />
             <Route path="/uploads" element={<Uploads />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/uitleg" element={<Handleiding />} />
           </Routes>
         </AppShell>
       </DocumentPreviewProvider>
