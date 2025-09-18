@@ -10,7 +10,7 @@ import uvicorn
 # Ensure the backend knows it should serve the built frontend before it is imported
 os.environ.setdefault("SERVE_FRONTEND", "1")
 
-from backend import main as backend_main
+from backend import app as backend_app
 
 FALSE_VALUES = {"0", "false", "no", "off"}
 
@@ -37,7 +37,7 @@ def main() -> None:
         open_browser(host, port)
 
     uvicorn.run(
-        backend_main.app,
+        backend_app.app,
         host=host,
         port=port,
         log_level=os.getenv("UVICORN_LOG_LEVEL", "info"),
