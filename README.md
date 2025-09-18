@@ -11,7 +11,6 @@ Een planner voor studiewijzers van het voortgezet onderwijs. Upload een studiewi
 ## Huiswerk beheren
 - Voeg eigen huiswerk toe via de knop _“Eigen huiswerk toevoegen”_ onder elke vaksectie.
 - Bewerk bestaande items (zowel automatisch geïmporteerd als eigen notities) of verwijder ze.
-- Verborgen taken blijven beschikbaar in een _“Verborgen huiswerk”_-lijst zodat je ze eenvoudig kunt herstellen.
 
 ## Functionaliteit
 - FastAPI-backend met parsers voor PDF- en DOCX-bestanden.
