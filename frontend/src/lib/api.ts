@@ -38,7 +38,22 @@ export type DocRow = {
   locatie?: string | null;
 };
 
-export const API_BASE = "http://localhost:8000";
+function resolveApiBase(): string {
+  const envBase = (import.meta.env.VITE_API_BASE ?? "").trim();
+  if (envBase) {
+    return envBase;
+  }
+
+  if (!import.meta.env.DEV) {
+    if (typeof window !== "undefined" && window.location?.origin) {
+      return window.location.origin;
+    }
+  }
+
+  return "http://localhost:8000";
+}
+
+export const API_BASE = resolveApiBase();
 const BASE = API_BASE;
 
 export async function apiListDocs(): Promise<DocMeta[]> {

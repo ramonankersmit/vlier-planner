@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple
@@ -16,7 +18,30 @@ from backend.schemas.normalized import (
 )
 
 
-DATA_DIR = Path("data/parsed")
+
+def _user_data_base() -> Path:
+    if sys.platform == "win32":
+        root = os.getenv("LOCALAPPDATA") or Path.home() / "AppData" / "Local"
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    else:
+        root = os.getenv("XDG_DATA_HOME") or Path.home() / ".local" / "share"
+    return Path(root) / "VlierPlanner"
+
+
+def _default_data_dir() -> Path:
+    custom = os.getenv("VLIER_DATA_DIR")
+    if custom:
+        return Path(custom)
+
+    if getattr(sys, "frozen", False):
+        return _user_data_base() / "parsed"
+
+    project_root = Path(__file__).resolve().parent.parent
+    return project_root / "data" / "parsed"
+
+
+DATA_DIR = _default_data_dir()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 INDEX_FILE = DATA_DIR / "index.json"
 

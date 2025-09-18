@@ -1,7 +1,11 @@
 from docx import Document
 from typing import Optional, List, Tuple, Iterable, Dict
 import re
-from models import DocMeta, DocRow  # importeer uit models
+
+try:  # pragma: no cover - prefer package-relative imports when available
+    from ..models import DocMeta, DocRow
+except ImportError:  # pragma: no cover
+    from models import DocMeta, DocRow  # type: ignore
 
 # ---------------------------
 # Regex patronen & helpers

@@ -1,16 +1,20 @@
 from dataclasses import dataclass
 import json
 import logging
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from typing import Any, List, Union
+import os
+import sys
 from pathlib import Path
 import mimetypes
 import shutil
 import uuid
 from html import escape
+from typing import Any, List, Union
 from urllib.parse import quote
+
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from docx import Document
 from docx.oxml.table import CT_Tbl
@@ -18,31 +22,75 @@ from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
-from models import DocMeta, DocRow  # jij gebruikt nog models.py; laat dit zo staan
-from parsers import (
-    extract_meta_from_docx,
-    extract_rows_from_docx,
-    extract_meta_from_pdf,
-    extract_rows_from_pdf,
-)
+try:  # pragma: no cover - fallback for legacy execution styles
+    from .models import DocMeta, DocRow
+except ImportError:  # pragma: no cover
+    from models import DocMeta, DocRow  # type: ignore
+
+try:  # pragma: no cover - fallback for legacy execution styles
+    from .parsers import (
+        extract_meta_from_docx,
+        extract_rows_from_docx,
+        extract_meta_from_pdf,
+        extract_rows_from_pdf,
+    )
+except ImportError:  # pragma: no cover
+    from parsers import (  # type: ignore
+        extract_meta_from_docx,
+        extract_rows_from_docx,
+        extract_meta_from_pdf,
+        extract_rows_from_pdf,
+    )
 
 app = FastAPI(title="Vlier Planner API")
 
 logger = logging.getLogger(__name__)
 
+serve_frontend = os.getenv("SERVE_FRONTEND", "0").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
 # CORS voor local dev (pas aan indien nodig)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if not serve_frontend:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Bestandsopslag (simple disk storage)
-STORAGE = Path(__file__).parent / "storage" / "uploads"
+
+
+def _user_data_base() -> Path:
+    if sys.platform == "win32":
+        root = os.getenv("LOCALAPPDATA") or Path.home() / "AppData" / "Local"
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    else:
+        root = os.getenv("XDG_DATA_HOME") or Path.home() / ".local" / "share"
+    return Path(root) / "VlierPlanner"
+
+
+def _storage_root() -> Path:
+    custom = os.getenv("VLIER_STORAGE_DIR")
+    if custom:
+        return Path(custom)
+
+    if getattr(sys, "frozen", False):
+        return _user_data_base() / "storage"
+
+    return Path(__file__).resolve().parent / "storage"
+
+
+STORAGE_BASE = _storage_root()
+STORAGE_BASE.mkdir(parents=True, exist_ok=True)
+STORAGE = STORAGE_BASE / "uploads"
 STORAGE.mkdir(parents=True, exist_ok=True)
-STATE_FILE = Path(__file__).parent / "storage" / "state.json"
-STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+STATE_FILE = STORAGE_BASE / "state.json"
 
 @dataclass
 class StoredDoc:
@@ -325,3 +373,57 @@ async def upload_doc(file: UploadFile = File(...)):
     DOCS[meta.fileId] = StoredDoc(meta=meta, rows=rows)
     _save_state()
     return meta
+
+
+if serve_frontend:
+    FRONTEND_DIST = Path(__file__).resolve().parent / "static" / "dist"
+    index_file = FRONTEND_DIST / "index.html"
+
+    if FRONTEND_DIST.exists() and index_file.exists():
+        app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+
+        @app.get("/{full_path:path}")
+        async def serve_spa(full_path: str):
+            if full_path.startswith("api/"):
+                raise HTTPException(404, "Not found")
+            return FileResponse(index_file)
+    else:
+        logger.warning(
+            "SERVE_FRONTEND is ingeschakeld, maar er is geen build gevonden op %s",
+            FRONTEND_DIST,
+        )
+
+        missing_frontend_message = HTMLResponse(
+            """
+            <html>
+                <head>
+                    <title>Vlier Planner</title>
+                    <style>
+                        body {font-family: system-ui, sans-serif; margin: 40px; line-height: 1.6;}
+                        code {background: #f2f2f2; padding: 2px 4px; border-radius: 4px;}
+                    </style>
+                </head>
+                <body>
+                    <h1>Frontend-build ontbreekt</h1>
+                    <p>
+                        De API draait, maar de frontend-build is niet gevonden. Bouw de frontend en kopieer
+                        deze naar <code>backend/static/dist</code> met het hulpscript:
+                    </p>
+                    <pre><code>python tools/build_frontend.py</code></pre>
+                    <p>
+                        Nadat de build beschikbaar is, start de applicatie opnieuw.
+                    </p>
+                </body>
+            </html>
+            """
+        )
+
+        @app.get("/", response_class=HTMLResponse)
+        async def frontend_missing_root() -> HTMLResponse:
+            return missing_frontend_message
+
+        @app.get("/{full_path:path}", response_class=HTMLResponse)
+        async def frontend_missing(full_path: str) -> HTMLResponse:
+            if full_path.startswith("api/"):
+                raise HTTPException(404, "Not found")
+            return missing_frontend_message
