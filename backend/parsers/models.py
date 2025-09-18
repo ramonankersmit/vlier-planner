@@ -13,6 +13,7 @@ class DocMeta(BaseModel):
     beginWeek: int
     eindWeek: int
     schooljaar: Optional[str] = None  # bv. "2025/2026"
+    hasSource: bool = True
 
 # WeekItem kun je later via een aparte endpoint leveren
 class WeekItem(BaseModel):

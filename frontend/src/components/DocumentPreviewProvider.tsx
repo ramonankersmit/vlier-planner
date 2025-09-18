@@ -19,6 +19,8 @@ type PreviewState = {
   mediaType: string;
   iframeUrl?: string;
   html?: string;
+  summaryHtml?: string;
+  isEmbeddable?: boolean;
 };
 
 const DocumentPreviewContext = createContext<DocumentPreviewContextValue | undefined>(
@@ -52,15 +54,28 @@ export function DocumentPreviewProvider({
       try {
         const result = await apiGetDocPreview(doc.fileId);
         if (cancelled) return;
-        if (result.mediaType.includes("html") && result.html) {
-          setPreview({ mediaType: result.mediaType, html: result.html });
-        } else if (result.url) {
+        const next: PreviewState = {
+          mediaType: result.mediaType,
+          isEmbeddable: result.isEmbeddable,
+        };
+
+        if (result.html) {
+          next.html = result.html;
+        } else if (result.summaryHtml) {
+          next.summaryHtml = result.summaryHtml;
+        }
+
+        if (result.url) {
           const iframeUrl = result.url.startsWith("http")
             ? result.url
             : `${API_BASE}${result.url}`;
-          setPreview({ mediaType: result.mediaType, iframeUrl });
-        } else {
+          next.iframeUrl = iframeUrl;
+        }
+
+        if (!next.html && !next.summaryHtml && !next.iframeUrl) {
           setError("Geen voorvertoning beschikbaar");
+        } else {
+          setPreview(next);
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -101,7 +116,15 @@ export function DocumentPreviewProvider({
     [openPreview, closePreview]
   );
 
-  const hasHtml = !!preview?.html;
+  const iframeUrl = preview?.iframeUrl ?? null;
+  const canEmbedIframe = Boolean(
+    iframeUrl && (preview?.isEmbeddable ?? true)
+  );
+  const htmlContent = preview?.html ?? null;
+  const summaryContent =
+    !htmlContent && (!canEmbedIframe || !iframeUrl)
+      ? preview?.summaryHtml ?? null
+      : null;
 
   return (
     <DocumentPreviewContext.Provider value={value}>
@@ -127,15 +150,20 @@ export function DocumentPreviewProvider({
                 <div className="p-6 text-center text-sm theme-muted">Bezig met laden…</div>
               ) : error ? (
                 <div className="p-6 text-sm text-red-600">{error}</div>
-              ) : hasHtml ? (
+              ) : htmlContent ? (
                 <div
                   className="prose max-w-none px-6 py-4"
-                  dangerouslySetInnerHTML={{ __html: preview?.html || "" }}
+                  dangerouslySetInnerHTML={{ __html: htmlContent }}
                 />
-              ) : preview?.iframeUrl ? (
+              ) : summaryContent ? (
+                <div
+                  className="prose max-w-none px-6 py-4"
+                  dangerouslySetInnerHTML={{ __html: summaryContent }}
+                />
+              ) : canEmbedIframe ? (
                 <iframe
                   title={doc.filename}
-                  src={preview.iframeUrl}
+                  src={preview?.iframeUrl}
                   className="h-[75vh] w-full"
                 />
               ) : (

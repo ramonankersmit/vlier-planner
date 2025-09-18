@@ -14,6 +14,7 @@ class DocMeta(BaseModel):
     beginWeek: int
     eindWeek: int
     schooljaar: Optional[str] = None  # bv. "2025/2026"
+    hasSource: bool = True
 
 class WeekItem(BaseModel):
     week: int
@@ -26,16 +27,16 @@ class WeekItem(BaseModel):
 
 
 class DocRow(BaseModel):
-    week: Optional[int]
-    datum: Optional[str]
-    les: Optional[str]
-    onderwerp: Optional[str]
-    leerdoelen: Optional[List[str]]
-    huiswerk: Optional[str]
-    opdracht: Optional[str]
-    inleverdatum: Optional[str]
-    toets: Optional[Dict[str, Optional[str]]]
-    bronnen: Optional[List[Dict[str, str]]]
-    notities: Optional[str]
-    klas_of_groep: Optional[str]
-    locatie: Optional[str]
+    week: Optional[int] = None
+    datum: Optional[str] = None
+    les: Optional[str] = None
+    onderwerp: Optional[str] = None
+    leerdoelen: Optional[List[str]] = None
+    huiswerk: Optional[str] = None
+    opdracht: Optional[str] = None
+    inleverdatum: Optional[str] = None
+    toets: Optional[Dict[str, Optional[str]]] = None
+    bronnen: Optional[List[Dict[str, str]]] = None
+    notities: Optional[str] = None
+    klas_of_groep: Optional[str] = None
+    locatie: Optional[str] = None

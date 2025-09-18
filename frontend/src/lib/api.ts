@@ -8,6 +8,7 @@ export type DocMeta = {
   beginWeek: number;
   eindWeek: number;
   schooljaar?: string | null;
+  hasSource?: boolean | null;
 };
 
 export type DocToets = {
@@ -84,6 +85,8 @@ export type DocPreview = {
   url?: string;
   html?: string;
   filename?: string;
+  summaryHtml?: string;
+  isEmbeddable?: boolean;
 };
 
 export async function apiGetDocPreview(fileId: string): Promise<DocPreview> {

@@ -242,13 +242,19 @@ export default function Uploads() {
         {filtered.length === 0 ? (
           <div className="p-6 text-sm theme-muted">Geen documenten gevonden.</div>
         ) : (
-          filtered.map((d, i) => (
-            <div
-              key={d.fileId}
-              className={`grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
-                i > 0 ? "border-t theme-border" : ""
-              }`}
-            >
+          filtered.map((d, i) => {
+            const hasSource = d.hasSource ?? true;
+            const previewTitle = hasSource
+              ? `Bron: ${d.bestand}`
+              : "Samenvatting openen (originele bron ontbreekt)";
+
+            return (
+              <div
+                key={d.fileId}
+                className={`grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
+                  i > 0 ? "border-t theme-border" : ""
+                }`}
+              >
               <div className="flex justify-center">
                 <input
                   type="checkbox"
@@ -278,7 +284,7 @@ export default function Uploads() {
               <div>{d.eindWeek}</div>
               <div className="flex gap-2 col-span-2">
                 <button
-                  title={`Bron: ${d.bestand}`}
+                  title={previewTitle}
                   className="rounded-lg border theme-border theme-surface p-1"
                   onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
                 >
@@ -299,8 +305,9 @@ export default function Uploads() {
                   <Trash2 size={16} />
                 </button>
               </div>
-            </div>
-          ))
+              </div>
+            );
+          })
         )}
       </div>
 
