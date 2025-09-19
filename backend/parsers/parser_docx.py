@@ -1,4 +1,7 @@
 from docx import Document
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
+from docx.text.paragraph import Paragraph
 from typing import Optional, List, Tuple, Iterable, Dict
 import re
 
@@ -15,6 +18,7 @@ RE_STUDIEWIJZER = re.compile(r"studiewijzer", re.I)
 RE_VAK_IN_BRACKETS = re.compile(r"\[\s*([A-Za-zÀ-ÿ\s\-\&]+)\s*\]")
 RE_VAK_AFTER_DASH = re.compile(r"studiewijzer\s*[-–]\s*(.+)", re.I)
 RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ\s\-\&]+?)\s*\]")
+RE_PERIODE_MARKER = re.compile(r"periode\s*([1-4])", re.I)
 
 # Weekcel parsing
 RE_WEEK_LEADING = re.compile(r"^\s*(\d{1,2})(?:\s*[/\-]\s*(\d{1,2}))?")
@@ -78,6 +82,78 @@ def extract_schooljaar_from_text(text: str) -> Optional[str]:
 
 def _clean(s: str) -> str:
     return (s or "").strip()
+
+
+def _detect_primary_periode(doc: Document) -> Optional[int]:
+    """Vind de eerste expliciete periodevermelding in de paragraaftekst."""
+    for p in doc.paragraphs:
+        txt = _clean(p.text)
+        if not txt:
+            continue
+        m = RE_PERIODE_MARKER.search(txt)
+        if m:
+            try:
+                return int(m.group(1))
+            except ValueError:
+                continue
+    return None
+
+
+def _table_period_from_cells(tbl) -> Optional[int]:
+    """Zoek naar een periodevermelding in de eerste rijen/kolommen van een tabel."""
+    try:
+        # Controleer de eerste paar rijen; veel bestanden zetten de periode
+        # in de eerste rij of in een samengevoegde kopcel.
+        for row in tbl.rows[:3]:
+            for cell in row.cells[:3]:
+                txt = _clean(cell.text)
+                if not txt:
+                    continue
+                m = RE_PERIODE_MARKER.search(txt)
+                if m:
+                    try:
+                        return int(m.group(1))
+                    except ValueError:
+                        continue
+    except Exception:
+        pass
+    return None
+
+
+def _table_period_markers(doc: Document) -> List[Optional[int]]:
+    """Bepaal per tabel welke periodekop (indien aanwezig) eraan vooraf gaat."""
+    markers: List[Optional[int]] = []
+    current: Optional[int] = None
+    body = doc.element.body
+    table_idx = 0
+    for child in body.iterchildren():
+        if isinstance(child, CT_P):
+            paragraph = Paragraph(child, doc)
+            txt = _clean(paragraph.text)
+            if not txt:
+                continue
+            m = RE_PERIODE_MARKER.search(txt)
+            if m:
+                try:
+                    current = int(m.group(1))
+                except ValueError:
+                    current = None
+        elif isinstance(child, CT_Tbl):
+            marker = current
+            if marker is None and table_idx < len(doc.tables):
+                marker = _table_period_from_cells(doc.tables[table_idx])
+            markers.append(marker)
+            table_idx += 1
+    return markers
+
+
+def _table_matches_period(markers: List[Optional[int]], idx: int, periode: Optional[int]) -> bool:
+    if idx >= len(markers):
+        return True
+    marker = markers[idx]
+    if marker is None or periode is None:
+        return True
+    return marker == periode
 
 def _first_nonempty(paragraphs, start_idx: int) -> Optional[str]:
     for p in paragraphs[start_idx:]:
@@ -275,7 +351,9 @@ def _table_rows_texts(tbl) -> List[List[str]]:
         rows.append([_clean(c.text) for c in row.cells])
     return rows
 
-def _parse_week_range(doc: Document) -> Tuple[int, int]:
+def _parse_week_range(
+    doc: Document, periode: Optional[int], table_markers: List[Optional[int]]
+) -> Tuple[int, int]:
     """
     - Neem in *elke* tabel rij 0 als header.
     - Vind de kolom waarvan de header 'week' of 'wk' bevat.
@@ -291,7 +369,9 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
     stop = False
 
     try:
-        for tbl in doc.tables:
+        for idx, tbl in enumerate(doc.tables):
+            if not _table_matches_period(table_markers, idx, periode):
+                continue
             if stop:
                 break
             rows = _table_rows_texts(tbl)
@@ -344,11 +424,14 @@ def extract_meta_from_docx(path: str, filename: str) -> Optional[DocMeta]:
     vak = _parse_vak_from_header(doc, filename) or "Onbekend"
 
     # Meta + schooljaar
-    niveau, leerjaar, periode, schooljaar_footer = _parse_footer_meta(doc)
+    table_markers = _table_period_markers(doc)
+    niveau, leerjaar, periode_footer, schooljaar_footer = _parse_footer_meta(doc)
+    periode_text = _detect_primary_periode(doc)
+    periode = periode_text or periode_footer
     schooljaar = schooljaar_footer or _parse_schooljaar_from_doc(doc) or _parse_schooljaar_from_filename(filename)
 
     # Weekrange (eenvoudige header-regel)
-    begin_week, eind_week = _parse_week_range(doc)
+    begin_week, eind_week = _parse_week_range(doc, periode, table_markers)
 
     # fileId
     file_id = re.sub(r"[^a-zA-Z0-9]+", "-", filename)[:40]
@@ -359,7 +442,7 @@ def extract_meta_from_docx(path: str, filename: str) -> Optional[DocMeta]:
         vak=vak,
         niveau=niveau,
         leerjaar=leerjaar,
-        periode=periode,
+        periode=periode or periode_footer,
         beginWeek=begin_week,
         eindWeek=eind_week,
         schooljaar=schooljaar,
@@ -554,13 +637,19 @@ def parse_toets_cell(text: str) -> Optional[Dict[str, Optional[str]]]:
 
 def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
     doc = Document(path)
-    schooljaar = _parse_schooljaar_from_doc(doc) or _parse_schooljaar_from_filename(filename)
+    table_markers = _table_period_markers(doc)
+    _, _, periode_footer, schooljaar_footer = _parse_footer_meta(doc)
+    periode_text = _detect_primary_periode(doc)
+    periode = periode_text or periode_footer
+    schooljaar = schooljaar_footer or _parse_schooljaar_from_doc(doc) or _parse_schooljaar_from_filename(filename)
     results: List[DocRow] = []
 
     prev_week: Optional[int] = None
     stop = False
 
-    for tbl in doc.tables:
+    for idx, tbl in enumerate(doc.tables):
+        if not _table_matches_period(table_markers, idx, periode):
+            continue
         if stop:
             break
         rows = _table_rows_texts(tbl)
