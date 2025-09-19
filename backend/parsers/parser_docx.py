@@ -246,8 +246,27 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
         if 1 <= v <= 53:
             weeks.append(v)
 
-    # Verwijder dubbelen en sorteer
-    return sorted(set(weeks))
+    # Verwijder dubbelen maar behoud invoegvolgorde
+    ordered: List[int] = []
+    seen: set[int] = set()
+    for w in weeks:
+        if w in seen:
+            continue
+        seen.add(w)
+        ordered.append(w)
+
+    return ordered
+
+
+def _is_new_period(prev_week: Optional[int], current_week: int) -> bool:
+    """Detecteer overgang naar een nieuwe periode op basis van weeknummers."""
+    if prev_week is None:
+        return False
+    if not (1 <= current_week <= 53):
+        return False
+    # Zodra de reeks na week 40+ terugvalt naar het begin van het jaar,
+    # interpreteren we dat als een nieuwe periode.
+    return prev_week >= 40 and current_week <= 10
 
 def _table_rows_texts(tbl) -> List[List[str]]:
     """Converteer een docx-table naar matrix van celteksten, robuust genoeg voor merges."""
@@ -268,8 +287,13 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
     unique_weeks: List[int] = []
     seen: set[int] = set()
 
+    prev_week: Optional[int] = None
+    stop = False
+
     try:
         for tbl in doc.tables:
+            if stop:
+                break
             rows = _table_rows_texts(tbl)
             if len(rows) < 2:
                 continue
@@ -279,15 +303,23 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
                 continue
 
             for r in rows[1:]:
+                if stop:
+                    break
                 if week_col < len(r):
                     ws = _weeks_from_week_cell(r[week_col])
-                    if ws:
-                        for w in ws:
-                            if 1 <= w <= 53:
-                                ordered_weeks.append(w)
-                                if w not in seen:
-                                    unique_weeks.append(w)
-                                    seen.add(w)
+                    if not ws:
+                        continue
+                    for w in ws:
+                        if not (1 <= w <= 53):
+                            continue
+                        if _is_new_period(prev_week, w):
+                            stop = True
+                            break
+                        ordered_weeks.append(w)
+                        if w not in seen:
+                            unique_weeks.append(w)
+                            seen.add(w)
+                        prev_week = w
 
         if ordered_weeks:
             begin_w, eind_w = ordered_weeks[0], ordered_weeks[-1]
@@ -525,7 +557,12 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
     schooljaar = _parse_schooljaar_from_doc(doc) or _parse_schooljaar_from_filename(filename)
     results: List[DocRow] = []
 
+    prev_week: Optional[int] = None
+    stop = False
+
     for tbl in doc.tables:
+        if stop:
+            break
         rows = _table_rows_texts(tbl)
         if len(rows) < 2:
             continue
@@ -545,6 +582,8 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
         loc_col = find_header_idx(headers, LOCATIE_HEADERS)
 
         for r in rows[1:]:
+            if stop:
+                break
             weeks: List[int] = []
             week_text = None
             if week_col is not None and week_col < len(r):
@@ -608,9 +647,20 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
                 if candidate:
                     base["inleverdatum"] = candidate
 
+            accepted_weeks: List[int] = []
             for w in weeks:
                 if not (1 <= w <= 53):
                     continue
+                if _is_new_period(prev_week, w):
+                    stop = True
+                    break
+                accepted_weeks.append(w)
+                prev_week = w
+
+            if stop or not accepted_weeks:
+                continue
+
+            for w in accepted_weeks:
                 dr = DocRow(
                     week=w,
                     datum=datum,

@@ -304,10 +304,10 @@ def get_doc_preview(file_id: str):
 
     media_type, _ = mimetypes.guess_type(file_path.name)
     if suffix == ".docx":
-        html = _docx_to_html(file_path)
+        html_preview = _docx_to_html(file_path)
         return {
-            "mediaType": "text/html",
-            "html": html,
+            "mediaType": "text/html; charset=utf-8",
+            "html": html_preview,
             "filename": meta.bestand,
         }
 

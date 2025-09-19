@@ -58,7 +58,11 @@ export function DocumentPreviewProvider({
           const iframeUrl = result.url.startsWith("http")
             ? result.url
             : `${API_BASE}${result.url}`;
-          setPreview({ mediaType: result.mediaType, iframeUrl });
+          setPreview({
+            mediaType: result.mediaType,
+            iframeUrl,
+            html: result.html,
+          });
         } else {
           setError("Geen voorvertoning beschikbaar");
         }

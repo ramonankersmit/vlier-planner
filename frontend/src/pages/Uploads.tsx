@@ -2,7 +2,9 @@ import React from "react";
 import { Info, FileText, Trash2, XCircle } from "lucide-react";
 import type { DocRecord } from "../app/store";
 import { useAppStore, hydrateDocRowsFromApi } from "../app/store";
+import type { DocRow } from "../lib/api";
 import { apiUploadDoc, apiDeleteDoc } from "../lib/api";
+import { parseIsoDate } from "../lib/calendar";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 
 type Filters = {
@@ -28,7 +30,7 @@ function useMetadata(docs: DocRecord[]) {
 
 export default function Uploads() {
   // Globale docs + acties uit de store
-  const { docs, addDoc, removeDoc, setDocEnabled } = useAppStore();
+  const { docs, addDoc, removeDoc, setDocEnabled, docRows } = useAppStore();
   const { openPreview } = useDocumentPreview();
 
   // Lokale UI state
@@ -38,7 +40,7 @@ export default function Uploads() {
     leerjaar: "",
     periode: "",
   });
-  const [detailDoc, setDetailDoc] = React.useState<DocMeta | null>(null);
+  const [detailDoc, setDetailDoc] = React.useState<DocRecord | null>(null);
   const [isUploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -104,6 +106,105 @@ export default function Uploads() {
   const toggleGebruik = (doc: DocRecord) => {
     setDocEnabled(doc.fileId, !doc.enabled);
   };
+
+  React.useEffect(() => {
+    if (!detailDoc) return;
+    const hasRows = docRows[detailDoc.fileId]?.length;
+    if (!hasRows) {
+      hydrateDocRowsFromApi(detailDoc.fileId);
+    }
+  }, [detailDoc, docRows]);
+
+  const detailRows: DocRow[] = React.useMemo(() => {
+    if (!detailDoc) return [];
+    return docRows[detailDoc.fileId] ?? [];
+  }, [detailDoc, docRows]);
+
+  const aggregate = React.useMemo(() => {
+    if (!detailRows.length) {
+      return null;
+    }
+    const weekSet = new Set<number>();
+    const dateList: string[] = [];
+    const deadlines = new Set<string>();
+    const opdrachten = new Set<string>();
+    const huiswerk = new Set<string>();
+    const bronnen = new Map<string, { label: string; url: string }>();
+    const toetsen: { key: string; label: string; week?: number | null; datum?: string | null }[] = [];
+
+    detailRows.forEach((row, idx) => {
+      if (typeof row.week === "number" && row.week > 0) {
+        weekSet.add(row.week);
+      }
+      if (row.datum) {
+        dateList.push(row.datum);
+      }
+      if (row.inleverdatum) {
+        deadlines.add(row.inleverdatum);
+      }
+      if (row.opdracht) {
+        opdrachten.add(row.opdracht);
+      }
+      if (row.huiswerk) {
+        huiswerk.add(row.huiswerk);
+      }
+      if (row.bronnen) {
+        row.bronnen.forEach((br) => {
+          if (!br?.url) return;
+          if (!bronnen.has(br.url)) {
+            const label = br.title && br.title.trim() ? br.title.trim() : br.url;
+            bronnen.set(br.url, { label, url: br.url });
+          }
+        });
+      }
+      if (row.toets && (row.toets.type || row.toets.weging || row.toets.herkansing)) {
+        const parts: string[] = [];
+        if (row.toets.type) {
+          parts.push(row.toets.type);
+        }
+        if (row.toets.weging) {
+          parts.push(`weging ${row.toets.weging}`);
+        }
+        if (row.toets.herkansing && row.toets.herkansing !== "onbekend") {
+          parts.push(`herkansing ${row.toets.herkansing}`);
+        }
+        const label = parts.length ? parts.join(" • ") : "Toetsmoment";
+        toetsen.push({
+          key: `${row.week ?? ""}-${row.datum ?? ""}-${idx}`,
+          label,
+          week: row.week,
+          datum: row.datum,
+        });
+      }
+    });
+
+    dateList.sort();
+    const weeks = Array.from(weekSet).sort((a, b) => a - b);
+
+    return {
+      rowCount: detailRows.length,
+      weeks,
+      firstWeek: weeks[0],
+      lastWeek: weeks[weeks.length - 1],
+      firstDate: dateList[0],
+      lastDate: dateList[dateList.length - 1],
+      deadlines: Array.from(deadlines).sort(),
+      opdrachten: Array.from(opdrachten),
+      huiswerk: Array.from(huiswerk),
+      bronnen: Array.from(bronnen.values()),
+      toetsen,
+    };
+  }, [detailRows]);
+
+  const formatDate = React.useCallback((value?: string | null) => {
+    if (!value) return "—";
+    const parsed = parseIsoDate(value);
+    if (!parsed) return value;
+    return new Intl.DateTimeFormat("nl-NL").format(parsed);
+  }, []);
+
+  const previewRows = detailRows.slice(0, 8);
+  const hasMoreRows = detailRows.length > previewRows.length;
 
   return (
     <div className="space-y-4">
@@ -306,26 +407,201 @@ export default function Uploads() {
 
       {/* Detail modal */}
       {detailDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="rounded-2xl border theme-border theme-surface shadow-lg w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Metadata — {detailDoc.bestand}</h2>
-              <button onClick={() => setDetailDoc(null)} className="theme-muted" aria-label="Sluiten">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="w-full max-w-4xl overflow-hidden rounded-2xl border theme-border theme-surface shadow-lg">
+            <div className="flex items-center justify-between border-b theme-border px-6 py-4">
+              <h2 className="text-lg font-semibold truncate" title={detailDoc.bestand}>
+                Metadata — {detailDoc.bestand}
+              </h2>
+              <button onClick={() => setDetailDoc(null)} className="rounded-md border theme-border theme-surface px-2 py-1 text-sm" aria-label="Sluiten">
                 ✕
               </button>
             </div>
-            <div className="text-sm whitespace-pre-wrap">
-              Vak: {detailDoc.vak}
-              {"\n"}
-              Niveau: {detailDoc.niveau}
-              {"\n"}
-              Leerjaar: {detailDoc.leerjaar}
-              {"\n"}
-              Periode: {detailDoc.periode}
-              {"\n"}
-              Bereik: week {detailDoc.beginWeek} – {detailDoc.eindWeek}
-              {"\n"}
-              Schooljaar: {detailDoc.schooljaar || "—"}
+            <div className="max-h-[80vh] overflow-y-auto px-6 py-5 text-sm">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <div className="text-xs theme-muted uppercase tracking-wide">Vak</div>
+                  <div className="font-medium theme-text">{detailDoc.vak}</div>
+                </div>
+                <div>
+                  <div className="text-xs theme-muted uppercase tracking-wide">Niveau</div>
+                  <div>{detailDoc.niveau}</div>
+                </div>
+                <div>
+                  <div className="text-xs theme-muted uppercase tracking-wide">Leerjaar</div>
+                  <div>{detailDoc.leerjaar}</div>
+                </div>
+                <div>
+                  <div className="text-xs theme-muted uppercase tracking-wide">Periode</div>
+                  <div>P{detailDoc.periode}</div>
+                </div>
+                <div>
+                  <div className="text-xs theme-muted uppercase tracking-wide">Weekbereik</div>
+                  <div>
+                    {detailDoc.beginWeek ? detailDoc.beginWeek : "—"} – {detailDoc.eindWeek ? detailDoc.eindWeek : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs theme-muted uppercase tracking-wide">Schooljaar</div>
+                  <div>{detailDoc.schooljaar || "—"}</div>
+                </div>
+              </div>
+
+              {aggregate ? (
+                <div className="mt-5 space-y-4">
+                  <div>
+                    <div className="font-medium theme-text">Geëxtraheerde gegevens</div>
+                    <div className="mt-2 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="rounded-lg border theme-border theme-soft p-3">
+                        <div className="theme-muted mb-1 uppercase tracking-wide">Aantal regels</div>
+                        <div className="text-base font-semibold">{aggregate.rowCount}</div>
+                      </div>
+                      <div className="rounded-lg border theme-border theme-soft p-3">
+                        <div className="theme-muted mb-1 uppercase tracking-wide">Unieke weken</div>
+                        <div>{aggregate.weeks.length ? aggregate.weeks.join(", ") : "—"}</div>
+                      </div>
+                      <div className="rounded-lg border theme-border theme-soft p-3">
+                        <div className="theme-muted mb-1 uppercase tracking-wide">Datumbereik</div>
+                        <div>
+                          {aggregate.firstDate ? formatDate(aggregate.firstDate) : "—"} –
+                          {" "}
+                          {aggregate.lastDate ? formatDate(aggregate.lastDate) : "—"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {aggregate.deadlines.length > 0 && (
+                    <div>
+                      <div className="font-medium theme-text">Deadlines &amp; inleverdata</div>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                        {aggregate.deadlines.map((deadline) => (
+                          <li key={deadline}>{formatDate(deadline)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aggregate.toetsen.length > 0 && (
+                    <div>
+                      <div className="font-medium theme-text">Toetsmomenten</div>
+                      <ul className="mt-2 space-y-1 text-xs">
+                        {aggregate.toetsen.map((item) => (
+                          <li key={item.key} className="rounded-lg border theme-border theme-soft px-3 py-2">
+                            <div className="font-semibold">
+                              {item.week ? `Week ${item.week}` : "Week onbekend"}
+                              {item.datum ? ` · ${formatDate(item.datum)}` : ""}
+                            </div>
+                            <div>{item.label}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aggregate.opdrachten.length > 0 && (
+                    <div>
+                      <div className="font-medium theme-text">Opdrachten</div>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                        {aggregate.opdrachten.slice(0, 6).map((item) => (
+                          <li key={item} className="whitespace-pre-wrap">{item}</li>
+                        ))}
+                        {aggregate.opdrachten.length > 6 && (
+                          <li className="theme-muted">… en {aggregate.opdrachten.length - 6} meer</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aggregate.huiswerk.length > 0 && (
+                    <div>
+                      <div className="font-medium theme-text">Huiswerk</div>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                        {aggregate.huiswerk.slice(0, 6).map((item) => (
+                          <li key={item} className="whitespace-pre-wrap">{item}</li>
+                        ))}
+                        {aggregate.huiswerk.length > 6 && (
+                          <li className="theme-muted">… en {aggregate.huiswerk.length - 6} meer</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aggregate.bronnen.length > 0 && (
+                    <div>
+                      <div className="font-medium theme-text">Bronnen &amp; links</div>
+                      <ul className="mt-2 space-y-1 text-xs">
+                        {aggregate.bronnen.map((br) => (
+                          <li key={br.url}>
+                            <a
+                              href={br.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              {br.label}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="font-medium theme-text">Voorbeeld van geëxtraheerde rijen</div>
+                    <div className="mt-2 overflow-x-auto">
+                      <table className="min-w-full text-xs">
+                        <thead>
+                          <tr className="text-left theme-muted">
+                            <th className="px-3 py-2">Week</th>
+                            <th className="px-3 py-2">Datum</th>
+                            <th className="px-3 py-2">Onderwerp</th>
+                            <th className="px-3 py-2">Huiswerk</th>
+                            <th className="px-3 py-2">Opdracht</th>
+                            <th className="px-3 py-2">Inleverdatum</th>
+                            <th className="px-3 py-2">Toets</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewRows.map((row, idx) => (
+                            <tr key={`${row.week ?? ""}-${row.datum ?? ""}-${idx}`} className="border-t theme-border align-top">
+                              <td className="px-3 py-2 font-semibold">{row.week ?? "—"}</td>
+                              <td className="px-3 py-2">{row.datum ? formatDate(row.datum) : "—"}</td>
+                              <td className="px-3 py-2 whitespace-pre-wrap">{row.onderwerp || "—"}</td>
+                              <td className="px-3 py-2 whitespace-pre-wrap">{row.huiswerk || "—"}</td>
+                              <td className="px-3 py-2 whitespace-pre-wrap">{row.opdracht || "—"}</td>
+                              <td className="px-3 py-2">{row.inleverdatum ? formatDate(row.inleverdatum) : "—"}</td>
+                              <td className="px-3 py-2 whitespace-pre-wrap">
+                                {row.toets && (row.toets.type || row.toets.weging || row.toets.herkansing)
+                                  ? [row.toets.type, row.toets.weging ? `weging ${row.toets.weging}` : null, row.toets.herkansing && row.toets.herkansing !== "onbekend"
+                                      ? `herkansing ${row.toets.herkansing}`
+                                      : null]
+                                      .filter(Boolean)
+                                      .join(" • ")
+                                  : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                          {previewRows.length === 0 && (
+                            <tr>
+                              <td colSpan={7} className="px-3 py-4 text-center theme-muted">
+                                Geen regels beschikbaar.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    {hasMoreRows && (
+                      <div className="mt-2 text-xs theme-muted">
+                        Er zijn in totaal {detailRows.length} rijen beschikbaar. Bekijk het bestand voor de volledige inhoud.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-5 text-sm theme-muted">Geen gedetailleerde gegevens gevonden voor dit document.</div>
+              )}
             </div>
           </div>
         </div>
