@@ -50,6 +50,7 @@ function AppContent() {
   const location = useLocation();
   const hasHydratedStore = useStoreHydration();
   const [initialRouteHandled, setInitialRouteHandled] = React.useState(false);
+  const previousHasDocsRef = React.useRef<boolean | null>(null);
 
   React.useEffect(() => {
     if (!docsInitialized) {
@@ -63,8 +64,11 @@ function AppContent() {
     }
 
     if (!hasDocs) {
-      if (location.pathname !== "/uitleg") {
-        navigate("/uitleg", { replace: true });
+      if (!initialRouteHandled) {
+        if (location.pathname !== "/uitleg") {
+          navigate("/uitleg", { replace: true });
+        }
+        setInitialRouteHandled(true);
       }
       return;
     }
@@ -87,6 +91,23 @@ function AppContent() {
     location.pathname,
     navigate,
   ]);
+
+  React.useEffect(() => {
+    if (!hasHydratedStore || !docsInitialized) {
+      return;
+    }
+
+    const prev = previousHasDocsRef.current;
+    previousHasDocsRef.current = hasDocs;
+
+    if (prev === null) {
+      return;
+    }
+
+    if (prev !== hasDocs) {
+      setInitialRouteHandled(false);
+    }
+  }, [hasDocs, docsInitialized, hasHydratedStore]);
 
   React.useEffect(() => {
     if (!hasHydratedStore || !hasDocs) {
