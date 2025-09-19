@@ -43,14 +43,22 @@ function useStoreHydration() {
 
 function AppContent() {
   const hasDocs = useAppStore((state) => state.docs.length > 0);
+  const docsInitialized = useAppStore((state) => state.docsInitialized);
   const lastVisitedRoute = useAppStore((state) => state.lastVisitedRoute);
   const setLastVisitedRoute = useAppStore((state) => state.setLastVisitedRoute);
   const navigate = useNavigate();
   const location = useLocation();
   const hasHydratedStore = useStoreHydration();
+  const [initialRouteHandled, setInitialRouteHandled] = React.useState(false);
 
   React.useEffect(() => {
-    if (!hasHydratedStore) {
+    if (!docsInitialized) {
+      setInitialRouteHandled(false);
+    }
+  }, [docsInitialized]);
+
+  React.useEffect(() => {
+    if (!hasHydratedStore || !docsInitialized) {
       return;
     }
 
@@ -61,10 +69,24 @@ function AppContent() {
       return;
     }
 
-    if (lastVisitedRoute && lastVisitedRoute !== location.pathname) {
-      navigate(lastVisitedRoute, { replace: true });
+    if (initialRouteHandled) {
+      return;
     }
-  }, [hasHydratedStore, hasDocs, lastVisitedRoute, location.pathname, navigate]);
+
+    const targetRoute = lastVisitedRoute && lastVisitedRoute.trim() ? lastVisitedRoute : "/";
+    if (targetRoute !== location.pathname) {
+      navigate(targetRoute, { replace: true });
+    }
+    setInitialRouteHandled(true);
+  }, [
+    docsInitialized,
+    hasHydratedStore,
+    hasDocs,
+    initialRouteHandled,
+    lastVisitedRoute,
+    location.pathname,
+    navigate,
+  ]);
 
   React.useEffect(() => {
     if (!hasHydratedStore || !hasDocs) {

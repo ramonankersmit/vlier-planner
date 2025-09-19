@@ -68,6 +68,7 @@ const defaultTheme: ThemeSettings = {
 type State = {
   // ==== documenten (globaal) ====
   docs: DocRecord[];
+  docsInitialized: boolean;
   setDocs: (d: DocMeta[]) => void;
   removeDoc: (fileId: string) => void;
   addDoc: (doc: DocMeta) => void;
@@ -129,6 +130,7 @@ type State = {
   setMatrixLeerjaar: (j: string) => void;
   lastVisitedRoute: string;
   setLastVisitedRoute: (path: string) => void;
+  markDocsInitialized: () => void;
   resetAppState: () => void;
 };
 
@@ -372,6 +374,7 @@ const computeWeekAggregation = (
 const createInitialState = (): Pick<
   State,
   | "docs"
+  | "docsInitialized"
   | "docRows"
   | "weekData"
   | "customHomework"
@@ -394,6 +397,7 @@ const createInitialState = (): Pick<
   | "lastVisitedRoute"
 > => ({
   docs: [],
+  docsInitialized: false,
   docRows: {},
   weekData: { weeks: [], byWeek: {} },
   customHomework: {},
@@ -745,6 +749,7 @@ export const useAppStore = create<State>()(
           }
           return { lastVisitedRoute: sanitized };
         }),
+      markDocsInitialized: () => set({ docsInitialized: true }),
 
       resetAppState: () => {
         const initial = createInitialState();
@@ -786,10 +791,10 @@ export const useAppStore = create<State>()(
  * (Dynamische import voorkomt bundling/circular issues.)
  */
 export async function hydrateDocsFromApi() {
+  const store = useAppStore.getState();
   try {
     const { apiListDocs, apiGetDocRows } = await import("../lib/api");
     const docs = await apiListDocs();
-    const store = useAppStore.getState();
     store.setDocs(docs as DocMeta[]);
     if (!docs.length) {
       store.setDocRowsBulk({});
@@ -810,6 +815,8 @@ export async function hydrateDocsFromApi() {
     store.setDocRowsBulk(rowsMap);
   } catch (e) {
     console.warn("Kon docs niet hydrateren:", e);
+  } finally {
+    store.markDocsInitialized();
   }
 }
 
