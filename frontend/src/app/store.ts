@@ -68,6 +68,7 @@ const defaultTheme: ThemeSettings = {
 type State = {
   // ==== documenten (globaal) ====
   docs: DocRecord[];
+  docsInitialized: boolean;
   setDocs: (d: DocMeta[]) => void;
   removeDoc: (fileId: string) => void;
   addDoc: (doc: DocMeta) => void;
@@ -127,6 +128,9 @@ type State = {
   setMatrixNiveau: (n: "HAVO" | "VWO" | "ALLE") => void;
   matrixLeerjaar: string;
   setMatrixLeerjaar: (j: string) => void;
+  lastVisitedRoute: string;
+  setLastVisitedRoute: (path: string) => void;
+  markDocsInitialized: () => void;
   resetAppState: () => void;
 };
 
@@ -370,6 +374,7 @@ const computeWeekAggregation = (
 const createInitialState = (): Pick<
   State,
   | "docs"
+  | "docsInitialized"
   | "docRows"
   | "weekData"
   | "customHomework"
@@ -389,8 +394,10 @@ const createInitialState = (): Pick<
   | "matrixCount"
   | "matrixNiveau"
   | "matrixLeerjaar"
+  | "lastVisitedRoute"
 > => ({
   docs: [],
+  docsInitialized: false,
   docRows: {},
   weekData: { weeks: [], byWeek: {} },
   customHomework: {},
@@ -410,6 +417,7 @@ const createInitialState = (): Pick<
   matrixCount: 3,
   matrixNiveau: "ALLE",
   matrixLeerjaar: "ALLE",
+  lastVisitedRoute: "/",
 });
 
 export const useAppStore = create<State>()(
@@ -733,6 +741,15 @@ export const useAppStore = create<State>()(
         const next = j && j.trim() ? j : "ALLE";
         set({ matrixLeerjaar: next });
       },
+      setLastVisitedRoute: (path) =>
+        set((state) => {
+          const sanitized = path && path.trim() ? path : "/";
+          if (state.lastVisitedRoute === sanitized) {
+            return {};
+          }
+          return { lastVisitedRoute: sanitized };
+        }),
+      markDocsInitialized: () => set({ docsInitialized: true }),
 
       resetAppState: () => {
         const initial = createInitialState();
@@ -763,6 +780,7 @@ export const useAppStore = create<State>()(
         matrixCount: state.matrixCount,
         matrixNiveau: state.matrixNiveau,
         matrixLeerjaar: state.matrixLeerjaar,
+        lastVisitedRoute: state.lastVisitedRoute,
       }),
     }
   )
@@ -773,10 +791,10 @@ export const useAppStore = create<State>()(
  * (Dynamische import voorkomt bundling/circular issues.)
  */
 export async function hydrateDocsFromApi() {
+  const store = useAppStore.getState();
   try {
     const { apiListDocs, apiGetDocRows } = await import("../lib/api");
     const docs = await apiListDocs();
-    const store = useAppStore.getState();
     store.setDocs(docs as DocMeta[]);
     if (!docs.length) {
       store.setDocRowsBulk({});
@@ -797,6 +815,8 @@ export async function hydrateDocsFromApi() {
     store.setDocRowsBulk(rowsMap);
   } catch (e) {
     console.warn("Kon docs niet hydrateren:", e);
+  } finally {
+    store.markDocsInitialized();
   }
 }
 
