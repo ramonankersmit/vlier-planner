@@ -15,3 +15,18 @@ def test_latijnse_taal_en_cultuur_period_1_stops_before_period_2():
     assert weeks, "Expected at least one extracted row"
     assert max(weeks) == 45
     assert all(35 <= week <= 45 for week in weeks)
+
+
+def test_latijnse_taal_en_cultuur_period_2_wraps_across_new_year():
+    sample = Path("samples/Latijnse Taal en Cultuur_ periode 1_4vwo.docx")
+    assert sample.exists(), "Sample document is missing"
+
+    rows = extract_rows_from_docx(str(sample), sample.name, target_periode=2)
+    weeks = [row.week for row in rows]
+    assert weeks, "Expected period 2 rows to be extracted"
+    assert set(range(46, 53)).issubset(weeks)
+    assert set(range(1, 5)).issubset(weeks)
+
+    meta = extract_meta_from_docx(str(sample), sample.name, target_periode=2)
+    assert meta.beginWeek == 46
+    assert meta.eindWeek == 52

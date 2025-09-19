@@ -331,7 +331,9 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
     return ordered
 
 
-def _is_new_period(prev_week: Optional[int], current_week: int) -> bool:
+def _is_new_period(
+    prev_week: Optional[int], current_week: int, *, allow_wrap: bool = False
+) -> bool:
     """Detecteer overgang naar een nieuwe periode op basis van weeknummers."""
     if prev_week is None:
         return False
@@ -339,6 +341,8 @@ def _is_new_period(prev_week: Optional[int], current_week: int) -> bool:
         return False
     # Zodra de reeks na week 40+ terugvalt naar het begin van het jaar,
     # interpreteren we dat als een nieuwe periode.
+    if allow_wrap:
+        return False
     return prev_week >= 40 and current_week <= 10
 
 def _table_rows_texts(tbl) -> List[List[str]]:
@@ -379,6 +383,7 @@ def _parse_week_range(
             if week_col is None:
                 continue
 
+            allow_wrap = marker is not None
             for r in rows[1:]:
                 if stop:
                     break
@@ -389,7 +394,7 @@ def _parse_week_range(
                     for w in ws:
                         if not (1 <= w <= 53):
                             continue
-                        if _is_new_period(prev_week, w):
+                        if _is_new_period(prev_week, w, allow_wrap=allow_wrap):
                             stop = True
                             break
                         ordered_weeks.append(w)
@@ -414,7 +419,9 @@ def _parse_week_range(
 # Hoofdfunctie
 # ---------------------------
 
-def extract_meta_from_docx(path: str, filename: str) -> Optional[DocMeta]:
+def extract_meta_from_docx(
+    path: str, filename: str, target_periode: Optional[int] = None
+) -> Optional[DocMeta]:
     doc = Document(path)
 
     # VAK
@@ -424,7 +431,7 @@ def extract_meta_from_docx(path: str, filename: str) -> Optional[DocMeta]:
     table_markers = _table_period_markers(doc)
     niveau, leerjaar, periode_footer, schooljaar_footer = _parse_footer_meta(doc)
     periode_text = _detect_primary_periode(doc)
-    periode = periode_text or periode_footer
+    periode = target_periode or periode_text or periode_footer
     schooljaar = schooljaar_footer or _parse_schooljaar_from_doc(doc) or _parse_schooljaar_from_filename(filename)
 
     # Weekrange (eenvoudige header-regel)
@@ -632,12 +639,14 @@ def parse_toets_cell(text: str) -> Optional[Dict[str, Optional[str]]]:
     return {"type": ttype or normalize_text(text), "weging": weight, "herkansing": herk}
 
 
-def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
+def extract_rows_from_docx(
+    path: str, filename: str, target_periode: Optional[int] = None
+) -> List[DocRow]:
     doc = Document(path)
     table_markers = _table_period_markers(doc)
     _, _, periode_footer, schooljaar_footer = _parse_footer_meta(doc)
     periode_text = _detect_primary_periode(doc)
-    periode = periode_text or periode_footer
+    periode = target_periode or periode_text or periode_footer
     schooljaar = schooljaar_footer or _parse_schooljaar_from_doc(doc) or _parse_schooljaar_from_filename(filename)
     results: List[DocRow] = []
 
@@ -667,6 +676,7 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
         klas_col = find_header_idx(headers, KLAS_HEADERS)
         loc_col = find_header_idx(headers, LOCATIE_HEADERS)
 
+        allow_wrap = marker is not None
         for r in rows[1:]:
             if stop:
                 break
@@ -737,7 +747,7 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
             for w in weeks:
                 if not (1 <= w <= 53):
                     continue
-                if _is_new_period(prev_week, w):
+                if _is_new_period(prev_week, w, allow_wrap=allow_wrap):
                     stop = True
                     break
                 accepted_weeks.append(w)
