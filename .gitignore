@@ -44,3 +44,6 @@ Thumbs.db
 *.xlsx
 *.cache
 *.db
+!samples/
+!samples/*.pdf
+!samples/*.docx
