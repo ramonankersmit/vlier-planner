@@ -93,5 +93,17 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
 4. Beheer huiswerk in Weekoverzicht of Matrix overzicht en bekijk events via _Belangrijke events_.
 
 
+## Voorbeeldbestanden
+Het PR-systeem accepteert geen binaire bestanden. Daarom staan de voorbeeldstudiewijzers opgeslagen als Base64 in `samples/voorbeeld-studiewijzer.pdf.base64` en `samples/voorbeeld-studiewijzer.docx.base64`.
+
+Genereer lokaal de echte PDF- en DOCX-bestanden met:
+
+```bash
+node tools/decode_samples.mjs
+```
+
+De bestanden worden genegeerd door git, maar kun je wel gebruiken om snel de applicatie te vullen of nieuwe screenshots te maken.
+
+
 ## Licentie
 MIT

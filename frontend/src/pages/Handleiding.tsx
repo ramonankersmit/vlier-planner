@@ -7,68 +7,11 @@ import {
   Settings2,
   Wand2,
 } from "lucide-react";
-
-const weekoverzichtSvg = `
-  <svg width="360" height="220" viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg">
-    <rect width="360" height="220" rx="18" fill="#f3f4f6" />
-    <rect x="18" y="18" width="90" height="28" rx="8" fill="#0ea5e9" opacity="0.18" />
-    <rect x="120" y="18" width="90" height="28" rx="8" fill="#0ea5e9" opacity="0.12" />
-    <rect x="222" y="18" width="90" height="28" rx="8" fill="#0ea5e9" opacity="0.08" />
-    <rect x="18" y="58" width="324" height="136" rx="12" fill="#ffffff" />
-    <rect x="34" y="74" width="60" height="10" rx="5" fill="#0ea5e9" opacity="0.65" />
-    <rect x="102" y="74" width="60" height="10" rx="5" fill="#0ea5e9" opacity="0.4" />
-    <rect x="170" y="74" width="60" height="10" rx="5" fill="#0ea5e9" opacity="0.2" />
-    <rect x="238" y="74" width="60" height="10" rx="5" fill="#0ea5e9" opacity="0.1" />
-    <rect x="34" y="96" width="292" height="26" rx="6" fill="#ecfdf5" />
-    <rect x="40" y="102" width="120" height="14" rx="7" fill="#10b981" opacity="0.7" />
-    <rect x="34" y="130" width="292" height="26" rx="6" fill="#fef9c3" />
-    <rect x="40" y="136" width="160" height="14" rx="7" fill="#facc15" opacity="0.7" />
-    <rect x="34" y="164" width="292" height="26" rx="6" fill="#f3f4f6" />
-    <rect x="40" y="170" width="140" height="14" rx="7" fill="#9ca3af" opacity="0.5" />
-    <circle cx="296" cy="170" r="10" fill="#10b981" opacity="0.85" />
-    <circle cx="318" cy="170" r="10" fill="#9ca3af" opacity="0.5" />
-  </svg>
-`;
-
-const matrixSvg = `
-  <svg width="360" height="220" viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg">
-    <rect width="360" height="220" rx="18" fill="#f5f3ff" />
-    <rect x="18" y="18" width="324" height="184" rx="14" fill="#ffffff" />
-    <rect x="34" y="40" width="292" height="26" rx="8" fill="#ede9fe" />
-    <rect x="42" y="48" width="120" height="10" rx="5" fill="#7c3aed" opacity="0.6" />
-    <rect x="34" y="80" width="292" height="90" rx="10" fill="#f8fafc" />
-    <rect x="48" y="94" width="116" height="20" rx="6" fill="#f1f5f9" />
-    <rect x="176" y="94" width="116" height="20" rx="6" fill="#f1f5f9" />
-    <rect x="48" y="122" width="244" height="10" rx="5" fill="#7c3aed" opacity="0.18" />
-    <rect x="48" y="140" width="180" height="10" rx="5" fill="#7c3aed" opacity="0.32" />
-    <rect x="48" y="158" width="124" height="10" rx="5" fill="#7c3aed" opacity="0.48" />
-    <rect x="34" y="180" width="92" height="10" rx="5" fill="#c4b5fd" />
-    <rect x="132" y="180" width="92" height="10" rx="5" fill="#c4b5fd" opacity="0.7" />
-    <rect x="230" y="180" width="92" height="10" rx="5" fill="#c4b5fd" opacity="0.4" />
-  </svg>
-`;
-
-const uploadSvg = `
-  <svg width="360" height="220" viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg">
-    <rect width="360" height="220" rx="18" fill="#ecfdf5" />
-    <rect x="24" y="26" width="312" height="60" rx="12" fill="#ffffff" />
-    <rect x="40" y="42" width="120" height="12" rx="6" fill="#10b981" opacity="0.65" />
-    <rect x="172" y="42" width="120" height="12" rx="6" fill="#10b981" opacity="0.25" />
-    <rect x="24" y="98" width="312" height="96" rx="12" fill="#ffffff" />
-    <rect x="40" y="114" width="140" height="12" rx="6" fill="#0f172a" opacity="0.35" />
-    <rect x="40" y="134" width="206" height="12" rx="6" fill="#0f172a" opacity="0.25" />
-    <rect x="40" y="154" width="168" height="12" rx="6" fill="#0f172a" opacity="0.15" />
-    <rect x="240" y="120" width="80" height="32" rx="10" fill="#10b981" opacity="0.85" />
-    <rect x="40" y="182" width="120" height="10" rx="5" fill="#d1fae5" />
-    <rect x="172" y="182" width="120" height="10" rx="5" fill="#d1fae5" opacity="0.6" />
-    <path d="M300 140 L300 118" stroke="#ffffff" stroke-width="4" stroke-linecap="round" />
-    <path d="M290 126 L300 118 L310 126" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
-  </svg>
-`;
-
-const weekoverzichtImage = `data:image/svg+xml;utf8,${encodeURIComponent(weekoverzichtSvg)}`;
-const matrixImage = `data:image/svg+xml;utf8,${encodeURIComponent(matrixSvg)}`;
-const uploadImage = `data:image/svg+xml;utf8,${encodeURIComponent(uploadSvg)}`;
+import {
+  weekoverzichtScreenshot,
+  matrixScreenshot,
+  uploadsScreenshot,
+} from "../assets/screens/demoScreenshots";
 
 const stappen = [
   {
@@ -127,8 +70,8 @@ const demoScreens = [
     description: "Zie per dag wat je moet doen en vink opdrachten af zodra ze klaar zijn.",
     caption:
       "Tip: klik op een dag om eigen taken toe te voegen of een afspraak te verplaatsen.",
-    image: weekoverzichtImage,
-    imageAlt: "Screenshot van het weekoverzicht met taken per dag en afgeronde opdrachten.",
+    image: weekoverzichtScreenshot,
+    imageAlt: "Screenshot van het echte weekoverzicht met opgehaalde studiewijzer-data.",
     highlights: [
       "Start je week met een blik op maandag t/m zondag",
       "Sleep opdrachten naar een andere dag als je planning wijzigt",
@@ -139,8 +82,8 @@ const demoScreens = [
     title: "Matrix",
     description: "Bekijk per vak welke grote opdrachten of toetsen eraan komen.",
     caption: "Gebruik dit scherm om vooruit te plannen voor projecten en toetsweken.",
-    image: matrixImage,
-    imageAlt: "Screenshot van de matrixweergave met kolommen per vak en highlightbalken.",
+    image: matrixScreenshot,
+    imageAlt: "Screenshot van de matrixweergave met kolommen per vak uit de voorbeeldstudiewijzer.",
     highlights: [
       "Zie per vak welke hoofdstukken of projecten eraan komen",
       "Kijk vooruit naar grote taken zodat je op tijd kunt starten",
@@ -152,8 +95,8 @@ const demoScreens = [
     description: "Voeg de PDF van je studiewijzer toe zodat je alles op één plek hebt.",
     caption:
       "Let op: upload alleen studiewijzers en ververs ze zodra de docent een nieuwe versie deelt.",
-    image: uploadImage,
-    imageAlt: "Screenshot van het uploadscherm met een groene uploadknop en velden voor de studiewijzer.",
+    image: uploadsScreenshot,
+    imageAlt: "Screenshot van het uploads-scherm met de geüploade voorbeeldstudiewijzers.",
     highlights: [
       "Kies het vak en upload de nieuwste studiewijzer als PDF",
       "De planner leest de opdrachten in en zet ze op de juiste plek",
