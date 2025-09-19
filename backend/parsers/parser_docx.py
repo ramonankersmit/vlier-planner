@@ -1,6 +1,7 @@
 from docx import Document
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
+from docx.table import Table
 from docx.text.paragraph import Paragraph
 from typing import Optional, List, Tuple, Iterable, Dict
 import re
@@ -120,12 +121,11 @@ def _table_period_from_cells(tbl) -> Optional[int]:
     return None
 
 
-def _table_period_markers(doc: Document) -> List[Optional[int]]:
-    """Bepaal per tabel welke periodekop (indien aanwezig) eraan vooraf gaat."""
-    markers: List[Optional[int]] = []
+def _table_period_markers(doc: Document) -> List[Tuple[Table, Optional[int]]]:
+    """Geef een lijst terug met (tabel, periode-marker)."""
+    results: List[Tuple[Table, Optional[int]]] = []
     current: Optional[int] = None
     body = doc.element.body
-    table_idx = 0
     for child in body.iterchildren():
         if isinstance(child, CT_P):
             paragraph = Paragraph(child, doc)
@@ -139,18 +139,15 @@ def _table_period_markers(doc: Document) -> List[Optional[int]]:
                 except ValueError:
                     current = None
         elif isinstance(child, CT_Tbl):
-            marker = current
-            if marker is None and table_idx < len(doc.tables):
-                marker = _table_period_from_cells(doc.tables[table_idx])
-            markers.append(marker)
-            table_idx += 1
-    return markers
+            table = Table(child, doc)
+            marker = current or _table_period_from_cells(table)
+            if marker is not None:
+                current = marker
+            results.append((table, marker))
+    return results
 
 
-def _table_matches_period(markers: List[Optional[int]], idx: int, periode: Optional[int]) -> bool:
-    if idx >= len(markers):
-        return True
-    marker = markers[idx]
+def _table_matches_period(marker: Optional[int], periode: Optional[int]) -> bool:
     if marker is None or periode is None:
         return True
     return marker == periode
@@ -352,7 +349,7 @@ def _table_rows_texts(tbl) -> List[List[str]]:
     return rows
 
 def _parse_week_range(
-    doc: Document, periode: Optional[int], table_markers: List[Optional[int]]
+    doc: Document, periode: Optional[int], table_markers: List[Tuple[Table, Optional[int]]]
 ) -> Tuple[int, int]:
     """
     - Neem in *elke* tabel rij 0 als header.
@@ -369,8 +366,8 @@ def _parse_week_range(
     stop = False
 
     try:
-        for idx, tbl in enumerate(doc.tables):
-            if not _table_matches_period(table_markers, idx, periode):
+        for tbl, marker in table_markers:
+            if not _table_matches_period(marker, periode):
                 continue
             if stop:
                 break
@@ -647,8 +644,8 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
     prev_week: Optional[int] = None
     stop = False
 
-    for idx, tbl in enumerate(doc.tables):
-        if not _table_matches_period(table_markers, idx, periode):
+    for tbl, marker in table_markers:
+        if not _table_matches_period(marker, periode):
             continue
         if stop:
             break
