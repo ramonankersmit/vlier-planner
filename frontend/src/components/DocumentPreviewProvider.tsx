@@ -107,8 +107,6 @@ export function DocumentPreviewProvider({
 
   const hasHtml = !!preview?.html;
 
-  const isDocxPreview = preview?.mediaType.includes("wordprocessingml");
-
   return (
     <DocumentPreviewContext.Provider value={value}>
       {children}
@@ -139,28 +137,11 @@ export function DocumentPreviewProvider({
                   dangerouslySetInnerHTML={{ __html: preview?.html || "" }}
                 />
               ) : preview?.iframeUrl ? (
-                isDocxPreview ? (
-                  <div className="space-y-3 px-6 py-5 text-sm">
-                    <p className="theme-text">
-                      Voor DOCX-bestanden tonen we de originele inhoud. Download of open het
-                      document om de volledige opmaak te bekijken.
-                    </p>
-                    <a
-                      href={preview.iframeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center rounded-md border theme-border bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      Open origineel
-                    </a>
-                  </div>
-                ) : (
-                  <iframe
-                    title={doc.filename}
-                    src={preview.iframeUrl}
-                    className="h-[75vh] w-full"
-                  />
-                )
+                <iframe
+                  title={doc.filename}
+                  src={preview.iframeUrl}
+                  className="h-[75vh] w-full"
+                />
               ) : (
                 <div className="p-6 text-sm theme-muted">Geen voorvertoning beschikbaar.</div>
               )}

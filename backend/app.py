@@ -304,12 +304,10 @@ def get_doc_preview(file_id: str):
 
     media_type, _ = mimetypes.guess_type(file_path.name)
     if suffix == ".docx":
-        media_type = (
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        html_preview = _docx_to_html(file_path)
         return {
-            "mediaType": media_type,
-            "url": f"/api/docs/{file_id}/content?inline=1",
+            "mediaType": "text/html; charset=utf-8",
+            "html": html_preview,
             "filename": meta.bestand,
         }
 
