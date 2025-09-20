@@ -149,7 +149,7 @@ export default function Handleiding() {
               key={screen.title}
               className="flex h-full flex-col overflow-hidden rounded-xl border theme-border theme-surface shadow-sm"
             >
-              <div className="relative h-72 border-b border-[var(--app-border)] bg-[var(--app-background)]">
+              <div className="relative h-48 border-b border-[var(--app-border)] bg-[var(--app-background)]">
                 <img
                   src={screen.image}
                   alt={screen.imageAlt}
