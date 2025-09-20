@@ -1,13 +1,20 @@
 import React from "react";
 import clsx from "clsx";
 import { Info, FileText, Trash2, XCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import type { DocRecord } from "../app/store";
 import { useAppStore, hydrateDocRowsFromApi } from "../app/store";
-import type { DocRow } from "../lib/api";
-import { apiUploadDoc, apiDeleteDoc } from "../lib/api";
+import type { DocDiff, DocRow, ReviewDraft, StudyGuideVersion } from "../lib/api";
+import {
+  apiUploadDoc,
+  apiDeleteDoc,
+  apiGetStudyGuideVersions,
+  apiGetStudyGuideDiff,
+} from "../lib/api";
 import { parseIsoDate } from "../lib/calendar";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 import { useFocusTrap } from "../lib/useFocusTrap";
+import { DiffRowsList, DiffSummaryBadges } from "../components/DiffViewer";
 
 type Filters = {
   vak: string;
@@ -125,6 +132,14 @@ function formatWeekSet(weeks: Iterable<number>): string {
   return unique.length ? formatSegments(groupWeeks(unique)) : "—";
 }
 
+function formatVersionLabel(version: StudyGuideVersion): string {
+  const parsed = parseIsoDate(version.createdAt);
+  if (!parsed) {
+    return `Versie ${version.versionId}`;
+  }
+  return `Versie ${version.versionId} • ${parsed.toLocaleString("nl-NL")}`;
+}
+
 function useMetadata(docs: DocRecord[], docRows: Record<string, DocRow[]>) {
   const vakken = Array.from(new Set(docs.map((d) => d.vak))).sort();
   const niveaus = Array.from(new Set(docs.map((d) => d.niveau))).sort() as string[];
@@ -141,7 +156,25 @@ function useMetadata(docs: DocRecord[], docRows: Record<string, DocRow[]>) {
 
 export default function Uploads() {
   // Globale docs + acties uit de store
-  const { docs, addDoc, removeDoc, setDocEnabled, docRows } = useAppStore();
+  const {
+    docs,
+    removeDoc,
+    setDocEnabled,
+    docRows,
+    studyGuides,
+    guideVersions,
+    guideDiffs,
+    versionRows,
+    selectedGuideId,
+    selectedVersionId,
+    selectGuideVersion,
+    clearGuideSelection,
+    setGuideVersions,
+    setGuideDiff,
+    setPendingReview,
+    setActiveReview,
+  } = useAppStore();
+  const navigate = useNavigate();
   const { openPreview } = useDocumentPreview();
 
   // Lokale UI state
@@ -225,17 +258,21 @@ export default function Uploads() {
     setUploading(true);
     setError(null);
     const errors: string[] = [];
+    const pending: ReviewDraft[] = [];
     for (const file of files) {
       try {
-        const metas = await apiUploadDoc(file);
-        for (const meta of metas) {
-          // Voeg direct toe aan globale store → Settings/Belangrijke events/Matrix overzicht volgen automatisch
-          addDoc(meta as any);
-          await hydrateDocRowsFromApi(meta.fileId);
-        }
+        const responses = await apiUploadDoc(file);
+        pending.push(...responses);
       } catch (e: any) {
         errors.push(`${file.name}: ${e?.message || "Upload mislukt"}`);
       }
+    }
+    pending.forEach((review) => {
+      setPendingReview(review);
+    });
+    if (pending.length) {
+      setActiveReview(pending[0].parseId);
+      navigate("/review");
     }
     if (errors.length) {
       setError(errors.join(" | "));
@@ -309,17 +346,147 @@ export default function Uploads() {
   };
 
   React.useEffect(() => {
-    if (!detailDoc) return;
-    const hasRows = docRows[detailDoc.fileId]?.length;
-    if (!hasRows) {
-      hydrateDocRowsFromApi(detailDoc.fileId);
+    if (!detailDoc) {
+      clearGuideSelection();
+      return;
     }
-  }, [detailDoc, docRows]);
+    const guideId = detailDoc.fileId;
+    const versionsForGuide = guideVersions[guideId];
+    const defaultVersion =
+      versionsForGuide?.[0]?.versionId ?? detailDoc.versionId ?? null;
+    if (selectedGuideId !== guideId) {
+      selectGuideVersion(guideId, defaultVersion ?? null);
+      return;
+    }
+    if (selectedVersionId == null && defaultVersion != null) {
+      selectGuideVersion(guideId, defaultVersion);
+    }
+  }, [
+    detailDoc,
+    guideVersions,
+    selectedGuideId,
+    selectedVersionId,
+    selectGuideVersion,
+    clearGuideSelection,
+  ]);
+
+  React.useEffect(() => {
+    if (!detailDoc) {
+      return;
+    }
+    const guide = studyGuides.find((item) => item.guideId === detailDoc.fileId);
+    if (!guide) {
+      return;
+    }
+    const cachedVersions = guideVersions[guide.guideId];
+    if (!cachedVersions || cachedVersions.length < guide.versionCount) {
+      apiGetStudyGuideVersions(guide.guideId)
+        .then((versions) => setGuideVersions(guide.guideId, versions))
+        .catch((err) => {
+          console.warn(`Kon versies niet laden voor ${guide.guideId}:`, err);
+        });
+    }
+  }, [detailDoc, studyGuides, guideVersions, setGuideVersions]);
+
+  React.useEffect(() => {
+    if (
+      !detailDoc ||
+      selectedGuideId !== detailDoc.fileId ||
+      selectedVersionId == null
+    ) {
+      return;
+    }
+    const diffEntry = guideDiffs[detailDoc.fileId]?.[selectedVersionId];
+    if (!diffEntry) {
+      apiGetStudyGuideDiff(detailDoc.fileId, selectedVersionId)
+        .then((diff) => setGuideDiff(detailDoc.fileId, selectedVersionId, diff))
+        .catch((err) => {
+          console.warn(
+            `Kon diff niet laden voor ${detailDoc.fileId}#${selectedVersionId}:`,
+            err
+          );
+        });
+    }
+  }, [
+    detailDoc,
+    selectedGuideId,
+    selectedVersionId,
+    guideDiffs,
+    setGuideDiff,
+  ]);
+
+  React.useEffect(() => {
+    if (
+      !detailDoc ||
+      selectedGuideId !== detailDoc.fileId ||
+      selectedVersionId == null
+    ) {
+      return;
+    }
+    const hasRows = versionRows[detailDoc.fileId]?.[selectedVersionId]?.length;
+    if (!hasRows) {
+      hydrateDocRowsFromApi(detailDoc.fileId, selectedVersionId);
+    }
+  }, [
+    detailDoc,
+    selectedGuideId,
+    selectedVersionId,
+    versionRows,
+  ]);
 
   const detailRows: DocRow[] = React.useMemo(() => {
     if (!detailDoc) return [];
-    return docRows[detailDoc.fileId] ?? [];
-  }, [detailDoc, docRows]);
+    const guideId = detailDoc.fileId;
+    const versionId =
+      selectedGuideId === guideId && selectedVersionId != null
+        ? selectedVersionId
+        : detailDoc.versionId ?? null;
+    if (versionId != null) {
+      const stored = versionRows[guideId]?.[versionId];
+      if (stored) {
+        return stored;
+      }
+      if (versionId === detailDoc.versionId) {
+        return docRows[guideId] ?? [];
+      }
+    }
+    return docRows[guideId] ?? [];
+  }, [
+    detailDoc,
+    selectedGuideId,
+    selectedVersionId,
+    versionRows,
+    docRows,
+  ]);
+
+  const versionList: StudyGuideVersion[] = React.useMemo(() => {
+    if (!detailDoc) return [];
+    return guideVersions[detailDoc.fileId] ?? [];
+  }, [detailDoc, guideVersions]);
+
+  const selectedVersionMeta: StudyGuideVersion | null = React.useMemo(() => {
+    if (!detailDoc) return null;
+    if (!versionList.length) return null;
+    if (selectedGuideId !== detailDoc.fileId || selectedVersionId == null) {
+      return versionList[0] ?? null;
+    }
+    return (
+      versionList.find((version) => version.versionId === selectedVersionId) ??
+      versionList[0] ??
+      null
+    );
+  }, [detailDoc, versionList, selectedGuideId, selectedVersionId]);
+
+  const currentDiff: DocDiff | null = React.useMemo(() => {
+    if (
+      !detailDoc ||
+      selectedGuideId !== detailDoc.fileId ||
+      selectedVersionId == null
+    ) {
+      return null;
+    }
+    return guideDiffs[detailDoc.fileId]?.[selectedVersionId] ?? null;
+  }, [detailDoc, selectedGuideId, selectedVersionId, guideDiffs]);
 
   const detailWeekInfo = React.useMemo(() => {
     if (!detailDoc) {
@@ -914,6 +1081,69 @@ export default function Uploads() {
                       </ul>
                     </div>
                   )}
+
+                  <div>
+                    <div className="font-medium theme-text">Versies &amp; wijzigingen</div>
+                    <div className="mt-2 grid gap-4 lg:grid-cols-2">
+                      <div className="space-y-2">
+                        {versionList.map((version) => {
+                          const isActive =
+                            selectedGuideId === detailDoc.fileId &&
+                            selectedVersionId === version.versionId;
+                          return (
+                            <button
+                              key={version.versionId}
+                              onClick={() =>
+                                selectGuideVersion(detailDoc.fileId, version.versionId)
+                              }
+                              className={clsx(
+                                "w-full rounded-lg border px-3 py-2 text-left transition",
+                                isActive
+                                  ? "border-slate-600 bg-slate-100"
+                                  : "theme-border theme-surface hover:bg-slate-50"
+                              )}
+                            >
+                              <div className="text-sm font-medium theme-text">
+                                {formatVersionLabel(version)}
+                              </div>
+                              <DiffSummaryBadges
+                                summary={version.diffSummary}
+                                className="mt-1"
+                              />
+                            </button>
+                          );
+                        })}
+                        {versionList.length === 0 && (
+                          <div className="text-xs theme-muted">Geen versies beschikbaar.</div>
+                        )}
+                      </div>
+                      <div className="space-y-3">
+                        {selectedVersionMeta ? (
+                          <>
+                            <DiffSummaryBadges
+                              summary={
+                                currentDiff?.diffSummary ?? selectedVersionMeta.diffSummary
+                              }
+                            />
+                            {currentDiff ? (
+                              <DiffRowsList
+                                diff={currentDiff.diff}
+                                emptyLabel="Geen verschillen met de vorige versie."
+                              />
+                            ) : selectedVersionMeta.versionId === 1 ? (
+                              <div className="text-xs theme-muted">
+                                Dit is de eerste versie van deze studiewijzer.
+                              </div>
+                            ) : (
+                              <div className="text-xs theme-muted">Diff wordt geladen…</div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="text-xs theme-muted">Geen versie geselecteerd.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
                   <div>
                     <div className="font-medium theme-text">Voorbeeld van geëxtraheerde rijen</div>
