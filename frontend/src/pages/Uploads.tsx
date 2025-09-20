@@ -99,9 +99,6 @@ export default function Uploads() {
   const endIdx = Math.min(startIdx + pageSize, filtered.length);
   const visibleDocs = filtered.slice(startIdx, endIdx);
 
-  const gridTemplate =
-    "grid-cols-[minmax(56px,max-content)_minmax(220px,2fr)_minmax(150px,max-content)_minmax(140px,max-content)_minmax(120px,max-content)_minmax(90px,max-content)_minmax(90px,max-content)_minmax(90px,max-content)_minmax(110px,max-content)_minmax(170px,1fr)]";
-
   async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
     const files = ev.target.files;
     if (!files?.length) return;
@@ -385,119 +382,119 @@ export default function Uploads() {
 
       {/* Tabel */}
       <div className="rounded-2xl border theme-border theme-surface overflow-x-auto">
-        <div
-          className={`grid ${gridTemplate} gap-x-4 gap-y-2 text-xs font-medium theme-muted border-b theme-border pb-2 px-4 pt-3`}
-        >
-          <div className="flex justify-center">Gebruik</div>
-          <div>Bestand</div>
-          <div>Datum / Tijd</div>
-          <div>Vak</div>
-          <div>Niveau</div>
-          <div>Leerjaar</div>
-          <div>Periode</div>
-          <div>Begin week</div>
-          <div>Eind week</div>
-          <div>Acties</div>
-        </div>
-
         {filtered.length === 0 ? (
           <div className="p-6 text-sm theme-muted">Geen documenten gevonden.</div>
         ) : (
           <>
-            {visibleDocs.map((d, i) => {
-              const { date, time } = formatDateTime(d.uploadedAt ?? null);
-              return (
-                <div
-                  key={d.fileId}
-                  className={`grid ${gridTemplate} gap-x-4 gap-y-3 text-sm items-start px-4 py-3 ${
-                    i > 0 ? "border-t theme-border" : ""
-                  }`}
-                >
-                  <div className="flex justify-center">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4"
-                      checked={d.enabled}
-                    onChange={() => toggleGebruik(d)}
-                    aria-label={
-                      d.enabled
-                        ? `Gebruik uitschakelen voor ${d.bestand}`
-                        : `Gebruik inschakelen voor ${d.bestand}`
-                    }
-                    title={
-                      d.enabled
-                        ? `Gebruik uitschakelen voor ${d.bestand}`
-                        : `Gebruik inschakelen voor ${d.bestand}`
-                    }
-                  />
-                </div>
-                <div className="break-words" title={d.bestand}>
-                  {d.bestand}
-                </div>
-                <div className="leading-tight">
-                  <div>{date}</div>
-                  {time && <div className="text-xs theme-muted">{time}</div>}
-                </div>
-                <div>{d.vak}</div>
-                <div>{d.niveau}</div>
-                <div>{d.leerjaar}</div>
-                <div>P{d.periode}</div>
-                <div>{d.beginWeek}</div>
-                <div>{d.eindWeek}</div>
-                <div className="flex flex-wrap gap-2 justify-end">
-                  <button
-                    title={`Bron: ${d.bestand}`}
-                    className="rounded-lg border theme-border theme-surface p-1"
-                    onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
-                  >
-                    <FileText size={16} />
-                  </button>
-                  <button
-                    onClick={() => setDetailDoc(d)}
-                    title="Meta-details"
-                    className="rounded-lg border theme-border theme-surface p-1"
-                  >
-                    <Info size={16} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(d)}
-                    title="Verwijder"
-                    className="rounded-lg border theme-border theme-surface p-1 text-red-600"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-                </div>
-              );
-            })}
-            {filtered.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t theme-border px-4 py-3 text-xs theme-muted">
-                <div>
-                  Toont {startIdx + 1}–{endIdx} van {filtered.length} bestanden
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPage(Math.max(1, clampedPage - 1))}
-                    disabled={clampedPage === 1}
-                    className="rounded-md border theme-border theme-surface px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Vorige
-                  </button>
-                  <span>
-                    Pagina {clampedPage} van {totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setPage(Math.min(totalPages, clampedPage + 1))}
-                    disabled={clampedPage === totalPages}
-                    className="rounded-md border theme-border theme-surface px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Volgende
-                  </button>
-                </div>
+            <table className="table-auto min-w-max text-sm">
+              <thead className="text-xs font-medium theme-muted border-b theme-border">
+                <tr>
+                  <th className="px-4 py-3 text-center font-medium">Gebruik</th>
+                  <th className="px-4 py-3 text-left font-medium">Bestand</th>
+                  <th className="px-4 py-3 text-left font-medium">Datum / Tijd</th>
+                  <th className="px-4 py-3 text-left font-medium">Vak</th>
+                  <th className="px-4 py-3 text-left font-medium">Niveau</th>
+                  <th className="px-4 py-3 text-left font-medium">Leerjaar</th>
+                  <th className="px-4 py-3 text-left font-medium">Periode</th>
+                  <th className="px-4 py-3 text-left font-medium">Begin week</th>
+                  <th className="px-4 py-3 text-left font-medium">Eind week</th>
+                  <th className="px-4 py-3 text-left font-medium">Acties</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleDocs.map((d, i) => {
+                  const { date, time } = formatDateTime(d.uploadedAt ?? null);
+                  return (
+                    <tr key={d.fileId} className={i > 0 ? "border-t theme-border" : ""}>
+                      <td className="px-4 py-3 text-center align-middle">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={d.enabled}
+                          onChange={() => toggleGebruik(d)}
+                          aria-label={
+                            d.enabled
+                              ? `Gebruik uitschakelen voor ${d.bestand}`
+                              : `Gebruik inschakelen voor ${d.bestand}`
+                          }
+                          title={
+                            d.enabled
+                              ? `Gebruik uitschakelen voor ${d.bestand}`
+                              : `Gebruik inschakelen voor ${d.bestand}`
+                          }
+                        />
+                      </td>
+                      <td className="px-4 py-3 align-top break-words" title={d.bestand}>
+                        {d.bestand}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="leading-tight">
+                          <div>{date}</div>
+                          {time && <div className="text-xs theme-muted">{time}</div>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 align-top">{d.vak}</td>
+                      <td className="px-4 py-3 align-top">{d.niveau}</td>
+                      <td className="px-4 py-3 align-top">{d.leerjaar}</td>
+                      <td className="px-4 py-3 align-top">P{d.periode}</td>
+                      <td className="px-4 py-3 align-top">{d.beginWeek}</td>
+                      <td className="px-4 py-3 align-top">{d.eindWeek}</td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex flex-wrap gap-2 justify-end">
+                          <button
+                            title={`Bron: ${d.bestand}`}
+                            className="rounded-lg border theme-border theme-surface p-1"
+                            onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
+                          >
+                            <FileText size={16} />
+                          </button>
+                          <button
+                            onClick={() => setDetailDoc(d)}
+                            title="Meta-details"
+                            className="rounded-lg border theme-border theme-surface p-1"
+                          >
+                            <Info size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(d)}
+                            title="Verwijder"
+                            className="rounded-lg border theme-border theme-surface p-1 text-red-600"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t theme-border px-4 py-3 text-xs theme-muted">
+              <div>
+                Toont {startIdx + 1}–{endIdx} van {filtered.length} bestanden
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage(Math.max(1, clampedPage - 1))}
+                  disabled={clampedPage === 1}
+                  className="rounded-md border theme-border theme-surface px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Vorige
+                </button>
+                <span>
+                  Pagina {clampedPage} van {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage(Math.min(totalPages, clampedPage + 1))}
+                  disabled={clampedPage === totalPages}
+                  className="rounded-md border theme-border theme-surface px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Volgende
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>
