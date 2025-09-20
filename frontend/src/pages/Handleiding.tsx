@@ -7,7 +7,7 @@ import {
   Settings2,
   Wand2,
 } from "lucide-react";
-import { PUBLIC_ASSETS } from "../assets/images";
+import { PUBLIC_LOGO, PUBLIC_SCREENSHOTS } from "../assets/images";
 
 const stappen = [
   {
@@ -66,7 +66,7 @@ const demoScreens = [
     description: "Zie per dag wat je moet doen en vink opdrachten af zodra ze klaar zijn.",
     caption:
       "Tip: klik op een dag om eigen taken toe te voegen of een afspraak te verplaatsen.",
-    image: PUBLIC_ASSETS.screenshots.weekoverzicht,
+    image: PUBLIC_SCREENSHOTS.weekoverzicht,
     imageAlt: "Screenshot van het weekoverzicht na het importeren van alle voorbeeldstudiewijzers.",
     highlights: [
       "Start je week met een blik op maandag t/m zondag",
@@ -78,7 +78,7 @@ const demoScreens = [
     title: "Matrix",
     description: "Bekijk per vak welke grote opdrachten of toetsen eraan komen.",
     caption: "Gebruik dit scherm om vooruit te plannen voor projecten en toetsweken.",
-    image: PUBLIC_ASSETS.screenshots.matrix,
+    image: PUBLIC_SCREENSHOTS.matrix,
     imageAlt: "Screenshot van het matrixoverzicht met vakken na het laden van alle voorbeeldstudiewijzers.",
     highlights: [
       "Zie per vak welke hoofdstukken of projecten eraan komen",
@@ -91,7 +91,7 @@ const demoScreens = [
     description: "Voeg de PDF van je studiewijzer toe zodat je alles op één plek hebt.",
     caption:
       "Let op: upload alleen studiewijzers en ververs ze zodra de docent een nieuwe versie deelt.",
-    image: PUBLIC_ASSETS.screenshots.uploads,
+    image: PUBLIC_SCREENSHOTS.uploads,
     imageAlt: "Screenshot van het uploadscherm nadat alle documenten uit de sample-map zijn ingeladen.",
     highlights: [
       "Kies het vak en upload de nieuwste studiewijzer als PDF",
@@ -117,7 +117,7 @@ export default function Handleiding() {
         </div>
         <div className="flex justify-center lg:justify-end">
           <img
-            src={PUBLIC_ASSETS.logo}
+            src={PUBLIC_LOGO}
             alt="Logo van Het Vlier Studiewijzer Planner"
             className="h-28 w-28 object-contain drop-shadow-[0_8px_12px_rgba(15,23,42,0.35)]"
           />
