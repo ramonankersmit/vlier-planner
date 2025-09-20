@@ -37,7 +37,7 @@ const steps: OnboardingStep[] = [
     selector: '[data-tour-id="upload-dropzone"]',
     heading: "Upload je studiewijzer",
     description:
-      "Sleep je studiewijzer hierheen of kies een bestand. Wij lezen automatisch de planning uit.",
+      "Sleep je studiewijzer hierheen of kies een bestand. Wij herkennen automatisch de planning en metadata.",
   },
   {
     id: "review",
@@ -45,7 +45,7 @@ const steps: OnboardingStep[] = [
     selector: '[data-tour-id="review-wizard"]',
     heading: "Reviewwizard",
     description:
-      "Controleer items met laag vertrouwen en bevestig de metadata voordat ze in de planner verschijnen.",
+      "Controleer automatisch herkende regels met lage zekerheid en werk ze bij voordat ze in de planner verschijnen.",
   },
   {
     id: "planner",
@@ -53,21 +53,23 @@ const steps: OnboardingStep[] = [
     selector: '[data-tour-id="planner-view"]',
     heading: "Plannerweergave",
     description:
-      "Bulkacties en heatmap: beheer huiswerk per vak, vink alles in één keer af en open bronnen rechtstreeks.",
+      "Bekijk de weekplanning per vak, vink taken af, voeg eigen opdrachten toe en open bronnen rechtstreeks.",
   },
   {
     id: "filters",
     route: "/uploads",
     selector: '[data-tour-id="search-filters"]',
     heading: "Zoeken & filteren",
-    description: "Snel filteren op vak, type en week om je studiewijzers te vinden.",
+    description:
+      "Filter je studiewijzers op vak, niveau, leerjaar en periode om snel het juiste document te vinden.",
   },
   {
     id: "notifications",
     route: "/settings",
     selector: '[data-tour-id="notification-settings"]',
     heading: "Notificaties",
-    description: "Herinneringen 2 dagen vooraf zodat niets je verrast.",
+    description:
+      "Schakel herinneringen in en bepaal hoeveel dagen vooraf je een seintje krijgt voor belangrijke activiteiten.",
   },
 ];
 

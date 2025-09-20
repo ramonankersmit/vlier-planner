@@ -223,6 +223,8 @@ export default function Uploads() {
       .filter((entry): entry is { doc: DocRecord; issues: string[] } => entry !== null);
   }, [docs, docRows]);
 
+  const reviewCount = reviewCandidates.length;
+
   const totalReviewIssues = React.useMemo(
     () => reviewCandidates.reduce((sum, entry) => sum + entry.issues.length, 0),
     [reviewCandidates]
@@ -353,8 +355,6 @@ export default function Uploads() {
       openFileDialog();
     }
   };
-
-  const reviewCount = reviewCandidates.length;
 
   const openReviewWizard = () => {
     if (!reviewCount) {
