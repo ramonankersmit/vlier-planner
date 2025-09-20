@@ -203,7 +203,7 @@ export default function Uploads() {
       setPage(clampedPage);
     }
   }, [clampedPage, page]);
-
+  
   const startIdx = (clampedPage - 1) * pageSize;
   const endIdx = Math.min(startIdx + pageSize, filtered.length);
   const visibleDocs = filtered.slice(startIdx, endIdx);
