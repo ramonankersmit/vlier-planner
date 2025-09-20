@@ -7,6 +7,7 @@ from pathlib import Path
 import mimetypes
 import shutil
 import uuid
+from datetime import datetime, timezone
 from html import escape
 from typing import Any, List, Union
 from urllib.parse import quote
@@ -108,6 +109,22 @@ def _row_to_dict(row: Union[DocRow, dict[str, Any]]) -> dict[str, Any]:
     return dict(row)
 
 
+def _uploaded_at_timestamp(meta: DocMeta) -> float:
+    value = getattr(meta, "uploadedAt", None)
+    if not value:
+        return 0.0
+    candidates = [value]
+    if isinstance(value, str) and value.endswith("Z"):
+        candidates.append(value[:-1] + "+00:00")
+    for candidate in candidates:
+        try:
+            parsed = datetime.fromisoformat(candidate)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        return parsed.replace(tzinfo=parsed.tzinfo or timezone.utc).timestamp()
+    return 0.0
+
+
 def _save_state() -> None:
     if not DOCS:
         try:
@@ -159,6 +176,8 @@ def _load_state() -> None:
         except Exception as exc:
             logger.warning("Kon state entry %s niet herstellen: %s", file_id, exc)
             continue
+        if not getattr(meta, "uploadedAt", None):
+            meta.uploadedAt = datetime.now(timezone.utc).isoformat()
         suffix = Path(meta.bestand).suffix.lower()
         file_path = STORAGE / f"{file_id}{suffix}"
         if not file_path.exists():
@@ -213,7 +232,12 @@ def _docx_to_html(path: Path) -> str:
 
 @app.get("/api/docs", response_model=List[DocMeta])
 def list_docs():
-    return [stored.meta for stored in DOCS.values()]
+    sorted_docs = sorted(
+        DOCS.values(),
+        key=lambda stored: _uploaded_at_timestamp(stored.meta),
+        reverse=True,
+    )
+    return [stored.meta for stored in sorted_docs]
 
 
 @app.get("/api/docs/{file_id}/rows", response_model=List[DocRow])
@@ -363,6 +387,7 @@ async def upload_doc(file: UploadFile = File(...)):
 
     # Forceer uniek fileId (voorkomt naam-collisie)
     meta.fileId = uuid.uuid4().hex[:12]
+    meta.uploadedAt = datetime.now(timezone.utc).isoformat()
 
     # Hernoem fysiek bestand naar <fileId>.<ext>
     final_path = STORAGE / f"{meta.fileId}{Path(file.filename).suffix.lower()}"
