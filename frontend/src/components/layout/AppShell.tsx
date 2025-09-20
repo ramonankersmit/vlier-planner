@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { Coffee } from "lucide-react";
+import { Coffee, Sparkles } from "lucide-react";
 import packageJson from "../../../package.json";
 import { useAppStore } from "../../app/store";
 import { PUBLIC_LOGO } from "../../assets/images";
@@ -91,10 +91,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => restartTour()}
-              className={`${resolveLinkClassName(false)} whitespace-nowrap`}
+              className={`${resolveLinkClassName(false)} flex items-center justify-center !px-2 !py-2`}
               aria-label="Rondleiding opnieuw starten"
             >
-              Rondleiding
+              <Sparkles size={18} aria-hidden="true" />
             </button>
           </nav>
         </div>
