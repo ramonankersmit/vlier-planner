@@ -394,10 +394,10 @@ export default function Uploads() {
                   <th className="px-4 py-3 text-left font-medium">Datum / Tijd</th>
                   <th className="px-4 py-3 text-left font-medium">Vak</th>
                   <th className="px-4 py-3 text-left font-medium">Niveau</th>
-                  <th className="px-4 py-3 text-left font-medium">Leerjaar</th>
-                  <th className="px-4 py-3 text-left font-medium">Periode</th>
-                  <th className="px-4 py-3 text-left font-medium">Begin week</th>
-                  <th className="px-4 py-3 text-left font-medium">Eind week</th>
+                  <th className="px-4 py-3 text-left font-medium">Jaar</th>
+                  <th className="px-4 py-3 text-left font-medium">Per.</th>
+                  <th className="px-4 py-3 text-left font-medium">Wk begin</th>
+                  <th className="px-4 py-3 text-left font-medium">Wk eind</th>
                   <th className="px-4 py-3 text-left font-medium">Acties</th>
                 </tr>
               </thead>
@@ -522,11 +522,11 @@ export default function Uploads() {
                   <div>{detailDoc.niveau}</div>
                 </div>
                 <div>
-                  <div className="text-xs theme-muted uppercase tracking-wide">Leerjaar</div>
+                  <div className="text-xs theme-muted uppercase tracking-wide">Jaar</div>
                   <div>{detailDoc.leerjaar}</div>
                 </div>
                 <div>
-                  <div className="text-xs theme-muted uppercase tracking-wide">Periode</div>
+                  <div className="text-xs theme-muted uppercase tracking-wide">Per.</div>
                   <div>P{detailDoc.periode}</div>
                 </div>
                 <div>
