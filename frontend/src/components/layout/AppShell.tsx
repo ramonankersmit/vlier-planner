@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { Coffee } from "lucide-react";
 import packageJson from "../../../package.json";
 import { useAppStore } from "../../app/store";
-import { LOGO_IMAGE, PUBLIC_ASSETS } from "../../assets/images";
+import { PUBLIC_ASSETS } from "../../assets/images";
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
@@ -80,13 +80,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const handleLogoError = React.useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
-    const target = event.currentTarget;
-    if (target.src === LOGO_IMAGE.src) {
-      return;
-    }
-    target.src = LOGO_IMAGE.src;
-  }, []);
   return (
     <div className="min-h-screen theme-app" style={themeStyle}>
       <header
@@ -99,13 +92,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               src={PUBLIC_ASSETS.logo}
               alt="Het Vlier Studiewijzer Planner"
               className="h-11 w-11 rounded-xl border border-white/40 bg-white/95 p-1 object-contain shadow-sm"
-              onError={(event) => {
-                const target = event.currentTarget;
-                if (target.src === LOGO_IMAGE.src) {
-                  return;
-                }
-                target.src = LOGO_IMAGE.src;
-              }}
             />
             <div className="text-xl font-semibold theme-text">Het Vlier Studiewijzer Planner</div>
           </div>
