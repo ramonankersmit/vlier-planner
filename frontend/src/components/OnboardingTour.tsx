@@ -355,9 +355,9 @@ export function OnboardingTourProvider({ children }: { children: React.ReactNode
                 className="pointer-events-auto fixed bottom-6 left-1/2 z-[10000] w-[min(100%-2rem,380px)] -translate-x-1/2 rounded-2xl border bg-white p-6 text-sm shadow-2xl outline-none sm:left-auto sm:right-6 sm:translate-x-0"
                 onKeyDown={handleKeyDown}
               >
-                <div className="mb-2 flex items-center justify-between text-xs font-medium uppercase tracking-widest text-slate-500">
-                  <span>Stap {stepIndex + 1} van {steps.length}</span>
-                  <span>Klaar met Enter · Sluiten met Esc</span>
+                <div className="mb-4 flex flex-col gap-1 text-[11px] font-medium uppercase tracking-[0.3em] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="order-2 sm:order-1">Stap {stepIndex + 1} van {steps.length}</span>
+                  <span className="order-1 text-slate-400 sm:order-2 sm:text-right">Enter = volgende • Esc = sluiten</span>
                 </div>
                 <h2 id={headingId} className="text-lg font-semibold text-slate-900">
                   {step.heading}
