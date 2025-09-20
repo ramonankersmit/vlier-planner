@@ -73,7 +73,7 @@ export async function apiDeleteAllDocs(): Promise<void> {
   if (!r.ok) throw new Error(`delete_all_docs failed: ${r.status}`);
 }
 
-export async function apiUploadDoc(file: File): Promise<DocMeta> {
+export async function apiUploadDoc(file: File): Promise<DocMeta[]> {
   const fd = new FormData();
   fd.append("file", file);
   const r = await fetch(`${BASE}/api/uploads`, {

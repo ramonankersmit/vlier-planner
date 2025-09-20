@@ -9,7 +9,7 @@ import shutil
 import uuid
 from datetime import datetime, timezone
 from html import escape
-from typing import Any, List, Union
+from typing import Any, List, Union, Tuple
 from urllib.parse import quote
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -32,6 +32,7 @@ try:  # pragma: no cover - fallback for legacy execution styles
     from .parsers import (
         extract_meta_from_docx,
         extract_rows_from_docx,
+        extract_all_periods_from_docx,
         extract_meta_from_pdf,
         extract_rows_from_pdf,
     )
@@ -39,6 +40,7 @@ except ImportError:  # pragma: no cover
     from parsers import (  # type: ignore
         extract_meta_from_docx,
         extract_rows_from_docx,
+        extract_all_periods_from_docx,
         extract_meta_from_pdf,
         extract_rows_from_pdf,
     )
@@ -341,7 +343,7 @@ def get_doc_preview(file_id: str):
         "filename": meta.bestand,
     }
 
-@app.post("/api/uploads", response_model=DocMeta)
+@app.post("/api/uploads", response_model=List[DocMeta])
 async def upload_doc(file: UploadFile = File(...)):
     if not file.filename:
         raise HTTPException(400, "Missing filename")
@@ -355,16 +357,26 @@ async def upload_doc(file: UploadFile = File(...)):
     with temp_path.open("wb") as fh:
         shutil.copyfileobj(file.file, fh)
 
-    # Parse metadata
-    rows: List[DocRow] = []
+    parsed_docs: List[Tuple[DocMeta, List[DocRow]]] = []
     if suffix.endswith(".docx"):
-        meta = extract_meta_from_docx(str(temp_path), file.filename)
-        if meta:
-            try:
-                rows = extract_rows_from_docx(str(temp_path), file.filename)
-            except Exception as exc:  # pragma: no cover - afhankelijk van docx lib
-                logger.warning("Kon rijen niet extraheren uit %s: %s", file.filename, exc)
-                rows = []
+        try:
+            parsed_docs = extract_all_periods_from_docx(str(temp_path), file.filename)
+        except Exception as exc:  # pragma: no cover - afhankelijk van docx lib
+            logger.warning(
+                "Kon perioden niet extraheren uit %s: %s", file.filename, exc
+            )
+            parsed_docs = []
+        if not parsed_docs:
+            meta = extract_meta_from_docx(str(temp_path), file.filename)
+            if meta:
+                try:
+                    rows = extract_rows_from_docx(str(temp_path), file.filename)
+                except Exception as exc:  # pragma: no cover - afhankelijk van docx lib
+                    logger.warning(
+                        "Kon rijen niet extraheren uit %s: %s", file.filename, exc
+                    )
+                    rows = []
+                parsed_docs = [(meta, rows)]
     else:
         meta = extract_meta_from_pdf(str(temp_path), file.filename)
         if meta and extract_rows_from_pdf:
@@ -373,8 +385,11 @@ async def upload_doc(file: UploadFile = File(...)):
             except Exception as exc:  # pragma: no cover - afhankelijk van pdf lib
                 logger.warning("Kon rijen niet extraheren uit %s: %s", file.filename, exc)
                 rows = []
+            parsed_docs = [(meta, rows)]
+        elif meta:
+            parsed_docs = [(meta, [])]
 
-    if not meta:
+    if not parsed_docs:
         # opruimen temp
         try:
             temp_path.unlink(missing_ok=True)
@@ -382,22 +397,29 @@ async def upload_doc(file: UploadFile = File(...)):
             pass
         raise HTTPException(422, "Could not extract metadata")
 
-    if rows is None:
-        rows = []
+    uploaded_at = datetime.now(timezone.utc).isoformat()
+    stored: List[DocMeta] = []
+    suffix_lower = Path(file.filename).suffix.lower()
 
-    # Forceer uniek fileId (voorkomt naam-collisie)
-    meta.fileId = uuid.uuid4().hex[:12]
-    meta.uploadedAt = datetime.now(timezone.utc).isoformat()
+    for meta, rows in parsed_docs:
+        safe_rows = rows or []
+        meta_copy = meta.copy(deep=True)
+        meta_copy.fileId = uuid.uuid4().hex[:12]
+        meta_copy.uploadedAt = uploaded_at
 
-    # Hernoem fysiek bestand naar <fileId>.<ext>
-    final_path = STORAGE / f"{meta.fileId}{Path(file.filename).suffix.lower()}"
-    if final_path.exists():
-        final_path.unlink()
-    temp_path.rename(final_path)
+        final_path = STORAGE / f"{meta_copy.fileId}{suffix_lower}"
+        shutil.copyfile(temp_path, final_path)
 
-    DOCS[meta.fileId] = StoredDoc(meta=meta, rows=rows)
+        DOCS[meta_copy.fileId] = StoredDoc(meta=meta_copy, rows=safe_rows)
+        stored.append(meta_copy)
+
+    try:
+        temp_path.unlink(missing_ok=True)
+    except Exception:  # pragma: no cover - best effort opruimen
+        pass
+
     _save_state()
-    return meta
+    return stored
 
 
 if serve_frontend:
