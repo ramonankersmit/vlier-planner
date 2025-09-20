@@ -32,6 +32,7 @@ data/**
 .eggs/
 build/
 dist/
+artifacts/
 
 # OS
 .DS_Store
