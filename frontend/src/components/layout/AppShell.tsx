@@ -68,7 +68,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         style={{ backgroundColor: headerBackground }}
       >
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
-          <div className="text-xl font-semibold theme-text">Het Vlier Studiewijzer Planner</div>
+          <div className="flex items-center gap-2">
+            <img
+              src="/logo.png"
+              alt="Het Vlier Studiewijzer Planner"
+              className="h-10 w-10 rounded-md border border-white/20 object-contain shadow-sm"
+            />
+            <div className="text-xl font-semibold theme-text">Het Vlier Studiewijzer Planner</div>
+          </div>
           <nav className="ml-auto flex gap-1">
             <NavLink
               to="/"
