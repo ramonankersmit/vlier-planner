@@ -100,7 +100,7 @@ export default function Uploads() {
   const visibleDocs = filtered.slice(startIdx, endIdx);
 
   const gridTemplate =
-    "grid-cols-[90px_minmax(260px,3fr)_minmax(160px,1.5fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(90px,0.9fr))]";
+    "grid-cols-[90px_minmax(260px,3fr)_minmax(220px,1.7fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(90px,0.9fr))]";
 
   async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
     const files = ev.target.files;
@@ -420,7 +420,7 @@ export default function Uploads() {
                 <div className="break-words" title={d.bestand}>
                   {d.bestand}
                 </div>
-                <div>{formatDate(d.uploadedAt ?? null)}</div>
+                <div className="whitespace-nowrap">{formatDate(d.uploadedAt ?? null)}</div>
                 <div>{d.vak}</div>
                 <div>{d.niveau}</div>
                 <div>{d.leerjaar}</div>
