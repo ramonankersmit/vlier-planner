@@ -14,17 +14,126 @@ type Filters = {
   periode: string;
 };
 
-function useMetadata(docs: DocRecord[]) {
+type WeekSegment = { start: number; end: number };
+
+function isValidWeek(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= 53;
+}
+
+function expandWeeksFromMeta(doc: DocRecord): number[] {
+  const start = isValidWeek(doc.beginWeek) ? doc.beginWeek : undefined;
+  const end = isValidWeek(doc.eindWeek) ? doc.eindWeek : undefined;
+  if (start === undefined || end === undefined) {
+    return [];
+  }
+  const weeks: number[] = [];
+  if (start <= end) {
+    for (let wk = start; wk <= end; wk++) {
+      weeks.push(wk);
+    }
+    return weeks;
+  }
+  for (let wk = start; wk <= 53; wk++) {
+    weeks.push(wk);
+  }
+  for (let wk = 1; wk <= end; wk++) {
+    weeks.push(wk);
+  }
+  return weeks;
+}
+
+function groupWeeks(sortedWeeks: number[]): WeekSegment[] {
+  if (!sortedWeeks.length) {
+    return [];
+  }
+  const segments: WeekSegment[] = [];
+  let start = sortedWeeks[0];
+  let prev = sortedWeeks[0];
+  for (let i = 1; i < sortedWeeks.length; i++) {
+    const current = sortedWeeks[i];
+    if (current === prev + 1) {
+      prev = current;
+      continue;
+    }
+    segments.push({ start, end: prev });
+    start = current;
+    prev = current;
+  }
+  segments.push({ start, end: prev });
+  return segments;
+}
+
+function formatSegments(segments: WeekSegment[]): string {
+  if (!segments.length) {
+    return "";
+  }
+  return segments
+    .map((segment) =>
+      segment.start === segment.end ? `${segment.start}` : `${segment.start}–${segment.end}`
+    )
+    .join(" · ");
+}
+
+function computeDocWeekInfo(doc: DocRecord, rows?: DocRow[]) {
+  const weekSet = new Set<number>();
+  rows?.forEach((row) => {
+    if (isValidWeek(row.week)) {
+      weekSet.add(row.week);
+    }
+  });
+
+  if (!weekSet.size) {
+    expandWeeksFromMeta(doc).forEach((wk) => weekSet.add(wk));
+  } else {
+    [doc.beginWeek, doc.eindWeek].forEach((wk) => {
+      if (isValidWeek(wk)) {
+        weekSet.add(wk);
+      }
+    });
+  }
+
+  const sortedWeeks = Array.from(weekSet)
+    .filter(isValidWeek)
+    .sort((a, b) => a - b);
+
+  const segments = groupWeeks(sortedWeeks);
+
+  let orderedSegments = segments;
+  const begin = isValidWeek(doc.beginWeek) ? doc.beginWeek : undefined;
+  if (begin !== undefined && segments.length > 1) {
+    const hasLowerThanBegin = sortedWeeks.some((wk) => wk < begin);
+    if (hasLowerThanBegin) {
+      const beginIdx = segments.findIndex((segment) => begin >= segment.start && begin <= segment.end);
+      if (beginIdx > 0) {
+        orderedSegments = [...segments.slice(beginIdx), ...segments.slice(0, beginIdx)];
+      }
+    }
+  }
+
+  const label = formatSegments(orderedSegments);
+
+  return {
+    weeks: sortedWeeks,
+    label,
+  };
+}
+
+function formatWeekSet(weeks: Iterable<number>): string {
+  const unique = Array.from(new Set(Array.from(weeks).filter(isValidWeek))).sort((a, b) => a - b);
+  return unique.length ? formatSegments(groupWeeks(unique)) : "—";
+}
+
+function useMetadata(docs: DocRecord[], docRows: Record<string, DocRow[]>) {
   const vakken = Array.from(new Set(docs.map((d) => d.vak))).sort();
   const niveaus = Array.from(new Set(docs.map((d) => d.niveau))).sort() as string[];
   const leerjaren = Array.from(new Set(docs.map((d) => d.leerjaar))).sort();
   const periodes = Array.from(new Set(docs.map((d) => d.periode))).sort((a, b) => a - b);
-  const beginWeeks = docs.map((d) => d.beginWeek);
-  const eindWeeks = docs.map((d) => d.eindWeek);
-  const weekBereik =
-    beginWeeks.length && eindWeeks.length
-      ? `${Math.min(...beginWeeks)}–${Math.max(...eindWeeks)}`
-      : "—";
+  const overallWeeks = new Set<number>();
+  docs.forEach((doc) => {
+    const info = computeDocWeekInfo(doc, docRows[doc.fileId]);
+    info.weeks.forEach((wk) => overallWeeks.add(wk));
+  });
+  const weekBereik = formatWeekSet(overallWeeks);
   return { vakken, niveaus, leerjaren, periodes, weekBereik };
 }
 
@@ -46,7 +155,7 @@ export default function Uploads() {
   const [page, setPage] = React.useState(1);
   const pageSize = 10;
 
-  const meta = useMetadata(docs);
+  const meta = useMetadata(docs, docRows);
 
   const reset = () =>
     setFilters({
@@ -94,7 +203,7 @@ export default function Uploads() {
       setPage(clampedPage);
     }
   }, [clampedPage, page]);
-
+  
   const startIdx = (clampedPage - 1) * pageSize;
   const endIdx = Math.min(startIdx + pageSize, filtered.length);
   const visibleDocs = filtered.slice(startIdx, endIdx);
@@ -153,8 +262,24 @@ export default function Uploads() {
     return docRows[detailDoc.fileId] ?? [];
   }, [detailDoc, docRows]);
 
+  const detailWeekInfo = React.useMemo(() => {
+    if (!detailDoc) {
+      return null;
+    }
+    return computeDocWeekInfo(detailDoc, detailRows);
+  }, [detailDoc, detailRows]);
+
+  const detailWeekFallback = React.useMemo(() => {
+    if (!detailDoc) {
+      return "—";
+    }
+    const begin = isValidWeek(detailDoc.beginWeek) ? `${detailDoc.beginWeek}` : "—";
+    const end = isValidWeek(detailDoc.eindWeek) ? `${detailDoc.eindWeek}` : "—";
+    return begin === "—" && end === "—" ? "—" : `wk ${begin}–${end}`;
+  }, [detailDoc]);
+
   const aggregate = React.useMemo(() => {
-    if (!detailRows.length) {
+    if (!detailDoc || !detailRows.length) {
       return null;
     }
     const weekSet = new Set<number>();
@@ -166,7 +291,7 @@ export default function Uploads() {
     const toetsen: { key: string; label: string; week?: number | null; datum?: string | null }[] = [];
 
     detailRows.forEach((row, idx) => {
-      if (typeof row.week === "number" && row.week > 0) {
+      if (isValidWeek(row.week)) {
         weekSet.add(row.week);
       }
       if (row.datum) {
@@ -213,6 +338,8 @@ export default function Uploads() {
 
     dateList.sort();
     const weeks = Array.from(weekSet).sort((a, b) => a - b);
+    const fallbackLabel = formatWeekSet(weekSet);
+    const normalizedWeekLabel = detailWeekInfo?.label || (fallbackLabel === "—" ? "" : fallbackLabel);
 
     return {
       rowCount: detailRows.length,
@@ -226,8 +353,9 @@ export default function Uploads() {
       huiswerk: Array.from(huiswerk),
       bronnen: Array.from(bronnen.values()),
       toetsen,
+      weekLabel: normalizedWeekLabel,
     };
-  }, [detailRows]);
+  }, [detailDoc, detailRows, detailWeekInfo]);
 
   const dateFormatter = React.useMemo(() => new Intl.DateTimeFormat("nl-NL"), []);
   const timeFormatter = React.useMemo(
@@ -320,7 +448,9 @@ export default function Uploads() {
                 P{p}
               </span>
             ))}
-            <span className="text-xs theme-muted ml-2">wk {meta.weekBereik}</span>
+            <span className="text-xs theme-muted ml-2">
+              {meta.weekBereik === "—" ? "wk —" : `wk ${meta.weekBereik}`}
+            </span>
           </div>
         </div>
       </div>
@@ -397,13 +527,17 @@ export default function Uploads() {
                   <th className="px-4 py-3 text-left font-medium">Niveau</th>
                   <th className="px-4 py-3 text-left font-medium">Jaar</th>
                   <th className="px-4 py-3 text-left font-medium">Per.</th>
-                  <th className="px-4 py-3 text-left font-medium">Wk-B</th>
-                  <th className="px-4 py-3 text-left font-medium">Wk-E</th>
+                  <th className="px-4 py-3 text-left font-medium">Weken</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleDocs.map((d, i) => {
                   const { date, time } = formatDateTime(d.uploadedAt ?? null);
+                  const info = computeDocWeekInfo(d, docRows[d.fileId]);
+                  const beginLabel = isValidWeek(d.beginWeek) ? `${d.beginWeek}` : "—";
+                  const endLabel = isValidWeek(d.eindWeek) ? `${d.eindWeek}` : "—";
+                  const fallbackWeekLabel =
+                    beginLabel === "—" && endLabel === "—" ? "—" : `wk ${beginLabel}–${endLabel}`;
                   return (
                     <tr key={d.fileId} className={i > 0 ? "border-t theme-border" : ""}>
                       <td className="px-4 py-3 text-center align-middle">
@@ -462,8 +596,9 @@ export default function Uploads() {
                       <td className="px-4 py-3 align-top">{d.niveau}</td>
                       <td className="px-4 py-3 align-top">{d.leerjaar}</td>
                       <td className="px-4 py-3 align-top">P{d.periode}</td>
-                      <td className="px-4 py-3 align-top">{d.beginWeek}</td>
-                      <td className="px-4 py-3 align-top">{d.eindWeek}</td>
+                      <td className="px-4 py-3 align-top">
+                        {info.label ? `wk ${info.label}` : fallbackWeekLabel}
+                      </td>
                     </tr>
                   );
                 })}
@@ -531,9 +666,7 @@ export default function Uploads() {
                 </div>
                 <div>
                   <div className="text-xs theme-muted uppercase tracking-wide">Weekbereik</div>
-                  <div>
-                    {detailDoc.beginWeek ? detailDoc.beginWeek : "—"} – {detailDoc.eindWeek ? detailDoc.eindWeek : "—"}
-                  </div>
+                  <div>{detailWeekInfo?.label ? `wk ${detailWeekInfo.label}` : detailWeekFallback}</div>
                 </div>
                 <div>
                   <div className="text-xs theme-muted uppercase tracking-wide">Schooljaar</div>
@@ -552,7 +685,7 @@ export default function Uploads() {
                       </div>
                       <div className="rounded-lg border theme-border theme-soft p-3">
                         <div className="theme-muted mb-1 uppercase tracking-wide">Unieke weken</div>
-                        <div>{aggregate.weeks.length ? aggregate.weeks.join(", ") : "—"}</div>
+                        <div>{aggregate.weekLabel ? `wk ${aggregate.weekLabel}` : "—"}</div>
                       </div>
                       <div className="rounded-lg border theme-border theme-soft p-3">
                         <div className="theme-muted mb-1 uppercase tracking-wide">Datumbereik</div>

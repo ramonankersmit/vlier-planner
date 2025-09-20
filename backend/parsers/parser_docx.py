@@ -1,4 +1,9 @@
+from collections import defaultdict
 from docx import Document
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 from typing import Optional, List, Tuple, Iterable, Dict
 import re
 
@@ -15,6 +20,11 @@ RE_STUDIEWIJZER = re.compile(r"studiewijzer", re.I)
 RE_VAK_IN_BRACKETS = re.compile(r"\[\s*([A-Za-zÀ-ÿ\s\-\&]+)\s*\]")
 RE_VAK_AFTER_DASH = re.compile(r"studiewijzer\s*[-–]\s*(.+)", re.I)
 RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ\s\-\&]+?)\s*\]")
+RE_PERIODE_MARKER = re.compile(r"periode\s*([1-4])", re.I)
+
+# Datums
+RE_DATE_DMY = re.compile(r"\b(\d{1,2})[\-/](\d{1,2})[\-/](\d{2,4})\b")
+RE_DATE_TEXTUAL = re.compile(r"\b(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+((?:20)?\d{2})\b", re.I)
 
 # Weekcel parsing
 RE_WEEK_LEADING = re.compile(r"^\s*(\d{1,2})(?:\s*[/\-]\s*(\d{1,2}))?")
@@ -25,6 +35,34 @@ RE_NUM_PURE = re.compile(r"^\s*(\d{1,2})\s*$")  # hele cel is een getal
 # Schooljaar
 # Herken zowel 4-cijferige als 2-cijferige jaartallen (bijv. "2025/2026" of "25-26")
 RE_SCHOOLYEAR = re.compile(r"((?:20)?\d{2})\s*[/\-]\s*((?:20)?\d{2})")
+RE_SCHOOLYEAR_COMPACT = re.compile(r"(?<!\d)(\d{2})(\d{2})(?!\d)")
+
+MONTHS_NL = {
+    "januari": 1,
+    "jan": 1,
+    "februari": 2,
+    "feb": 2,
+    "maart": 3,
+    "mrt": 3,
+    "april": 4,
+    "apr": 4,
+    "mei": 5,
+    "juni": 6,
+    "jun": 6,
+    "juli": 7,
+    "jul": 7,
+    "augustus": 8,
+    "aug": 8,
+    "september": 9,
+    "sep": 9,
+    "sept": 9,
+    "oktober": 10,
+    "okt": 10,
+    "november": 11,
+    "nov": 11,
+    "december": 12,
+    "dec": 12,
+}
 
 
 def _normalize_year_fragment(part: str) -> Optional[int]:
@@ -53,9 +91,89 @@ def _format_schooljaar(a: str, b: str) -> Optional[str]:
     bi = _normalize_year_fragment(b)
     if ai is None or bi is None:
         return None
+    a_digits = re.sub(r"\D", "", a)
+    b_digits = re.sub(r"\D", "", b)
+    if not a_digits or not b_digits:
+        return None
+    try:
+        a_val = int(a_digits)
+        b_val = int(b_digits)
+    except ValueError:
+        return None
+    if len(a_digits) <= 2 and not (20 <= a_val <= 30):
+        return None
+    if len(b_digits) <= 2 and not (20 <= b_val <= 30):
+        return None
     if bi < ai or abs(bi - ai) > 2:
         return None
     return f"{ai}/{bi}"
+
+
+def _iter_dates_with_year(text: str) -> List[Tuple[int, int]]:
+    results: List[Tuple[int, int]] = []
+    if not text:
+        return results
+
+    for match in RE_DATE_DMY.finditer(text):
+        try:
+            month = int(match.group(2))
+            year_raw = match.group(3)
+            year = int(year_raw)
+        except (TypeError, ValueError):
+            continue
+        if not (1 <= month <= 12):
+            continue
+        if len(year_raw) <= 2:
+            year += 2000
+        if year < 1900 or year > 2100:
+            continue
+        results.append((year, month))
+
+    for match in RE_DATE_TEXTUAL.finditer(text):
+        month = MONTHS_NL.get(match.group(2).lower())
+        if not month:
+            continue
+        try:
+            year_raw = match.group(3)
+            year = int(year_raw)
+        except (TypeError, ValueError):
+            continue
+        if len(year_raw) <= 2:
+            year += 2000
+        if year < 1900 or year > 2100:
+            continue
+        results.append((year, month))
+
+    return results
+
+
+def _infer_schooljaar_from_dates(text: str) -> Optional[str]:
+    stats = defaultdict(lambda: {"count": 0, "has_autumn": False, "has_spring": False})
+    for year, month in _iter_dates_with_year(text):
+        start_year = year if month >= 8 else year - 1
+        end_year = start_year + 1
+        if start_year < 1900 or end_year > 2101:
+            continue
+        bucket = stats[(start_year, end_year)]
+        bucket["count"] += 1
+        if month >= 8:
+            bucket["has_autumn"] = True
+        else:
+            bucket["has_spring"] = True
+
+    best_key: Optional[Tuple[int, int]] = None
+    best_score = (-1, -1, -1)
+    for (start, end), bucket in stats.items():
+        span_score = int(bucket["has_autumn"]) + int(bucket["has_spring"])
+        count = bucket["count"]
+        score = (span_score, count, start)
+        if score > best_score:
+            best_key = (start, end)
+            best_score = score
+
+    if not best_key:
+        return None
+    return f"{best_key[0]}/{best_key[1]}"
 
 
 def extract_schooljaar_from_text(text: str) -> Optional[str]:
@@ -74,10 +192,93 @@ def extract_schooljaar_from_text(text: str) -> Optional[str]:
         if best is None or score > best_score:
             best = candidate
             best_score = score
-    return best
+
+    if best:
+        if best_score > 0:
+            return best
+        fallback = _infer_schooljaar_from_dates(text)
+        if fallback:
+            return fallback
+        return best
+
+    for match in RE_SCHOOLYEAR_COMPACT.finditer(text):
+        candidate = _format_schooljaar(match.group(1), match.group(2))
+        if candidate:
+            fallback = _infer_schooljaar_from_dates(text)
+            return fallback or candidate
+
+    return _infer_schooljaar_from_dates(text)
 
 def _clean(s: str) -> str:
     return (s or "").strip()
+
+
+def _detect_primary_periode(doc: Document) -> Optional[int]:
+    """Vind de eerste expliciete periodevermelding in de paragraaftekst."""
+    for p in doc.paragraphs:
+        txt = _clean(p.text)
+        if not txt:
+            continue
+        m = RE_PERIODE_MARKER.search(txt)
+        if m:
+            try:
+                return int(m.group(1))
+            except ValueError:
+                continue
+    return None
+
+
+def _table_period_from_cells(tbl) -> Optional[int]:
+    """Zoek naar een periodevermelding in de eerste rijen/kolommen van een tabel."""
+    try:
+        # Controleer de eerste paar rijen; veel bestanden zetten de periode
+        # in de eerste rij of in een samengevoegde kopcel.
+        for row in tbl.rows[:3]:
+            for cell in row.cells[:3]:
+                txt = _clean(cell.text)
+                if not txt:
+                    continue
+                m = RE_PERIODE_MARKER.search(txt)
+                if m:
+                    try:
+                        return int(m.group(1))
+                    except ValueError:
+                        continue
+    except Exception:
+        pass
+    return None
+
+
+def _table_period_markers(doc: Document) -> List[Tuple[Table, Optional[int]]]:
+    """Geef een lijst terug met (tabel, periode-marker)."""
+    results: List[Tuple[Table, Optional[int]]] = []
+    current: Optional[int] = None
+    body = doc.element.body
+    for child in body.iterchildren():
+        if isinstance(child, CT_P):
+            paragraph = Paragraph(child, doc)
+            txt = _clean(paragraph.text)
+            if not txt:
+                continue
+            m = RE_PERIODE_MARKER.search(txt)
+            if m:
+                try:
+                    current = int(m.group(1))
+                except ValueError:
+                    current = None
+        elif isinstance(child, CT_Tbl):
+            table = Table(child, doc)
+            marker = current or _table_period_from_cells(table)
+            if marker is not None:
+                current = marker
+            results.append((table, marker))
+    return results
+
+
+def _table_matches_period(marker: Optional[int], periode: Optional[int]) -> bool:
+    if marker is None or periode is None:
+        return True
+    return marker == periode
 
 def _first_nonempty(paragraphs, start_idx: int) -> Optional[str]:
     for p in paragraphs[start_idx:]:
@@ -147,6 +348,13 @@ def _parse_schooljaar_from_doc(doc: Document) -> Optional[str]:
     for p in doc.paragraphs:
         texts.append(_clean(p.text))
     try:
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    texts.append(_clean(cell.text))
+    except Exception:
+        pass
+    try:
         sec = doc.sections[0]
         texts += [_clean(p.text) for p in sec.header.paragraphs]
         texts += [_clean(p.text) for p in sec.footer.paragraphs]
@@ -180,9 +388,9 @@ def _parse_footer_meta(doc: Document) -> Tuple[str, str, int, Optional[str]]:
         m = re.search(r"periode\s*([1-4])", low)
         if m:
             periode = int(m.group(1))
-        m = RE_SCHOOLYEAR.search(full)
-        if m:
-            schooljaar = _format_schooljaar(m.group(1), m.group(2))
+        candidate = extract_schooljaar_from_text(full)
+        if candidate:
+            schooljaar = candidate
     except Exception:
         pass
     return niveau, leerjaar, periode, schooljaar
@@ -211,6 +419,8 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
     - Puur getal als hele cel
     """
     text = (txt or "").strip().replace("\n", " ")
+    # Harmoniseer verschillende koppeltekens zodat we 52-1-2 patronen eenduidig kunnen herkennen.
+    text = text.replace("–", "-").replace("—", "-").replace("−", "-")
 
     # Verwijder datums zoals 25-08-2025 zodat RE_WEEK_PAIR hieronder
     # niet per ongeluk dagen/maanden als weken herkent.
@@ -240,6 +450,16 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
         if 1 <= vb <= 53:
             weeks.append(vb)
 
+    # Fallback: als er meerdere nummers via koppeltekens/slashes aan elkaar staan, kunnen
+    # overlappende paren ontbreken (bijv. '52-1-2'). In dat geval lopen we nogmaals alle
+    # losse getallen af in oorspronkelijke volgorde zodat ook de tussenliggende weken
+    # worden meegenomen.
+    if re.search(r"\d\s*[-/]\s*\d", text):
+        for match in re.finditer(r"(?<!\d)(\d{1,2})(?!\d)", text):
+            v = int(match.group(1))
+            if 1 <= v <= 53:
+                weeks.append(v)
+
     m2 = RE_NUM_PURE.match(text)
     if m2:
         v = int(m2.group(1))
@@ -258,7 +478,9 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
     return ordered
 
 
-def _is_new_period(prev_week: Optional[int], current_week: int) -> bool:
+def _is_new_period(
+    prev_week: Optional[int], current_week: int, *, allow_wrap: bool = False
+) -> bool:
     """Detecteer overgang naar een nieuwe periode op basis van weeknummers."""
     if prev_week is None:
         return False
@@ -266,6 +488,8 @@ def _is_new_period(prev_week: Optional[int], current_week: int) -> bool:
         return False
     # Zodra de reeks na week 40+ terugvalt naar het begin van het jaar,
     # interpreteren we dat als een nieuwe periode.
+    if allow_wrap:
+        return False
     return prev_week >= 40 and current_week <= 10
 
 def _table_rows_texts(tbl) -> List[List[str]]:
@@ -275,7 +499,9 @@ def _table_rows_texts(tbl) -> List[List[str]]:
         rows.append([_clean(c.text) for c in row.cells])
     return rows
 
-def _parse_week_range(doc: Document) -> Tuple[int, int]:
+def _parse_week_range(
+    doc: Document, periode: Optional[int], table_markers: List[Tuple[Table, Optional[int]]]
+) -> Tuple[int, int]:
     """
     - Neem in *elke* tabel rij 0 als header.
     - Vind de kolom waarvan de header 'week' of 'wk' bevat.
@@ -291,7 +517,9 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
     stop = False
 
     try:
-        for tbl in doc.tables:
+        for tbl, marker in table_markers:
+            if not _table_matches_period(marker, periode):
+                continue
             if stop:
                 break
             rows = _table_rows_texts(tbl)
@@ -302,6 +530,7 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
             if week_col is None:
                 continue
 
+            allow_wrap = marker is not None
             for r in rows[1:]:
                 if stop:
                     break
@@ -312,7 +541,7 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
                     for w in ws:
                         if not (1 <= w <= 53):
                             continue
-                        if _is_new_period(prev_week, w):
+                        if _is_new_period(prev_week, w, allow_wrap=allow_wrap):
                             stop = True
                             break
                         ordered_weeks.append(w)
@@ -323,8 +552,6 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
 
         if ordered_weeks:
             begin_w, eind_w = ordered_weeks[0], ordered_weeks[-1]
-            if eind_w < begin_w and unique_weeks:
-                eind_w = max(unique_weeks)
         elif unique_weeks:
             begin_w, eind_w = unique_weeks[0], unique_weeks[-1]
 
@@ -337,18 +564,23 @@ def _parse_week_range(doc: Document) -> Tuple[int, int]:
 # Hoofdfunctie
 # ---------------------------
 
-def extract_meta_from_docx(path: str, filename: str) -> Optional[DocMeta]:
+def extract_meta_from_docx(
+    path: str, filename: str, target_periode: Optional[int] = None
+) -> Optional[DocMeta]:
     doc = Document(path)
 
     # VAK
     vak = _parse_vak_from_header(doc, filename) or "Onbekend"
 
     # Meta + schooljaar
-    niveau, leerjaar, periode, schooljaar_footer = _parse_footer_meta(doc)
+    table_markers = _table_period_markers(doc)
+    niveau, leerjaar, periode_footer, schooljaar_footer = _parse_footer_meta(doc)
+    periode_text = _detect_primary_periode(doc)
+    periode = target_periode or periode_text or periode_footer
     schooljaar = schooljaar_footer or _parse_schooljaar_from_doc(doc) or _parse_schooljaar_from_filename(filename)
 
     # Weekrange (eenvoudige header-regel)
-    begin_week, eind_week = _parse_week_range(doc)
+    begin_week, eind_week = _parse_week_range(doc, periode, table_markers)
 
     # fileId
     file_id = re.sub(r"[^a-zA-Z0-9]+", "-", filename)[:40]
@@ -359,7 +591,7 @@ def extract_meta_from_docx(path: str, filename: str) -> Optional[DocMeta]:
         vak=vak,
         niveau=niveau,
         leerjaar=leerjaar,
-        periode=periode,
+        periode=periode or periode_footer,
         beginWeek=begin_week,
         eindWeek=eind_week,
         schooljaar=schooljaar,
@@ -404,34 +636,6 @@ BRON_HEADERS = ("bron", "bronnen", "links", "link", "boek")
 NOTITIE_HEADERS = ("opmerking", "notitie", "remarks")
 KLAS_HEADERS = ("klas", "groep")
 LOCATIE_HEADERS = ("locatie", "lokaal")
-
-MONTHS_NL = {
-    "januari": 1,
-    "jan": 1,
-    "februari": 2,
-    "feb": 2,
-    "maart": 3,
-    "mrt": 3,
-    "april": 4,
-    "apr": 4,
-    "mei": 5,
-    "juni": 6,
-    "jun": 6,
-    "juli": 7,
-    "jul": 7,
-    "augustus": 8,
-    "aug": 8,
-    "september": 9,
-    "sep": 9,
-    "sept": 9,
-    "oktober": 10,
-    "okt": 10,
-    "november": 11,
-    "nov": 11,
-    "december": 12,
-    "dec": 12,
-}
-
 
 def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip())
@@ -552,15 +756,23 @@ def parse_toets_cell(text: str) -> Optional[Dict[str, Optional[str]]]:
     return {"type": ttype or normalize_text(text), "weging": weight, "herkansing": herk}
 
 
-def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
+def extract_rows_from_docx(
+    path: str, filename: str, target_periode: Optional[int] = None
+) -> List[DocRow]:
     doc = Document(path)
-    schooljaar = _parse_schooljaar_from_doc(doc) or _parse_schooljaar_from_filename(filename)
+    table_markers = _table_period_markers(doc)
+    _, _, periode_footer, schooljaar_footer = _parse_footer_meta(doc)
+    periode_text = _detect_primary_periode(doc)
+    periode = target_periode or periode_text or periode_footer
+    schooljaar = schooljaar_footer or _parse_schooljaar_from_doc(doc) or _parse_schooljaar_from_filename(filename)
     results: List[DocRow] = []
 
     prev_week: Optional[int] = None
     stop = False
 
-    for tbl in doc.tables:
+    for tbl, marker in table_markers:
+        if not _table_matches_period(marker, periode):
+            continue
         if stop:
             break
         rows = _table_rows_texts(tbl)
@@ -581,6 +793,7 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
         klas_col = find_header_idx(headers, KLAS_HEADERS)
         loc_col = find_header_idx(headers, LOCATIE_HEADERS)
 
+        allow_wrap = marker is not None
         for r in rows[1:]:
             if stop:
                 break
@@ -651,7 +864,7 @@ def extract_rows_from_docx(path: str, filename: str) -> List[DocRow]:
             for w in weeks:
                 if not (1 <= w <= 53):
                     continue
-                if _is_new_period(prev_week, w):
+                if _is_new_period(prev_week, w, allow_wrap=allow_wrap):
                     stop = True
                     break
                 accepted_weeks.append(w)
