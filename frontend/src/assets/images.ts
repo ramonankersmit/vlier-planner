@@ -7,7 +7,7 @@ const PUBLIC_BASE_URL = withTrailingSlash(import.meta.env.BASE_URL ?? "/");
 const resolvePublicAsset = (path: string) =>
   `${PUBLIC_BASE_URL}${withoutLeadingSlash(path)}`;
 
-export const PUBLIC_ASSETS = {
+const PUBLIC_ASSETS = {
   logo: resolvePublicAsset("logo.png"),
   screenshots: {
     weekoverzicht: resolvePublicAsset("screenshots/weekoverzicht.png"),
@@ -16,3 +16,7 @@ export const PUBLIC_ASSETS = {
   },
 } as const;
 
+const LOGO_IMAGE = {
+const SCREENSHOT_IMAGES = {
+
+export { PUBLIC_ASSETS, LOGO_IMAGE, SCREENSHOT_IMAGES };
