@@ -4,23 +4,8 @@ import { Coffee } from "lucide-react";
 import packageJson from "../../../package.json";
 import { useAppStore } from "../../app/store";
 import { PUBLIC_LOGO } from "../../assets/images";
+import { clamp01, withAlpha } from "../../lib/color";
 import { useOnboardingTour } from "../OnboardingTour";
-
-const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
-
-const hexToRgba = (color: string, alpha: number) => {
-  const match = color.match(/^#?([0-9a-f]{6})$/i);
-  if (!match) {
-    return color;
-  }
-  const hex = match[1];
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  const normalized = clamp01(alpha);
-  const roundedAlpha = Math.round(normalized * 100) / 100;
-  return `rgba(${r}, ${g}, ${b}, ${roundedAlpha})`;
-};
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useAppStore((state) => state.theme);
@@ -31,7 +16,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const themeStyle = React.useMemo(() => {
     const surfaceAlpha = clamp01(surfaceOpacity / 100);
-    const resolvedSurface = hexToRgba(theme.surface, surfaceAlpha);
+    const resolvedSurface = withAlpha(theme.surface, surfaceAlpha);
     const base = {
       "--app-background": theme.background,
       "--app-surface": resolvedSurface,
@@ -60,7 +45,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const headerBackground = React.useMemo(() => {
     const surfaceAlpha = clamp01(surfaceOpacity / 100);
     const headerAlpha = clamp01(surfaceAlpha * 0.6 + 0.2);
-    return hexToRgba(theme.surface, headerAlpha);
+    return withAlpha(theme.surface, headerAlpha);
   }, [theme.surface, surfaceOpacity]);
 
   const navigationLinks = React.useMemo(
