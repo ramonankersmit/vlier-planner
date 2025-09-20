@@ -119,7 +119,7 @@ export default function Handleiding() {
           <img
             src={PUBLIC_LOGO}
             alt="Logo van Het Vlier Studiewijzer Planner"
-            className="h-28 w-28 object-contain drop-shadow-[0_8px_12px_rgba(15,23,42,0.35)]"
+            className="h-28 w-28 object-contain"
           />
         </div>
       </header>
