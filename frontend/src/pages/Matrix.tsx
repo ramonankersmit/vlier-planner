@@ -821,7 +821,11 @@ export default function Matrix() {
           Geen vakken voor deze filters. Pas de selectie aan of controleer de metadata van de documenten.
         </div>
       ) : (
-        <div className="overflow-auto rounded-2xl border theme-border theme-surface">
+        <div
+          data-tour-id="matrix-overview"
+          aria-label="Matrix overzicht met weken en vakken"
+          className="overflow-auto rounded-2xl border theme-border theme-surface"
+        >
           <table className="min-w-full text-sm">
             <thead className="theme-soft">
               <tr>

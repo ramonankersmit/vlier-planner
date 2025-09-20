@@ -4,6 +4,7 @@ import { Coffee } from "lucide-react";
 import packageJson from "../../../package.json";
 import { useAppStore } from "../../app/store";
 import { PUBLIC_LOGO } from "../../assets/images";
+import { useOnboardingTour } from "../OnboardingTour";
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
@@ -26,6 +27,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const backgroundImage = useAppStore((state) => state.backgroundImage);
   const surfaceOpacity = useAppStore((state) => state.surfaceOpacity);
   const appVersion = packageJson.version ?? "0.0.0";
+  const { restart: restartTour } = useOnboardingTour();
 
   const themeStyle = React.useMemo(() => {
     const surfaceAlpha = clamp01(surfaceOpacity / 100);
@@ -101,6 +103,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 {link.label}
               </NavLink>
             ))}
+            <button
+              type="button"
+              onClick={() => restartTour()}
+              className={`${resolveLinkClassName(false)} whitespace-nowrap`}
+              aria-label="Rondleiding opnieuw starten"
+            >
+              Rondleiding
+            </button>
           </nav>
         </div>
       </header>

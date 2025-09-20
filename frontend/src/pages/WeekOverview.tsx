@@ -809,8 +809,12 @@ export default function WeekOverview() {
         <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
           Geen vakken voor deze filters. Pas de selectie aan of controleer de metadata van de documenten.
         </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      ) : ( 
+        <div
+          data-tour-id="planner-view"
+          aria-label="Plannerweergave"
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
           {visibleVakken.map((vak) => {
             const data = dataForActiveWeek[vak];
             const docsForVak = docsByVak.get(vak) ?? [];

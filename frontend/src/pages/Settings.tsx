@@ -240,7 +240,11 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="rounded-2xl border theme-border theme-surface p-4 space-y-4">
+      <div
+        data-tour-id="settings-theme"
+        aria-label="Instellingen voor thema en achtergrond"
+        className="rounded-2xl border theme-border theme-surface p-4 space-y-4"
+      >
         <div className="font-medium theme-text">Thema &amp; achtergrond</div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

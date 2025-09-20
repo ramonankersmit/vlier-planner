@@ -198,7 +198,11 @@ export default function Deadlines() {
         </select>
       </div>
 
-      <div className="overflow-auto rounded-2xl border theme-border theme-surface">
+      <div
+        data-tour-id="events-overview"
+        aria-label="Overzicht van belangrijke events"
+        className="overflow-auto rounded-2xl border theme-border theme-surface"
+      >
         {!hasUploads ? (
           <div className="p-6 text-sm theme-muted">
             {hasActiveDocs

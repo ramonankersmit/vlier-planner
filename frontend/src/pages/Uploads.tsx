@@ -1,4 +1,5 @@
 import React from "react";
+import clsx from "clsx";
 import { Info, FileText, Trash2, XCircle } from "lucide-react";
 import type { DocRecord } from "../app/store";
 import { useAppStore, hydrateDocRowsFromApi } from "../app/store";
@@ -6,6 +7,7 @@ import type { DocRow } from "../lib/api";
 import { apiUploadDoc, apiDeleteDoc } from "../lib/api";
 import { parseIsoDate } from "../lib/calendar";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 type Filters = {
   vak: string;
@@ -153,6 +155,10 @@ export default function Uploads() {
   const [isUploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [page, setPage] = React.useState(1);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const dragCounterRef = React.useRef(0);
+  const [isDragOver, setIsDragOver] = React.useState(false);
+  const detailDialogRef = React.useRef<HTMLDivElement | null>(null);
   const pageSize = 10;
 
   const meta = useMetadata(docs, docRows);
@@ -208,13 +214,18 @@ export default function Uploads() {
   const endIdx = Math.min(startIdx + pageSize, filtered.length);
   const visibleDocs = filtered.slice(startIdx, endIdx);
 
-  async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
-    const files = ev.target.files;
-    if (!files?.length) return;
+  async function processFiles(fileList: FileList | File[] | null) {
+    if (!fileList) {
+      return;
+    }
+    const files = Array.isArray(fileList) ? fileList : Array.from(fileList);
+    if (!files.length) {
+      return;
+    }
     setUploading(true);
     setError(null);
     const errors: string[] = [];
-    for (const file of Array.from(files)) {
+    for (const file of files) {
       try {
         const metas = await apiUploadDoc(file);
         for (const meta of metas) {
@@ -230,8 +241,54 @@ export default function Uploads() {
       setError(errors.join(" | "));
     }
     setUploading(false);
+  }
+
+  async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
+    await processFiles(ev.target.files);
     ev.target.value = "";
   }
+
+  const handleDrop: React.DragEventHandler<HTMLDivElement> = async (event) => {
+    event.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+    await processFiles(event.dataTransfer?.files ?? null);
+  };
+
+  const handleDragEnter: React.DragEventHandler<HTMLDivElement> = (event) => {
+    event.preventDefault();
+    dragCounterRef.current += 1;
+    if (!isDragOver) {
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave: React.DragEventHandler<HTMLDivElement> = (event) => {
+    event.preventDefault();
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDragOver: React.DragEventHandler<HTMLDivElement> = (event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    if (!isDragOver) {
+      setIsDragOver(true);
+    }
+  };
+
+  const openFileDialog = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleDropZoneKeyDown: React.KeyboardEventHandler<HTMLDivElement> = (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openFileDialog();
+    }
+  };
 
   async function handleDelete(doc: DocRecord) {
     const confirmed = window.confirm(
@@ -391,6 +448,21 @@ export default function Uploads() {
 
   const previewRows = detailRows.slice(0, 8);
   const hasMoreRows = detailRows.length > previewRows.length;
+  useFocusTrap(detailDialogRef, !!detailDoc);
+
+  React.useEffect(() => {
+    if (!detailDoc) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDetailDoc(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [detailDoc]);
 
   return (
     <div className="space-y-4">
@@ -399,12 +471,45 @@ export default function Uploads() {
       {/* Uploadblok */}
       <div className="rounded-2xl border theme-border theme-surface p-4">
         <div className="mb-1 font-medium theme-text">Bestanden uploaden</div>
-        <div className="text-sm theme-muted mb-2">
+        <div className="text-sm theme-muted">
           Kies een <strong>PDF</strong> of <strong>DOCX</strong>. Metadata wordt automatisch herkend.
         </div>
-        <input type="file" accept=".pdf,.docx" multiple onChange={handleUpload} />
-        {isUploading && <div className="mt-2 text-sm theme-muted">Bezig met uploaden…</div>}
-        {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
+        <div
+          data-tour-id="upload-dropzone"
+          role="button"
+          tabIndex={0}
+          aria-label="Studiewijzers uploaden"
+          aria-describedby="upload-dropzone-help"
+          onClick={openFileDialog}
+          onKeyDown={handleDropZoneKeyDown}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={clsx(
+            "mt-3 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)]",
+            isDragOver ? "border-slate-500 bg-slate-100/80" : "theme-border theme-surface"
+          )}
+        >
+          <span className="text-base font-medium theme-text">Sleep je studiewijzer hierheen</span>
+          <span id="upload-dropzone-help" className="mt-2 text-sm theme-muted">
+            of klik om te bladeren. We ondersteunen meerdere bestanden tegelijk.
+          </span>
+          <span className="mt-4 inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-1 text-xs font-medium uppercase tracking-wide text-slate-600 shadow-sm">
+            Bladeren
+          </span>
+          <input
+            ref={fileInputRef}
+            id="studiewijzer-upload"
+            type="file"
+            accept=".pdf,.docx"
+            multiple
+            className="sr-only"
+            onChange={handleUpload}
+          />
+        </div>
+        {isUploading && <div className="mt-3 text-sm theme-muted">Bezig met uploaden…</div>}
+        {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
       </div>
 
       {/* Metadata-overzicht */}
@@ -458,9 +563,18 @@ export default function Uploads() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 items-center text-sm">
+      <div
+        data-tour-id="search-filters"
+        role="region"
+        aria-labelledby="upload-filter-heading"
+        className="flex flex-wrap items-center gap-2 text-sm"
+      >
+        <span id="upload-filter-heading" className="sr-only">
+          Filters voor uploads
+        </span>
         <input
           placeholder="Zoek vak…"
+          aria-label="Zoek op vak"
           value={filters.vak}
           onChange={(e) => setFilters((f) => ({ ...f, vak: e.target.value }))}
           className="rounded-md border theme-border theme-surface px-2 py-1"
@@ -468,6 +582,7 @@ export default function Uploads() {
         <select
           className="rounded-md border theme-border theme-surface px-2 py-1"
           value={filters.niveau}
+          aria-label="Filter op niveau"
           onChange={(e) => setFilters((f) => ({ ...f, niveau: e.target.value }))}
         >
           <option value="">Alle niveaus</option>
@@ -480,6 +595,7 @@ export default function Uploads() {
         <select
           className="rounded-md border theme-border theme-surface px-2 py-1"
           value={filters.leerjaar}
+          aria-label="Filter op leerjaar"
           onChange={(e) => setFilters((f) => ({ ...f, leerjaar: e.target.value }))}
         >
           <option value="">Alle leerjaren</option>
@@ -492,6 +608,7 @@ export default function Uploads() {
         <select
           className="rounded-md border theme-border theme-surface px-2 py-1"
           value={filters.periode}
+          aria-label="Filter op periode"
           onChange={(e) => setFilters((f) => ({ ...f, periode: e.target.value }))}
         >
           <option value="">Alle periodes</option>
@@ -504,7 +621,7 @@ export default function Uploads() {
         {(filters.vak || filters.niveau || filters.leerjaar || filters.periode) && (
           <button
             onClick={reset}
-            className="ml-2 inline-flex items-center gap-1 rounded-md border theme-border theme-surface px-2 py-1"
+            className="ml-2 inline-flex items-center gap-1 rounded-md border theme-border theme-surface px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)]"
             title="Reset filters"
           >
             <XCircle size={14} /> Reset
@@ -638,13 +755,35 @@ export default function Uploads() {
 
       {/* Detail modal */}
       {detailDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-          <div className="w-full max-w-4xl overflow-hidden rounded-2xl border theme-border theme-surface shadow-lg">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setDetailDoc(null);
+            }
+          }}
+        >
+          <div
+            ref={detailDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="detail-modal-title"
+            className="w-full max-w-4xl overflow-hidden rounded-2xl border theme-border theme-surface shadow-lg"
+          >
             <div className="flex items-center justify-between border-b theme-border px-6 py-4">
-              <h2 className="text-lg font-semibold truncate" title={detailDoc.bestand}>
+              <h2
+                id="detail-modal-title"
+                className="text-lg font-semibold truncate"
+                title={detailDoc.bestand}
+              >
                 Metadata — {detailDoc.bestand}
               </h2>
-              <button onClick={() => setDetailDoc(null)} className="rounded-md border theme-border theme-surface px-2 py-1 text-sm" aria-label="Sluiten">
+              <button
+                onClick={() => setDetailDoc(null)}
+                className="rounded-md border theme-border theme-surface px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)]"
+                aria-label="Sluiten"
+              >
                 ✕
               </button>
             </div>
@@ -835,6 +974,7 @@ export default function Uploads() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
