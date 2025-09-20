@@ -284,6 +284,8 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
     - Puur getal als hele cel
     """
     text = (txt or "").strip().replace("\n", " ")
+    # Harmoniseer verschillende koppeltekens zodat we 52-1-2 patronen eenduidig kunnen herkennen.
+    text = text.replace("–", "-").replace("—", "-").replace("−", "-")
 
     # Verwijder datums zoals 25-08-2025 zodat RE_WEEK_PAIR hieronder
     # niet per ongeluk dagen/maanden als weken herkent.
@@ -312,6 +314,16 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
             weeks.append(va)
         if 1 <= vb <= 53:
             weeks.append(vb)
+
+    # Fallback: als er meerdere nummers via koppeltekens/slashes aan elkaar staan, kunnen
+    # overlappende paren ontbreken (bijv. '52-1-2'). In dat geval lopen we nogmaals alle
+    # losse getallen af in oorspronkelijke volgorde zodat ook de tussenliggende weken
+    # worden meegenomen.
+    if re.search(r"\d\s*[-/]\s*\d", text):
+        for match in re.finditer(r"(?<!\d)(\d{1,2})(?!\d)", text):
+            v = int(match.group(1))
+            if 1 <= v <= 53:
+                weeks.append(v)
 
     m2 = RE_NUM_PURE.match(text)
     if m2:
