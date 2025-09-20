@@ -158,9 +158,6 @@ export default function Uploads() {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const dragCounterRef = React.useRef(0);
   const [isDragOver, setIsDragOver] = React.useState(false);
-  const [reviewOpen, setReviewOpen] = React.useState(false);
-  const [activeReviewIndex, setActiveReviewIndex] = React.useState(0);
-  const reviewDialogRef = React.useRef<HTMLDivElement | null>(null);
   const detailDialogRef = React.useRef<HTMLDivElement | null>(null);
   const pageSize = 10;
 
@@ -196,40 +193,6 @@ export default function Uploads() {
     return matches.sort((a, b) => getTime(b) - getTime(a));
   }, [docs, filters]);
 
-  const reviewCandidates = React.useMemo(() => {
-    return docs
-      .map((doc) => {
-        const rows = docRows[doc.fileId] ?? [];
-        const issues: string[] = [];
-        if (!rows.length) {
-          issues.push("Geen studiewijzerregels herkend");
-        }
-        const missingWeeks = rows.filter((row) => row.week == null).length;
-        if (missingWeeks > 0) {
-          issues.push(
-            `${missingWeeks} regel${missingWeeks === 1 ? "" : "s"} zonder weeknummer`
-          );
-        }
-        const missingAssignments = rows.filter(
-          (row) => !row.huiswerk && !row.opdracht && !row.toets?.type
-        ).length;
-        if (missingAssignments > 0) {
-          issues.push(
-            `${missingAssignments} item${missingAssignments === 1 ? "" : "s"} zonder opdrachttekst`
-          );
-        }
-        return issues.length ? { doc, issues } : null;
-      })
-      .filter((entry): entry is { doc: DocRecord; issues: string[] } => entry !== null);
-  }, [docs, docRows]);
-
-  const reviewCount = reviewCandidates.length;
-
-  const totalReviewIssues = React.useMemo(
-    () => reviewCandidates.reduce((sum, entry) => sum + entry.issues.length, 0),
-    [reviewCandidates]
-  );
-
   React.useEffect(() => {
     setPage(1);
   }, [filters.vak, filters.niveau, filters.leerjaar, filters.periode]);
@@ -237,35 +200,6 @@ export default function Uploads() {
   React.useEffect(() => {
     setPage(1);
   }, [docs.length]);
-
-  React.useEffect(() => {
-    if (!reviewCandidates.length) {
-      if (activeReviewIndex !== 0) {
-        setActiveReviewIndex(0);
-      }
-      return;
-    }
-    if (activeReviewIndex >= reviewCandidates.length) {
-      setActiveReviewIndex(reviewCandidates.length - 1);
-    }
-  }, [activeReviewIndex, reviewCandidates.length]);
-
-  React.useEffect(() => {
-    if (!reviewOpen) {
-      return;
-    }
-    const current = reviewCandidates[activeReviewIndex];
-    const doc = current?.doc;
-    if (doc && !(docRows[doc.fileId]?.length)) {
-      hydrateDocRowsFromApi(doc.fileId);
-    }
-  }, [reviewOpen, activeReviewIndex, reviewCandidates, docRows]);
-
-  React.useEffect(() => {
-    if (reviewOpen && reviewCount === 0) {
-      setReviewOpen(false);
-    }
-  }, [reviewOpen, reviewCount]);
 
   const totalPages = filtered.length ? Math.ceil(filtered.length / pageSize) : 1;
   const clampedPage = Math.min(page, totalPages);
@@ -355,28 +289,6 @@ export default function Uploads() {
       openFileDialog();
     }
   };
-
-  const openReviewWizard = () => {
-    if (!reviewCount) {
-      return;
-    }
-    setActiveReviewIndex(0);
-    setReviewOpen(true);
-  };
-
-  const goReviewNext = React.useCallback(() => {
-    if (reviewCount <= 1) {
-      return;
-    }
-    setActiveReviewIndex((prev) => (prev + 1) % reviewCount);
-  }, [reviewCount]);
-
-  const goReviewPrev = React.useCallback(() => {
-    if (reviewCount <= 1) {
-      return;
-    }
-    setActiveReviewIndex((prev) => (prev - 1 + reviewCount) % reviewCount);
-  }, [reviewCount]);
 
   async function handleDelete(doc: DocRecord) {
     const confirmed = window.confirm(
@@ -536,10 +448,7 @@ export default function Uploads() {
 
   const previewRows = detailRows.slice(0, 8);
   const hasMoreRows = detailRows.length > previewRows.length;
-  const activeReview = reviewCandidates[activeReviewIndex] ?? null;
-
   useFocusTrap(detailDialogRef, !!detailDoc);
-  useFocusTrap(reviewDialogRef, reviewOpen && reviewCandidates.length > 0, [activeReviewIndex, reviewCandidates.length]);
 
   React.useEffect(() => {
     if (!detailDoc) {
@@ -554,20 +463,6 @@ export default function Uploads() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [detailDoc]);
-
-  React.useEffect(() => {
-    if (!reviewOpen) {
-      return;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setReviewOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [reviewOpen]);
 
   return (
     <div className="space-y-4">
@@ -615,39 +510,6 @@ export default function Uploads() {
         </div>
         {isUploading && <div className="mt-3 text-sm theme-muted">Bezig met uploaden…</div>}
         {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
-      </div>
-
-      <div className="rounded-2xl border theme-border theme-surface p-4" aria-label="Reviewwizard voor lage zekerheid">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="font-medium theme-text">Reviewwizard</div>
-            <p className="mt-1 text-sm theme-muted">
-              Controleer items met laag vertrouwen voordat je ze activeert in de planner.
-            </p>
-            {reviewCount ? (
-              <div className="mt-2 text-xs text-slate-600">
-                {totalReviewIssues} controlepunt{totalReviewIssues === 1 ? "" : "en"} over {reviewCount} document
-                {reviewCount === 1 ? "" : "en"}.
-              </div>
-            ) : (
-              <div className="mt-2 text-xs text-emerald-600">Alle geüploade documenten zijn gecontroleerd.</div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={openReviewWizard}
-            disabled={!reviewCount}
-            className={clsx(
-              "inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)]",
-              reviewCount
-                ? "bg-slate-900 text-white shadow hover:bg-slate-800"
-                : "cursor-not-allowed bg-slate-200 text-slate-500"
-            )}
-            aria-disabled={!reviewCount}
-          >
-            Start controle
-          </button>
-        </div>
       </div>
 
       {/* Metadata-overzicht */}
@@ -1113,116 +975,6 @@ export default function Uploads() {
         </div>
       )}
 
-      {reviewOpen && activeReview && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
-          role="presentation"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              setReviewOpen(false);
-            }
-          }}
-        >
-          <div
-            ref={reviewDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="review-dialog-title"
-            className="w-full max-w-3xl overflow-hidden rounded-2xl border theme-border theme-surface shadow-lg"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b theme-border px-6 py-4">
-              <div>
-                <h2 id="review-dialog-title" className="text-lg font-semibold theme-text">
-                  Controleer {activeReview.doc.bestand}
-                </h2>
-                <p className="text-xs theme-muted">
-                  Document {activeReviewIndex + 1} van {reviewCount}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setReviewOpen(false)}
-                className="rounded-md border theme-border theme-surface px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)]"
-                aria-label="Sluiten"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="max-h-[70vh] overflow-y-auto px-6 py-5 text-sm space-y-4">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
-                <div className="font-medium">Te controleren punten</div>
-                <ul className="mt-2 list-disc space-y-1 pl-5">
-                  {activeReview.issues.map((issue) => (
-                    <li key={issue}>{issue}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() =>
-                    openPreview({ fileId: activeReview.doc.fileId, filename: activeReview.doc.bestand })
-                  }
-                  className="inline-flex items-center rounded-md border theme-border theme-surface px-3 py-1.5 font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)] hover:bg-white/70"
-                >
-                  Bron openen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDetailDoc(activeReview.doc);
-                    setReviewOpen(false);
-                  }}
-                  className="inline-flex items-center rounded-md border theme-border theme-surface px-3 py-1.5 font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)] hover:bg-white/70"
-                >
-                  Metadata bekijken
-                </button>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t theme-border bg-slate-50 px-6 py-4 text-sm">
-              <div className="text-xs theme-muted">Enter = volgende · Esc = sluiten</div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={goReviewPrev}
-                  disabled={reviewCount <= 1}
-                  className={clsx(
-                    "rounded-md border theme-border theme-surface px-3 py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)]",
-                    reviewCount <= 1
-                      ? "cursor-not-allowed text-slate-400"
-                      : "hover:bg-white/70"
-                  )}
-                  aria-disabled={reviewCount <= 1}
-                >
-                  Vorige
-                </button>
-                <button
-                  type="button"
-                  data-autofocus
-                  onClick={goReviewNext}
-                  disabled={reviewCount <= 1}
-                  className={clsx(
-                    "rounded-md px-3 py-1.5 font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)]",
-                    reviewCount <= 1
-                      ? "cursor-not-allowed bg-slate-200 text-slate-500"
-                      : "bg-slate-900 text-white shadow hover:bg-slate-800"
-                  )}
-                  aria-disabled={reviewCount <= 1}
-                >
-                  Volgende
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setReviewOpen(false)}
-                  className="rounded-md border theme-border theme-surface px-3 py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)] hover:bg-white/70"
-                >
-                  Gereed
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
