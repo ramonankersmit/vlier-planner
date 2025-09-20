@@ -91,7 +91,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <img
               src={PUBLIC_LOGO}
               alt="Het Vlier Studiewijzer Planner"
-              className="h-12 w-12 rounded-xl border border-white/40 bg-white/95 p-1 object-contain"
+              className="h-16 w-16 rounded-2xl border border-white/40 bg-white/95 p-1.5 object-contain"
             />
             <div className="text-xl font-semibold theme-text">Het Vlier Studiewijzer Planner</div>
           </div>
