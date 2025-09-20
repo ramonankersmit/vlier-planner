@@ -100,7 +100,7 @@ export default function Uploads() {
   const visibleDocs = filtered.slice(startIdx, endIdx);
 
   const gridTemplate =
-    "grid-cols-[90px_minmax(240px,3fr)_minmax(190px,2fr)_minmax(170px,1.7fr)_minmax(120px,1.2fr)_minmax(110px,1.1fr)_minmax(100px,1fr)_minmax(95px,0.95fr)_minmax(95px,0.95fr)_minmax(85px,0.9fr)_minmax(85px,0.9fr)]";
+    "grid-cols-[minmax(56px,max-content)_minmax(220px,2fr)_minmax(150px,max-content)_minmax(140px,max-content)_minmax(120px,max-content)_minmax(90px,max-content)_minmax(90px,max-content)_minmax(90px,max-content)_minmax(110px,max-content)_minmax(170px,1fr)]";
 
   async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
     const files = ev.target.files;
@@ -233,21 +233,33 @@ export default function Uploads() {
   }, [detailRows]);
 
   const dateFormatter = React.useMemo(() => new Intl.DateTimeFormat("nl-NL"), []);
+  const timeFormatter = React.useMemo(
+    () =>
+      new Intl.DateTimeFormat("nl-NL", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    []
+  );
+
+  const formatDateTime = React.useCallback(
+    (value?: string | null): { date: string; time: string } => {
+      if (!value) return { date: "—", time: "" };
+      const parsed = parseIsoDate(value) ?? new Date(value);
+      if (Number.isNaN(parsed.getTime())) {
+        return { date: value, time: "" };
+      }
+      return {
+        date: dateFormatter.format(parsed),
+        time: timeFormatter.format(parsed),
+      };
+    },
+    [dateFormatter, timeFormatter]
+  );
 
   const formatDate = React.useCallback(
-    (value?: string | null) => {
-      if (!value) return "—";
-      const parsed = parseIsoDate(value);
-      if (parsed) {
-        return dateFormatter.format(parsed);
-      }
-      const fallback = new Date(value);
-      if (!Number.isNaN(fallback.getTime())) {
-        return dateFormatter.format(fallback);
-      }
-      return value;
-    },
-    [dateFormatter]
+    (value?: string | null) => formatDateTime(value).date,
+    [formatDateTime]
   );
 
   const previewRows = detailRows.slice(0, 8);
@@ -374,36 +386,38 @@ export default function Uploads() {
       {/* Tabel */}
       <div className="rounded-2xl border theme-border theme-surface overflow-x-auto">
         <div
-          className={`min-w-[1100px] grid ${gridTemplate} gap-2 text-xs font-medium theme-muted border-b theme-border pb-2 px-4 pt-3`}
+          className={`grid ${gridTemplate} gap-x-4 gap-y-2 text-xs font-medium theme-muted border-b theme-border pb-2 px-4 pt-3`}
         >
           <div className="flex justify-center">Gebruik</div>
           <div>Bestand</div>
-          <div>Upload datum</div>
+          <div>Datum / Tijd</div>
           <div>Vak</div>
           <div>Niveau</div>
           <div>Leerjaar</div>
           <div>Periode</div>
           <div>Begin week</div>
           <div>Eind week</div>
-          <div className="col-span-2">Acties</div>
+          <div>Acties</div>
         </div>
 
         {filtered.length === 0 ? (
           <div className="p-6 text-sm theme-muted">Geen documenten gevonden.</div>
         ) : (
           <>
-            {visibleDocs.map((d, i) => (
-              <div
-                key={d.fileId}
-                className={`min-w-[1100px] grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
-                  i > 0 ? "border-t theme-border" : ""
-                }`}
-              >
-                <div className="flex justify-center">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={d.enabled}
+            {visibleDocs.map((d, i) => {
+              const { date, time } = formatDateTime(d.uploadedAt ?? null);
+              return (
+                <div
+                  key={d.fileId}
+                  className={`grid ${gridTemplate} gap-x-4 gap-y-3 text-sm items-start px-4 py-3 ${
+                    i > 0 ? "border-t theme-border" : ""
+                  }`}
+                >
+                  <div className="flex justify-center">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={d.enabled}
                     onChange={() => toggleGebruik(d)}
                     aria-label={
                       d.enabled
@@ -420,14 +434,17 @@ export default function Uploads() {
                 <div className="break-words" title={d.bestand}>
                   {d.bestand}
                 </div>
-                <div className="whitespace-nowrap">{formatDate(d.uploadedAt ?? null)}</div>
+                <div className="leading-tight">
+                  <div>{date}</div>
+                  {time && <div className="text-xs theme-muted">{time}</div>}
+                </div>
                 <div>{d.vak}</div>
                 <div>{d.niveau}</div>
                 <div>{d.leerjaar}</div>
                 <div>P{d.periode}</div>
                 <div>{d.beginWeek}</div>
                 <div>{d.eindWeek}</div>
-                <div className="flex gap-2 col-span-2">
+                <div className="flex flex-wrap gap-2 justify-end">
                   <button
                     title={`Bron: ${d.bestand}`}
                     className="rounded-lg border theme-border theme-surface p-1"
@@ -450,8 +467,9 @@ export default function Uploads() {
                     <Trash2 size={16} />
                   </button>
                 </div>
-              </div>
-            ))}
+                </div>
+              );
+            })}
             {filtered.length > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t theme-border px-4 py-3 text-xs theme-muted">
                 <div>
