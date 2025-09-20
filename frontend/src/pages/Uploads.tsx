@@ -617,11 +617,7 @@ export default function Uploads() {
         {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
       </div>
 
-      <div
-        data-tour-id="review-wizard"
-        aria-label="Reviewwizard voor lage zekerheid"
-        className="rounded-2xl border theme-border theme-surface p-4"
-      >
+      <div className="rounded-2xl border theme-border theme-surface p-4" aria-label="Reviewwizard voor lage zekerheid">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="font-medium theme-text">Reviewwizard</div>

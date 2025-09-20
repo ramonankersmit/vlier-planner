@@ -107,7 +107,11 @@ const demoScreens = [
 export default function Handleiding() {
   return (
     <div className="space-y-10">
-      <header className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(220px,1fr)] lg:items-center">
+      <header
+        data-tour-id="tour-intro"
+        aria-label="Introductie tot de planner"
+        className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(220px,1fr)] lg:items-center"
+      >
         <div className="space-y-3">
           <span className="inline-flex items-center gap-2 rounded-full bg-[var(--app-accent)] px-3 py-1 text-sm font-medium text-[var(--app-accent-text)]">
             <Sparkles size={16} aria-hidden="true" />

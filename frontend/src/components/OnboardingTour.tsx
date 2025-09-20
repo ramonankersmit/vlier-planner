@@ -32,6 +32,14 @@ export function useOnboardingTour() {
 
 const steps: OnboardingStep[] = [
   {
+    id: "intro",
+    route: "/uitleg",
+    selector: '[data-tour-id="tour-intro"]',
+    heading: "Snelstart",
+    description:
+      "Begin bij de uitleg om in één minuut te zien hoe de planner werkt en waar je alles terugvindt.",
+  },
+  {
     id: "upload",
     route: "/uploads",
     selector: '[data-tour-id="upload-dropzone"]',
@@ -40,36 +48,36 @@ const steps: OnboardingStep[] = [
       "Sleep je studiewijzer hierheen of kies een bestand. Wij herkennen automatisch de planning en metadata.",
   },
   {
-    id: "review",
-    route: "/uploads",
-    selector: '[data-tour-id="review-wizard"]',
-    heading: "Reviewwizard",
-    description:
-      "Controleer automatisch herkende regels met lage zekerheid en werk ze bij voordat ze in de planner verschijnen.",
-  },
-  {
-    id: "planner",
+    id: "weekoverview",
     route: "/",
     selector: '[data-tour-id="planner-view"]',
-    heading: "Plannerweergave",
+    heading: "Weekoverzicht",
     description:
-      "Bekijk de weekplanning per vak, vink taken af, voeg eigen opdrachten toe en open bronnen rechtstreeks.",
+      "Zie per vak wat er deze week moet gebeuren en vink opdrachten af zodra je klaar bent.",
   },
   {
-    id: "filters",
-    route: "/uploads",
-    selector: '[data-tour-id="search-filters"]',
-    heading: "Zoeken & filteren",
+    id: "matrix",
+    route: "/matrix",
+    selector: '[data-tour-id="matrix-overview"]',
+    heading: "Matrix overzicht",
     description:
-      "Filter je studiewijzers op vak, niveau, leerjaar en periode om snel het juiste document te vinden.",
+      "Gebruik de matrix om meerdere weken naast elkaar te plannen en grote projecten vooruit te zien.",
   },
   {
-    id: "notifications",
+    id: "events",
+    route: "/deadlines",
+    selector: '[data-tour-id="events-overview"]',
+    heading: "Belangrijke events",
+    description:
+      "Check toetsen en inlevermomenten zodat je op tijd kunt beginnen en niets mist.",
+  },
+  {
+    id: "settings",
     route: "/settings",
-    selector: '[data-tour-id="notification-settings"]',
-    heading: "Notificaties",
+    selector: '[data-tour-id="settings-theme"]',
+    heading: "Instellingen",
     description:
-      "Schakel herinneringen in en bepaal hoeveel dagen vooraf je een seintje krijgt voor belangrijke activiteiten.",
+      "Pas kleuren, achtergrond en zichtbare vakken aan zodat de planner helemaal bij jou past.",
   },
 ];
 

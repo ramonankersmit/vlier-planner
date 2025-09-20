@@ -93,7 +93,7 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
 4. Beheer huiswerk in Weekoverzicht of Matrix overzicht en bekijk events via _Belangrijke events_.
 
 ## Onboarding tour
-- Bij het eerste bezoek start automatisch een rondleiding met vijf stappen: **Upload**, **Reviewwizard**, **Planner**, **Filters** en **Notificaties**.
+- Bij het eerste bezoek start automatisch een rondleiding met zes stappen: **Uitleg**, **Upload**, **Weekoverzicht**, **Matrix overzicht**, **Belangrijke events** en **Settings**.
 - Enter of spatie gaat naar de volgende stap, Escape sluit de tour. Via het menu-item **Rondleiding** in de header kun je de tour later opnieuw starten.
 - De status wordt opgeslagen in `localStorage` onder de sleutel `vlier.tourDone`.
 

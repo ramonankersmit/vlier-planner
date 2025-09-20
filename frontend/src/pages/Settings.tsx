@@ -244,10 +244,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <div
-        data-tour-id="notification-settings"
-        className="rounded-2xl border theme-border theme-surface p-4 space-y-3"
-      >
+      <div className="rounded-2xl border theme-border theme-surface p-4 space-y-3">
         <div className="font-medium theme-text">Notificaties</div>
         <div className="text-sm theme-muted">
           Herinneringen 2 dagen vooraf zodat deadlines niet worden gemist. Pas hier het gedrag aan.
@@ -286,7 +283,11 @@ export default function Settings() {
         </p>
       </div>
 
-      <div className="rounded-2xl border theme-border theme-surface p-4 space-y-4">
+      <div
+        data-tour-id="settings-theme"
+        aria-label="Instellingen voor thema en achtergrond"
+        className="rounded-2xl border theme-border theme-surface p-4 space-y-4"
+      >
         <div className="font-medium theme-text">Thema &amp; achtergrond</div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
