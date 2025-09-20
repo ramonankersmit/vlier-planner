@@ -396,8 +396,8 @@ export default function Uploads() {
                   <th className="px-4 py-3 text-left font-medium">Niveau</th>
                   <th className="px-4 py-3 text-left font-medium">Jaar</th>
                   <th className="px-4 py-3 text-left font-medium">Per.</th>
-                  <th className="px-4 py-3 text-left font-medium">Wk begin</th>
-                  <th className="px-4 py-3 text-left font-medium">Wk eind</th>
+                  <th className="px-4 py-3 text-left font-medium">Wk-B</th>
+                  <th className="px-4 py-3 text-left font-medium">Wk-E</th>
                   <th className="px-4 py-3 text-left font-medium">Acties</th>
                 </tr>
               </thead>
