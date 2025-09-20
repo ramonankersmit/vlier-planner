@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from backend.parsers.parser_docx import extract_meta_from_docx, extract_rows_from_docx
 
 
@@ -29,4 +31,22 @@ def test_latijnse_taal_en_cultuur_period_2_wraps_across_new_year():
 
     meta = extract_meta_from_docx(str(sample), sample.name, target_periode=2)
     assert meta.beginWeek == 46
-    assert meta.eindWeek == 52
+    assert meta.eindWeek == 4
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "Natuurkunde_4vwo_P1.docx",
+        "Maatschappijleer_4vwo_p1.docx",
+        "Geschiedenis 4V P1 studiewijzer.docx",
+        "Levensbeschouwing 2526 4V periode 1.docx",
+        "Nederlands 4V planner periode 1 2526.docx",
+    ],
+)
+def test_schooljaar_is_detected_for_samples(filename: str) -> None:
+    sample = Path("samples") / filename
+    assert sample.exists(), "Sample document is missing"
+
+    meta = extract_meta_from_docx(str(sample), sample.name)
+    assert meta.schooljaar == "2025/2026"

@@ -1,3 +1,4 @@
+from collections import defaultdict
 from docx import Document
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
@@ -21,6 +22,10 @@ RE_VAK_AFTER_DASH = re.compile(r"studiewijzer\s*[-–]\s*(.+)", re.I)
 RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ\s\-\&]+?)\s*\]")
 RE_PERIODE_MARKER = re.compile(r"periode\s*([1-4])", re.I)
 
+# Datums
+RE_DATE_DMY = re.compile(r"\b(\d{1,2})[\-/](\d{1,2})[\-/](\d{2,4})\b")
+RE_DATE_TEXTUAL = re.compile(r"\b(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+((?:20)?\d{2})\b", re.I)
+
 # Weekcel parsing
 RE_WEEK_LEADING = re.compile(r"^\s*(\d{1,2})(?:\s*[/\-]\s*(\d{1,2}))?")
 RE_WEEK_PAIR = re.compile(r"\b(\d{1,2})\s*[/\-]\s*(\d{1,2})\b")
@@ -30,6 +35,34 @@ RE_NUM_PURE = re.compile(r"^\s*(\d{1,2})\s*$")  # hele cel is een getal
 # Schooljaar
 # Herken zowel 4-cijferige als 2-cijferige jaartallen (bijv. "2025/2026" of "25-26")
 RE_SCHOOLYEAR = re.compile(r"((?:20)?\d{2})\s*[/\-]\s*((?:20)?\d{2})")
+RE_SCHOOLYEAR_COMPACT = re.compile(r"(?<!\d)(\d{2})(\d{2})(?!\d)")
+
+MONTHS_NL = {
+    "januari": 1,
+    "jan": 1,
+    "februari": 2,
+    "feb": 2,
+    "maart": 3,
+    "mrt": 3,
+    "april": 4,
+    "apr": 4,
+    "mei": 5,
+    "juni": 6,
+    "jun": 6,
+    "juli": 7,
+    "jul": 7,
+    "augustus": 8,
+    "aug": 8,
+    "september": 9,
+    "sep": 9,
+    "sept": 9,
+    "oktober": 10,
+    "okt": 10,
+    "november": 11,
+    "nov": 11,
+    "december": 12,
+    "dec": 12,
+}
 
 
 def _normalize_year_fragment(part: str) -> Optional[int]:
@@ -58,9 +91,89 @@ def _format_schooljaar(a: str, b: str) -> Optional[str]:
     bi = _normalize_year_fragment(b)
     if ai is None or bi is None:
         return None
+    a_digits = re.sub(r"\D", "", a)
+    b_digits = re.sub(r"\D", "", b)
+    if not a_digits or not b_digits:
+        return None
+    try:
+        a_val = int(a_digits)
+        b_val = int(b_digits)
+    except ValueError:
+        return None
+    if len(a_digits) <= 2 and not (20 <= a_val <= 30):
+        return None
+    if len(b_digits) <= 2 and not (20 <= b_val <= 30):
+        return None
     if bi < ai or abs(bi - ai) > 2:
         return None
     return f"{ai}/{bi}"
+
+
+def _iter_dates_with_year(text: str) -> List[Tuple[int, int]]:
+    results: List[Tuple[int, int]] = []
+    if not text:
+        return results
+
+    for match in RE_DATE_DMY.finditer(text):
+        try:
+            month = int(match.group(2))
+            year_raw = match.group(3)
+            year = int(year_raw)
+        except (TypeError, ValueError):
+            continue
+        if not (1 <= month <= 12):
+            continue
+        if len(year_raw) <= 2:
+            year += 2000
+        if year < 1900 or year > 2100:
+            continue
+        results.append((year, month))
+
+    for match in RE_DATE_TEXTUAL.finditer(text):
+        month = MONTHS_NL.get(match.group(2).lower())
+        if not month:
+            continue
+        try:
+            year_raw = match.group(3)
+            year = int(year_raw)
+        except (TypeError, ValueError):
+            continue
+        if len(year_raw) <= 2:
+            year += 2000
+        if year < 1900 or year > 2100:
+            continue
+        results.append((year, month))
+
+    return results
+
+
+def _infer_schooljaar_from_dates(text: str) -> Optional[str]:
+    stats = defaultdict(lambda: {"count": 0, "has_autumn": False, "has_spring": False})
+    for year, month in _iter_dates_with_year(text):
+        start_year = year if month >= 8 else year - 1
+        end_year = start_year + 1
+        if start_year < 1900 or end_year > 2101:
+            continue
+        bucket = stats[(start_year, end_year)]
+        bucket["count"] += 1
+        if month >= 8:
+            bucket["has_autumn"] = True
+        else:
+            bucket["has_spring"] = True
+
+    best_key: Optional[Tuple[int, int]] = None
+    best_score = (-1, -1, -1)
+    for (start, end), bucket in stats.items():
+        span_score = int(bucket["has_autumn"]) + int(bucket["has_spring"])
+        count = bucket["count"]
+        score = (span_score, count, start)
+        if score > best_score:
+            best_key = (start, end)
+            best_score = score
+
+    if not best_key:
+        return None
+    return f"{best_key[0]}/{best_key[1]}"
 
 
 def extract_schooljaar_from_text(text: str) -> Optional[str]:
@@ -79,7 +192,22 @@ def extract_schooljaar_from_text(text: str) -> Optional[str]:
         if best is None or score > best_score:
             best = candidate
             best_score = score
-    return best
+
+    if best:
+        if best_score > 0:
+            return best
+        fallback = _infer_schooljaar_from_dates(text)
+        if fallback:
+            return fallback
+        return best
+
+    for match in RE_SCHOOLYEAR_COMPACT.finditer(text):
+        candidate = _format_schooljaar(match.group(1), match.group(2))
+        if candidate:
+            fallback = _infer_schooljaar_from_dates(text)
+            return fallback or candidate
+
+    return _infer_schooljaar_from_dates(text)
 
 def _clean(s: str) -> str:
     return (s or "").strip()
@@ -220,6 +348,13 @@ def _parse_schooljaar_from_doc(doc: Document) -> Optional[str]:
     for p in doc.paragraphs:
         texts.append(_clean(p.text))
     try:
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    texts.append(_clean(cell.text))
+    except Exception:
+        pass
+    try:
         sec = doc.sections[0]
         texts += [_clean(p.text) for p in sec.header.paragraphs]
         texts += [_clean(p.text) for p in sec.footer.paragraphs]
@@ -253,9 +388,9 @@ def _parse_footer_meta(doc: Document) -> Tuple[str, str, int, Optional[str]]:
         m = re.search(r"periode\s*([1-4])", low)
         if m:
             periode = int(m.group(1))
-        m = RE_SCHOOLYEAR.search(full)
-        if m:
-            schooljaar = _format_schooljaar(m.group(1), m.group(2))
+        candidate = extract_schooljaar_from_text(full)
+        if candidate:
+            schooljaar = candidate
     except Exception:
         pass
     return niveau, leerjaar, periode, schooljaar
@@ -417,8 +552,6 @@ def _parse_week_range(
 
         if ordered_weeks:
             begin_w, eind_w = ordered_weeks[0], ordered_weeks[-1]
-            if eind_w < begin_w and unique_weeks:
-                eind_w = max(unique_weeks)
         elif unique_weeks:
             begin_w, eind_w = unique_weeks[0], unique_weeks[-1]
 
@@ -503,34 +636,6 @@ BRON_HEADERS = ("bron", "bronnen", "links", "link", "boek")
 NOTITIE_HEADERS = ("opmerking", "notitie", "remarks")
 KLAS_HEADERS = ("klas", "groep")
 LOCATIE_HEADERS = ("locatie", "lokaal")
-
-MONTHS_NL = {
-    "januari": 1,
-    "jan": 1,
-    "februari": 2,
-    "feb": 2,
-    "maart": 3,
-    "mrt": 3,
-    "april": 4,
-    "apr": 4,
-    "mei": 5,
-    "juni": 6,
-    "jun": 6,
-    "juli": 7,
-    "jul": 7,
-    "augustus": 8,
-    "aug": 8,
-    "september": 9,
-    "sep": 9,
-    "sept": 9,
-    "oktober": 10,
-    "okt": 10,
-    "november": 11,
-    "nov": 11,
-    "december": 12,
-    "dec": 12,
-}
-
 
 def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip())
