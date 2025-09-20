@@ -14,6 +14,7 @@ class DocMeta(BaseModel):
     beginWeek: int
     eindWeek: int
     schooljaar: Optional[str] = None  # bv. "2025/2026"
+    uploadedAt: Optional[str] = None  # ISO timestamp van uploadmoment
 
 class WeekItem(BaseModel):
     week: int

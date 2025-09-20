@@ -8,6 +8,7 @@ export type DocMeta = {
   beginWeek: number;
   eindWeek: number;
   schooljaar?: string | null;
+  uploadedAt?: string | null;
 };
 
 export type DocToets = {

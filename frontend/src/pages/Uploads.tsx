@@ -152,6 +152,8 @@ export default function Uploads() {
   const [detailDoc, setDetailDoc] = React.useState<DocRecord | null>(null);
   const [isUploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [page, setPage] = React.useState(1);
+  const pageSize = 10;
 
   const meta = useMetadata(docs, docRows);
 
@@ -163,17 +165,48 @@ export default function Uploads() {
       periode: "",
     });
 
-  const filtered = docs.filter((d) => {
-    const byVak =
-      !filters.vak || d.vak.toLowerCase().includes(filters.vak.trim().toLowerCase());
-    const byNiv = !filters.niveau || d.niveau === (filters.niveau as any);
-    const byLeer = !filters.leerjaar || d.leerjaar === filters.leerjaar;
-    const byPer = !filters.periode || String(d.periode) === filters.periode;
-    return byVak && byNiv && byLeer && byPer;
-  });
+  const filtered = React.useMemo(() => {
+    const matches = docs.filter((d) => {
+      const byVak =
+        !filters.vak || d.vak.toLowerCase().includes(filters.vak.trim().toLowerCase());
+      const byNiv = !filters.niveau || d.niveau === (filters.niveau as any);
+      const byLeer = !filters.leerjaar || d.leerjaar === filters.leerjaar;
+      const byPer = !filters.periode || String(d.periode) === filters.periode;
+      return byVak && byNiv && byLeer && byPer;
+    });
+    const getTime = (doc: DocRecord) => {
+      if (!doc.uploadedAt) return 0;
+      const direct = Date.parse(doc.uploadedAt);
+      if (!Number.isNaN(direct)) {
+        return direct;
+      }
+      const normalized = doc.uploadedAt.trim().replace(/Z$/, "+00:00");
+      const fallback = Date.parse(normalized);
+      return Number.isNaN(fallback) ? 0 : fallback;
+    };
+    return matches.sort((a, b) => getTime(b) - getTime(a));
+  }, [docs, filters]);
 
-  const gridTemplate =
-    "grid-cols-[90px_minmax(260px,3fr)_minmax(220px,2.2fr)_repeat(3,minmax(0,1fr))_minmax(0,1.4fr)_repeat(2,minmax(90px,0.9fr))]";
+  React.useEffect(() => {
+    setPage(1);
+  }, [filters.vak, filters.niveau, filters.leerjaar, filters.periode]);
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [docs.length]);
+
+  const totalPages = filtered.length ? Math.ceil(filtered.length / pageSize) : 1;
+  const clampedPage = Math.min(page, totalPages);
+
+  React.useEffect(() => {
+    if (clampedPage !== page) {
+      setPage(clampedPage);
+    }
+  }, [clampedPage, page]);
+
+  const startIdx = (clampedPage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, filtered.length);
+  const visibleDocs = filtered.slice(startIdx, endIdx);
 
   async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
     const files = ev.target.files;
@@ -324,12 +357,35 @@ export default function Uploads() {
     };
   }, [detailDoc, detailRows, detailWeekInfo]);
 
-  const formatDate = React.useCallback((value?: string | null) => {
-    if (!value) return "—";
-    const parsed = parseIsoDate(value);
-    if (!parsed) return value;
-    return new Intl.DateTimeFormat("nl-NL").format(parsed);
-  }, []);
+  const dateFormatter = React.useMemo(() => new Intl.DateTimeFormat("nl-NL"), []);
+  const timeFormatter = React.useMemo(
+    () =>
+      new Intl.DateTimeFormat("nl-NL", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    []
+  );
+
+  const formatDateTime = React.useCallback(
+    (value?: string | null): { date: string; time: string } => {
+      if (!value) return { date: "—", time: "" };
+      const parsed = parseIsoDate(value) ?? new Date(value);
+      if (Number.isNaN(parsed.getTime())) {
+        return { date: value, time: "" };
+      }
+      return {
+        date: dateFormatter.format(parsed),
+        time: timeFormatter.format(parsed),
+      };
+    },
+    [dateFormatter, timeFormatter]
+  );
+
+  const formatDate = React.useCallback(
+    (value?: string | null) => formatDateTime(value).date,
+    [formatDateTime]
+  );
 
   const previewRows = detailRows.slice(0, 8);
   const hasMoreRows = detailRows.length > previewRows.length;
@@ -455,88 +511,126 @@ export default function Uploads() {
       </div>
 
       {/* Tabel */}
-      <div className="rounded-2xl border theme-border theme-surface">
-        <div
-          className={`grid ${gridTemplate} gap-2 text-xs font-medium theme-muted border-b theme-border pb-2 px-4 pt-3`}
-        >
-          <div className="flex justify-center">Gebruik</div>
-          <div>Bestand</div>
-          <div>Vak</div>
-          <div>Niveau</div>
-          <div>Leerjaar</div>
-          <div>Periode</div>
-          <div>Weekbereik</div>
-          <div className="col-span-2">Acties</div>
-        </div>
-
+      <div className="rounded-2xl border theme-border theme-surface overflow-x-auto">
         {filtered.length === 0 ? (
           <div className="p-6 text-sm theme-muted">Geen documenten gevonden.</div>
         ) : (
-          filtered.map((d, i) => {
-            const info = computeDocWeekInfo(d, docRows[d.fileId]);
-            const beginLabel = isValidWeek(d.beginWeek) ? `${d.beginWeek}` : "—";
-            const endLabel = isValidWeek(d.eindWeek) ? `${d.eindWeek}` : "—";
-            const fallbackWeekLabel =
-              beginLabel === "—" && endLabel === "—" ? "—" : `wk ${beginLabel}–${endLabel}`;
-            return (
-              <div
-                key={d.fileId}
-                className={`grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
-                  i > 0 ? "border-t theme-border" : ""
-                }`}
-              >
-                <div className="flex justify-center">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={d.enabled}
-                    onChange={() => toggleGebruik(d)}
-                    aria-label={
-                      d.enabled
-                        ? `Gebruik uitschakelen voor ${d.bestand}`
-                        : `Gebruik inschakelen voor ${d.bestand}`
-                    }
-                    title={
-                      d.enabled
-                        ? `Gebruik uitschakelen voor ${d.bestand}`
-                        : `Gebruik inschakelen voor ${d.bestand}`
-                    }
-                  />
-                </div>
-                <div className="break-words" title={d.bestand}>
-                  {d.bestand}
-                </div>
-                <div>{d.vak}</div>
-                <div>{d.niveau}</div>
-                <div>{d.leerjaar}</div>
-                <div>P{d.periode}</div>
-                <div>{info.label ? `wk ${info.label}` : fallbackWeekLabel}</div>
-                <div className="flex gap-2 col-span-2">
-                  <button
-                    title={`Bron: ${d.bestand}`}
-                    className="rounded-lg border theme-border theme-surface p-1"
-                    onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
-                  >
-                    <FileText size={16} />
-                  </button>
-                  <button
-                    onClick={() => setDetailDoc(d)}
-                    title="Meta-details"
-                    className="rounded-lg border theme-border theme-surface p-1"
-                  >
-                    <Info size={16} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(d)}
-                    title="Verwijder"
-                    className="rounded-lg border theme-border theme-surface p-1 text-red-600"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+          <>
+            <table className="table-auto min-w-max text-sm">
+              <thead className="text-xs font-medium theme-muted border-b theme-border">
+                <tr>
+                  <th className="px-4 py-3 text-center font-medium">Gebruik</th>
+                  <th className="px-4 py-3 text-left font-medium">Acties</th>
+                  <th className="px-4 py-3 text-left font-medium">Bestand</th>
+                  <th className="px-4 py-3 text-left font-medium">Datum / Tijd</th>
+                  <th className="px-4 py-3 text-left font-medium">Vak</th>
+                  <th className="px-4 py-3 text-left font-medium">Niveau</th>
+                  <th className="px-4 py-3 text-left font-medium">Jaar</th>
+                  <th className="px-4 py-3 text-left font-medium">Per.</th>
+                  <th className="px-4 py-3 text-left font-medium">Weken</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleDocs.map((d, i) => {
+                  const { date, time } = formatDateTime(d.uploadedAt ?? null);
+                  const info = computeDocWeekInfo(d, docRows[d.fileId]);
+                  const beginLabel = isValidWeek(d.beginWeek) ? `${d.beginWeek}` : "—";
+                  const endLabel = isValidWeek(d.eindWeek) ? `${d.eindWeek}` : "—";
+                  const fallbackWeekLabel =
+                    beginLabel === "—" && endLabel === "—" ? "—" : `wk ${beginLabel}–${endLabel}`;
+                  return (
+                    <tr key={d.fileId} className={i > 0 ? "border-t theme-border" : ""}>
+                      <td className="px-4 py-3 text-center align-middle">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={d.enabled}
+                          onChange={() => toggleGebruik(d)}
+                          aria-label={
+                            d.enabled
+                              ? `Gebruik uitschakelen voor ${d.bestand}`
+                              : `Gebruik inschakelen voor ${d.bestand}`
+                          }
+                          title={
+                            d.enabled
+                              ? `Gebruik uitschakelen voor ${d.bestand}`
+                              : `Gebruik inschakelen voor ${d.bestand}`
+                          }
+                        />
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                          <button
+                            title={`Bron: ${d.bestand}`}
+                            className="rounded-lg border theme-border theme-surface p-1"
+                            onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
+                          >
+                            <FileText size={16} />
+                          </button>
+                          <button
+                            onClick={() => setDetailDoc(d)}
+                            title="Meta-details"
+                            className="rounded-lg border theme-border theme-surface p-1"
+                          >
+                            <Info size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(d)}
+                            title="Verwijder"
+                            className="rounded-lg border theme-border theme-surface p-1 text-red-600"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 align-top break-words" title={d.bestand}>
+                        {d.bestand}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="leading-tight">
+                          <div>{date}</div>
+                          {time && <div className="text-xs theme-muted">{time}</div>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 align-top">{d.vak}</td>
+                      <td className="px-4 py-3 align-top">{d.niveau}</td>
+                      <td className="px-4 py-3 align-top">{d.leerjaar}</td>
+                      <td className="px-4 py-3 align-top">P{d.periode}</td>
+                      <td className="px-4 py-3 align-top">
+                        {info.label ? `wk ${info.label}` : fallbackWeekLabel}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t theme-border px-4 py-3 text-xs theme-muted">
+              <div>
+                Toont {startIdx + 1}–{endIdx} van {filtered.length} bestanden
               </div>
-            );
-          })
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage(Math.max(1, clampedPage - 1))}
+                  disabled={clampedPage === 1}
+                  className="rounded-md border theme-border theme-surface px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Vorige
+                </button>
+                <span>
+                  Pagina {clampedPage} van {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage(Math.min(totalPages, clampedPage + 1))}
+                  disabled={clampedPage === totalPages}
+                  className="rounded-md border theme-border theme-surface px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Volgende
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -563,18 +657,16 @@ export default function Uploads() {
                   <div>{detailDoc.niveau}</div>
                 </div>
                 <div>
-                  <div className="text-xs theme-muted uppercase tracking-wide">Leerjaar</div>
+                  <div className="text-xs theme-muted uppercase tracking-wide">Jaar</div>
                   <div>{detailDoc.leerjaar}</div>
                 </div>
                 <div>
-                  <div className="text-xs theme-muted uppercase tracking-wide">Periode</div>
+                  <div className="text-xs theme-muted uppercase tracking-wide">Per.</div>
                   <div>P{detailDoc.periode}</div>
                 </div>
                 <div>
                   <div className="text-xs theme-muted uppercase tracking-wide">Weekbereik</div>
-                  <div>
-                    {detailWeekInfo?.label ? `wk ${detailWeekInfo.label}` : detailWeekFallback}
-                  </div>
+                  <div>{detailWeekInfo?.label ? `wk ${detailWeekInfo.label}` : detailWeekFallback}</div>
                 </div>
                 <div>
                   <div className="text-xs theme-muted uppercase tracking-wide">Schooljaar</div>
