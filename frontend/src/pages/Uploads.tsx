@@ -14,17 +14,126 @@ type Filters = {
   periode: string;
 };
 
-function useMetadata(docs: DocRecord[]) {
+type WeekSegment = { start: number; end: number };
+
+function isValidWeek(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= 53;
+}
+
+function expandWeeksFromMeta(doc: DocRecord): number[] {
+  const start = isValidWeek(doc.beginWeek) ? doc.beginWeek : undefined;
+  const end = isValidWeek(doc.eindWeek) ? doc.eindWeek : undefined;
+  if (start === undefined || end === undefined) {
+    return [];
+  }
+  const weeks: number[] = [];
+  if (start <= end) {
+    for (let wk = start; wk <= end; wk++) {
+      weeks.push(wk);
+    }
+    return weeks;
+  }
+  for (let wk = start; wk <= 53; wk++) {
+    weeks.push(wk);
+  }
+  for (let wk = 1; wk <= end; wk++) {
+    weeks.push(wk);
+  }
+  return weeks;
+}
+
+function groupWeeks(sortedWeeks: number[]): WeekSegment[] {
+  if (!sortedWeeks.length) {
+    return [];
+  }
+  const segments: WeekSegment[] = [];
+  let start = sortedWeeks[0];
+  let prev = sortedWeeks[0];
+  for (let i = 1; i < sortedWeeks.length; i++) {
+    const current = sortedWeeks[i];
+    if (current === prev + 1) {
+      prev = current;
+      continue;
+    }
+    segments.push({ start, end: prev });
+    start = current;
+    prev = current;
+  }
+  segments.push({ start, end: prev });
+  return segments;
+}
+
+function formatSegments(segments: WeekSegment[]): string {
+  if (!segments.length) {
+    return "";
+  }
+  return segments
+    .map((segment) =>
+      segment.start === segment.end ? `${segment.start}` : `${segment.start}–${segment.end}`
+    )
+    .join(" · ");
+}
+
+function computeDocWeekInfo(doc: DocRecord, rows?: DocRow[]) {
+  const weekSet = new Set<number>();
+  rows?.forEach((row) => {
+    if (isValidWeek(row.week)) {
+      weekSet.add(row.week);
+    }
+  });
+
+  if (!weekSet.size) {
+    expandWeeksFromMeta(doc).forEach((wk) => weekSet.add(wk));
+  } else {
+    [doc.beginWeek, doc.eindWeek].forEach((wk) => {
+      if (isValidWeek(wk)) {
+        weekSet.add(wk);
+      }
+    });
+  }
+
+  const sortedWeeks = Array.from(weekSet)
+    .filter(isValidWeek)
+    .sort((a, b) => a - b);
+
+  const segments = groupWeeks(sortedWeeks);
+
+  let orderedSegments = segments;
+  const begin = isValidWeek(doc.beginWeek) ? doc.beginWeek : undefined;
+  if (begin !== undefined && segments.length > 1) {
+    const hasLowerThanBegin = sortedWeeks.some((wk) => wk < begin);
+    if (hasLowerThanBegin) {
+      const beginIdx = segments.findIndex((segment) => begin >= segment.start && begin <= segment.end);
+      if (beginIdx > 0) {
+        orderedSegments = [...segments.slice(beginIdx), ...segments.slice(0, beginIdx)];
+      }
+    }
+  }
+
+  const label = formatSegments(orderedSegments);
+
+  return {
+    weeks: sortedWeeks,
+    label,
+  };
+}
+
+function formatWeekSet(weeks: Iterable<number>): string {
+  const unique = Array.from(new Set(Array.from(weeks).filter(isValidWeek))).sort((a, b) => a - b);
+  return unique.length ? formatSegments(groupWeeks(unique)) : "—";
+}
+
+function useMetadata(docs: DocRecord[], docRows: Record<string, DocRow[]>) {
   const vakken = Array.from(new Set(docs.map((d) => d.vak))).sort();
   const niveaus = Array.from(new Set(docs.map((d) => d.niveau))).sort() as string[];
   const leerjaren = Array.from(new Set(docs.map((d) => d.leerjaar))).sort();
   const periodes = Array.from(new Set(docs.map((d) => d.periode))).sort((a, b) => a - b);
-  const beginWeeks = docs.map((d) => d.beginWeek);
-  const eindWeeks = docs.map((d) => d.eindWeek);
-  const weekBereik =
-    beginWeeks.length && eindWeeks.length
-      ? `${Math.min(...beginWeeks)}–${Math.max(...eindWeeks)}`
-      : "—";
+  const overallWeeks = new Set<number>();
+  docs.forEach((doc) => {
+    const info = computeDocWeekInfo(doc, docRows[doc.fileId]);
+    info.weeks.forEach((wk) => overallWeeks.add(wk));
+  });
+  const weekBereik = formatWeekSet(overallWeeks);
   return { vakken, niveaus, leerjaren, periodes, weekBereik };
 }
 
@@ -44,7 +153,7 @@ export default function Uploads() {
   const [isUploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const meta = useMetadata(docs);
+  const meta = useMetadata(docs, docRows);
 
   const reset = () =>
     setFilters({
@@ -64,7 +173,7 @@ export default function Uploads() {
   });
 
   const gridTemplate =
-    "grid-cols-[90px_minmax(260px,3fr)_minmax(220px,2.2fr)_repeat(5,minmax(0,1fr))_repeat(2,minmax(90px,0.9fr))]";
+    "grid-cols-[90px_minmax(260px,3fr)_minmax(220px,2.2fr)_repeat(3,minmax(0,1fr))_minmax(0,1.4fr)_repeat(2,minmax(90px,0.9fr))]";
 
   async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
     const files = ev.target.files;
@@ -120,8 +229,24 @@ export default function Uploads() {
     return docRows[detailDoc.fileId] ?? [];
   }, [detailDoc, docRows]);
 
+  const detailWeekInfo = React.useMemo(() => {
+    if (!detailDoc) {
+      return null;
+    }
+    return computeDocWeekInfo(detailDoc, detailRows);
+  }, [detailDoc, detailRows]);
+
+  const detailWeekFallback = React.useMemo(() => {
+    if (!detailDoc) {
+      return "—";
+    }
+    const begin = isValidWeek(detailDoc.beginWeek) ? `${detailDoc.beginWeek}` : "—";
+    const end = isValidWeek(detailDoc.eindWeek) ? `${detailDoc.eindWeek}` : "—";
+    return begin === "—" && end === "—" ? "—" : `wk ${begin}–${end}`;
+  }, [detailDoc]);
+
   const aggregate = React.useMemo(() => {
-    if (!detailRows.length) {
+    if (!detailDoc || !detailRows.length) {
       return null;
     }
     const weekSet = new Set<number>();
@@ -133,7 +258,7 @@ export default function Uploads() {
     const toetsen: { key: string; label: string; week?: number | null; datum?: string | null }[] = [];
 
     detailRows.forEach((row, idx) => {
-      if (typeof row.week === "number" && row.week > 0) {
+      if (isValidWeek(row.week)) {
         weekSet.add(row.week);
       }
       if (row.datum) {
@@ -180,6 +305,8 @@ export default function Uploads() {
 
     dateList.sort();
     const weeks = Array.from(weekSet).sort((a, b) => a - b);
+    const fallbackLabel = formatWeekSet(weekSet);
+    const normalizedWeekLabel = detailWeekInfo?.label || (fallbackLabel === "—" ? "" : fallbackLabel);
 
     return {
       rowCount: detailRows.length,
@@ -193,8 +320,9 @@ export default function Uploads() {
       huiswerk: Array.from(huiswerk),
       bronnen: Array.from(bronnen.values()),
       toetsen,
+      weekLabel: normalizedWeekLabel,
     };
-  }, [detailRows]);
+  }, [detailDoc, detailRows, detailWeekInfo]);
 
   const formatDate = React.useCallback((value?: string | null) => {
     if (!value) return "—";
@@ -264,7 +392,9 @@ export default function Uploads() {
                 P{p}
               </span>
             ))}
-            <span className="text-xs theme-muted ml-2">wk {meta.weekBereik}</span>
+            <span className="text-xs theme-muted ml-2">
+              {meta.weekBereik === "—" ? "wk —" : `wk ${meta.weekBereik}`}
+            </span>
           </div>
         </div>
       </div>
@@ -335,73 +465,78 @@ export default function Uploads() {
           <div>Niveau</div>
           <div>Leerjaar</div>
           <div>Periode</div>
-          <div>Begin week</div>
-          <div>Eind week</div>
+          <div>Weekbereik</div>
           <div className="col-span-2">Acties</div>
         </div>
 
         {filtered.length === 0 ? (
           <div className="p-6 text-sm theme-muted">Geen documenten gevonden.</div>
         ) : (
-          filtered.map((d, i) => (
-            <div
-              key={d.fileId}
-              className={`grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
-                i > 0 ? "border-t theme-border" : ""
-              }`}
-            >
-              <div className="flex justify-center">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={d.enabled}
-                  onChange={() => toggleGebruik(d)}
-                  aria-label={
-                    d.enabled
-                      ? `Gebruik uitschakelen voor ${d.bestand}`
-                      : `Gebruik inschakelen voor ${d.bestand}`
-                  }
-                  title={
-                    d.enabled
-                      ? `Gebruik uitschakelen voor ${d.bestand}`
-                      : `Gebruik inschakelen voor ${d.bestand}`
-                  }
-                />
+          filtered.map((d, i) => {
+            const info = computeDocWeekInfo(d, docRows[d.fileId]);
+            const beginLabel = isValidWeek(d.beginWeek) ? `${d.beginWeek}` : "—";
+            const endLabel = isValidWeek(d.eindWeek) ? `${d.eindWeek}` : "—";
+            const fallbackWeekLabel =
+              beginLabel === "—" && endLabel === "—" ? "—" : `wk ${beginLabel}–${endLabel}`;
+            return (
+              <div
+                key={d.fileId}
+                className={`grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
+                  i > 0 ? "border-t theme-border" : ""
+                }`}
+              >
+                <div className="flex justify-center">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={d.enabled}
+                    onChange={() => toggleGebruik(d)}
+                    aria-label={
+                      d.enabled
+                        ? `Gebruik uitschakelen voor ${d.bestand}`
+                        : `Gebruik inschakelen voor ${d.bestand}`
+                    }
+                    title={
+                      d.enabled
+                        ? `Gebruik uitschakelen voor ${d.bestand}`
+                        : `Gebruik inschakelen voor ${d.bestand}`
+                    }
+                  />
+                </div>
+                <div className="break-words" title={d.bestand}>
+                  {d.bestand}
+                </div>
+                <div>{d.vak}</div>
+                <div>{d.niveau}</div>
+                <div>{d.leerjaar}</div>
+                <div>P{d.periode}</div>
+                <div>{info.label ? `wk ${info.label}` : fallbackWeekLabel}</div>
+                <div className="flex gap-2 col-span-2">
+                  <button
+                    title={`Bron: ${d.bestand}`}
+                    className="rounded-lg border theme-border theme-surface p-1"
+                    onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
+                  >
+                    <FileText size={16} />
+                  </button>
+                  <button
+                    onClick={() => setDetailDoc(d)}
+                    title="Meta-details"
+                    className="rounded-lg border theme-border theme-surface p-1"
+                  >
+                    <Info size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(d)}
+                    title="Verwijder"
+                    className="rounded-lg border theme-border theme-surface p-1 text-red-600"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
-              <div className="break-words" title={d.bestand}>
-                {d.bestand}
-              </div>
-              <div>{d.vak}</div>
-              <div>{d.niveau}</div>
-              <div>{d.leerjaar}</div>
-              <div>P{d.periode}</div>
-              <div>{d.beginWeek}</div>
-              <div>{d.eindWeek}</div>
-              <div className="flex gap-2 col-span-2">
-                <button
-                  title={`Bron: ${d.bestand}`}
-                  className="rounded-lg border theme-border theme-surface p-1"
-                  onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
-                >
-                  <FileText size={16} />
-                </button>
-                <button
-                  onClick={() => setDetailDoc(d)}
-                  title="Meta-details"
-                  className="rounded-lg border theme-border theme-surface p-1"
-                >
-                  <Info size={16} />
-                </button>
-                <button
-                  onClick={() => handleDelete(d)}
-                  title="Verwijder"
-                  className="rounded-lg border theme-border theme-surface p-1 text-red-600"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -438,7 +573,7 @@ export default function Uploads() {
                 <div>
                   <div className="text-xs theme-muted uppercase tracking-wide">Weekbereik</div>
                   <div>
-                    {detailDoc.beginWeek ? detailDoc.beginWeek : "—"} – {detailDoc.eindWeek ? detailDoc.eindWeek : "—"}
+                    {detailWeekInfo?.label ? `wk ${detailWeekInfo.label}` : detailWeekFallback}
                   </div>
                 </div>
                 <div>
@@ -458,7 +593,7 @@ export default function Uploads() {
                       </div>
                       <div className="rounded-lg border theme-border theme-soft p-3">
                         <div className="theme-muted mb-1 uppercase tracking-wide">Unieke weken</div>
-                        <div>{aggregate.weeks.length ? aggregate.weeks.join(", ") : "—"}</div>
+                        <div>{aggregate.weekLabel ? `wk ${aggregate.weekLabel}` : "—"}</div>
                       </div>
                       <div className="rounded-lg border theme-border theme-soft p-3">
                         <div className="theme-muted mb-1 uppercase tracking-wide">Datumbereik</div>
