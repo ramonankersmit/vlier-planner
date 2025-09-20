@@ -119,21 +119,18 @@ export default function Handleiding() {
           </p>
         </div>
         <div className="flex justify-center lg:justify-end">
-          <div className="relative flex w-full max-w-xs items-center justify-center overflow-hidden rounded-2xl bg-[var(--app-accent)]/95 p-6 shadow-xl ring-1 ring-black/10">
-            <img
-              src={PUBLIC_ASSETS.logo}
-              alt="Logo van Het Vlier Studiewijzer Planner"
-              className="h-28 w-28 object-contain drop-shadow-[0_8px_12px_rgba(15,23,42,0.35)]"
-              onError={(event) => {
-                const target = event.currentTarget;
-                if (target.src === LOGO_IMAGE.src) {
-                  return;
-                }
-                target.src = LOGO_IMAGE.src;
-              }}
-            />
-            <div className="pointer-events-none absolute inset-0 bg-white/10 mix-blend-overlay" aria-hidden="true" />
-          </div>
+          <img
+            src={PUBLIC_ASSETS.logo}
+            alt="Logo van Het Vlier Studiewijzer Planner"
+            className="h-28 w-28 object-contain drop-shadow-[0_8px_12px_rgba(15,23,42,0.35)]"
+            onError={(event) => {
+              const target = event.currentTarget;
+              if (target.src === LOGO_IMAGE.src) {
+                return;
+              }
+              target.src = LOGO_IMAGE.src;
+            }}
+          />
         </div>
       </header>
 
