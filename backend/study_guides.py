@@ -7,7 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .models import DocMeta, DocRow
+try:  # pragma: no cover - allow execution without package context
+    from .models import DocMeta, DocRow
+except ImportError:  # pragma: no cover
+    from models import DocMeta, DocRow  # type: ignore
 
 
 def _normalize_value(value: Any) -> Any:
