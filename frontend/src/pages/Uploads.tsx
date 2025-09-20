@@ -390,6 +390,7 @@ export default function Uploads() {
               <thead className="text-xs font-medium theme-muted border-b theme-border">
                 <tr>
                   <th className="px-4 py-3 text-center font-medium">Gebruik</th>
+                  <th className="px-4 py-3 text-left font-medium">Acties</th>
                   <th className="px-4 py-3 text-left font-medium">Bestand</th>
                   <th className="px-4 py-3 text-left font-medium">Datum / Tijd</th>
                   <th className="px-4 py-3 text-left font-medium">Vak</th>
@@ -398,7 +399,6 @@ export default function Uploads() {
                   <th className="px-4 py-3 text-left font-medium">Per.</th>
                   <th className="px-4 py-3 text-left font-medium">Wk-B</th>
                   <th className="px-4 py-3 text-left font-medium">Wk-E</th>
-                  <th className="px-4 py-3 text-left font-medium">Acties</th>
                 </tr>
               </thead>
               <tbody>
@@ -424,23 +424,8 @@ export default function Uploads() {
                           }
                         />
                       </td>
-                      <td className="px-4 py-3 align-top break-words" title={d.bestand}>
-                        {d.bestand}
-                      </td>
                       <td className="px-4 py-3 align-top">
-                        <div className="leading-tight">
-                          <div>{date}</div>
-                          {time && <div className="text-xs theme-muted">{time}</div>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 align-top">{d.vak}</td>
-                      <td className="px-4 py-3 align-top">{d.niveau}</td>
-                      <td className="px-4 py-3 align-top">{d.leerjaar}</td>
-                      <td className="px-4 py-3 align-top">P{d.periode}</td>
-                      <td className="px-4 py-3 align-top">{d.beginWeek}</td>
-                      <td className="px-4 py-3 align-top">{d.eindWeek}</td>
-                      <td className="px-4 py-3 align-top">
-                        <div className="flex flex-wrap gap-2 justify-end">
+                        <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
                           <button
                             title={`Bron: ${d.bestand}`}
                             className="rounded-lg border theme-border theme-surface p-1"
@@ -464,6 +449,21 @@ export default function Uploads() {
                           </button>
                         </div>
                       </td>
+                      <td className="px-4 py-3 align-top break-words" title={d.bestand}>
+                        {d.bestand}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="leading-tight">
+                          <div>{date}</div>
+                          {time && <div className="text-xs theme-muted">{time}</div>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 align-top">{d.vak}</td>
+                      <td className="px-4 py-3 align-top">{d.niveau}</td>
+                      <td className="px-4 py-3 align-top">{d.leerjaar}</td>
+                      <td className="px-4 py-3 align-top">P{d.periode}</td>
+                      <td className="px-4 py-3 align-top">{d.beginWeek}</td>
+                      <td className="px-4 py-3 align-top">{d.eindWeek}</td>
                     </tr>
                   );
                 })}
