@@ -216,10 +216,12 @@ export default function Uploads() {
     const errors: string[] = [];
     for (const file of Array.from(files)) {
       try {
-        const meta = await apiUploadDoc(file);
-        // Voeg direct toe aan globale store → Settings/Belangrijke events/Matrix overzicht volgen automatisch
-        addDoc(meta as any);
-        await hydrateDocRowsFromApi(meta.fileId);
+        const metas = await apiUploadDoc(file);
+        for (const meta of metas) {
+          // Voeg direct toe aan globale store → Settings/Belangrijke events/Matrix overzicht volgen automatisch
+          addDoc(meta as any);
+          await hydrateDocRowsFromApi(meta.fileId);
+        }
       } catch (e: any) {
         errors.push(`${file.name}: ${e?.message || "Upload mislukt"}`);
       }

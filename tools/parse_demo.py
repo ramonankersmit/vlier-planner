@@ -7,6 +7,7 @@ import argparse
 import json
 import logging
 from pathlib import Path
+from typing import List, Tuple
 import sys
 
 # Project root + backend toevoegen aan sys.path, zodat `from models import DocMeta` werkt
@@ -20,6 +21,7 @@ for p in (REPO_ROOT, BACKEND_DIR):
 from backend.parsers.parser_docx import (
     extract_meta_from_docx,
     extract_rows_from_docx,
+    extract_all_periods_from_docx,
 )
 from backend.parsers.parser_pdf import (
     extract_meta_from_pdf,
@@ -65,15 +67,25 @@ def main():
     if args.rows:
         for f in files:
             try:
+                bundles: List[Tuple[DocMeta, List[DocRow]]]
                 if f.suffix.lower() == ".docx":
-                    meta = extract_meta_from_docx(str(f), f.name)
-                    rows = extract_rows_from_docx(str(f), f.name)
+                    bundles = extract_all_periods_from_docx(str(f), f.name)
+                    if not bundles:
+                        meta = extract_meta_from_docx(str(f), f.name)
+                        rows = extract_rows_from_docx(str(f), f.name)
+                        bundles = [(meta, rows)]
                 else:
                     meta = extract_meta_from_pdf(str(f), f.name)
                     rows = extract_rows_from_pdf(str(f), f.name)
-                m_dump = meta.model_dump() if hasattr(meta, "model_dump") else dict(meta)
-                r_dump = [r.model_dump() if hasattr(r, "model_dump") else dict(r) for r in rows]
-                results.append({"meta": m_dump, "rows": r_dump})
+                    bundles = [(meta, rows)]
+
+                for meta, rows in bundles:
+                    m_dump = meta.model_dump() if hasattr(meta, "model_dump") else dict(meta)
+                    r_dump = [
+                        r.model_dump() if hasattr(r, "model_dump") else dict(r)
+                        for r in rows
+                    ]
+                    results.append({"meta": m_dump, "rows": r_dump})
             except Exception as e:
                 logging.warning("Kon niet parsen: %s (%s)", f, e)
                 results.append({"path": str(f), "error": str(e)})

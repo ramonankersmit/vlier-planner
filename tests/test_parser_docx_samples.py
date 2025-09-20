@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from backend.parsers.parser_docx import extract_meta_from_docx, extract_rows_from_docx
+from backend.parsers.parser_docx import (
+    extract_meta_from_docx,
+    extract_rows_from_docx,
+    extract_all_periods_from_docx,
+)
 
 
 def test_latijnse_taal_en_cultuur_period_1_stops_before_period_2():
@@ -33,6 +37,29 @@ def test_latijnse_taal_en_cultuur_period_2_wraps_across_new_year():
     assert meta.beginWeek == 46
     assert meta.eindWeek == 4
 
+
+def test_latijnse_taal_en_cultuur_all_periods_are_detected():
+    sample = Path("samples/Latijnse Taal en Cultuur_ periode 1_4vwo.docx")
+    assert sample.exists(), "Sample document is missing"
+
+    parsed = extract_all_periods_from_docx(str(sample), sample.name)
+    assert len(parsed) == 2
+
+    periods = [meta.periode for meta, _ in parsed]
+    assert periods == [1, 2]
+
+    first_meta, first_rows = parsed[0]
+    assert first_meta.beginWeek == 35
+    assert first_meta.eindWeek == 45
+    first_weeks = [row.week for row in first_rows]
+    assert first_weeks and max(first_weeks) == 45
+
+    second_meta, second_rows = parsed[1]
+    assert second_meta.beginWeek == 46
+    assert second_meta.eindWeek == 4
+    second_weeks = [row.week for row in second_rows]
+    assert set(range(46, 53)).issubset(second_weeks)
+    assert set(range(1, 5)).issubset(second_weeks)
 
 @pytest.mark.parametrize(
     "filename",
