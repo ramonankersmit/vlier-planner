@@ -118,13 +118,18 @@ export const calcCurrentWeekIdx = (weeks: WeekInfo[], today: Date = new Date()):
 export const computeWindowStartForWeek = (
   weeks: WeekInfo[],
   windowSize: number,
-  targetWeekId?: string
+  targetWeekId?: string,
+  options: { align?: "center" | "start" } = {}
 ) => {
   if (!weeks.length) return 0;
   const maxStart = Math.max(0, weeks.length - windowSize);
   if (!targetWeekId) return 0;
   const idx = weeks.findIndex((w) => w.id === targetWeekId);
   if (idx === -1) return 0;
+  const align = options.align ?? "center";
+  if (align === "start") {
+    return Math.max(0, Math.min(idx, maxStart));
+  }
   const desired = idx - Math.floor(windowSize / 2);
   return Math.max(0, Math.min(desired, maxStart));
 };
