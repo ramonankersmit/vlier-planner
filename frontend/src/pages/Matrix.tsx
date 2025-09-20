@@ -708,12 +708,17 @@ export default function Matrix() {
     if (disableWeekControls) return;
     setStartIdx(Math.min(maxStart, clampedStart + 1));
   };
-  const goThisWeek = React.useCallback(() => {
-    if (disableWeekControls) return;
-    const targetWeekId = allWeeks[currentWeekIdx]?.id;
-    const start = computeWindowStartForWeek(allWeeks, count, targetWeekId);
-    setStartIdx(start);
-  }, [allWeeks, count, currentWeekIdx, disableWeekControls, setStartIdx]);
+  const goThisWeek = React.useCallback(
+    (align: "center" | "start" = "center") => {
+      if (disableWeekControls) return;
+      const targetWeekId = allWeeks[currentWeekIdx]?.id;
+      const start = computeWindowStartForWeek(allWeeks, count, targetWeekId, {
+        align,
+      });
+      setStartIdx(start);
+    },
+    [allWeeks, count, currentWeekIdx, disableWeekControls, setStartIdx]
+  );
 
   React.useEffect(() => {
     if (disableWeekControls) {
@@ -758,7 +763,7 @@ export default function Matrix() {
       </div>
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
-          onClick={goThisWeek}
+          onClick={() => goThisWeek("start")}
           className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Spring naar huidige week"
           aria-label="Deze week"
