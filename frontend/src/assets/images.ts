@@ -6,3 +6,4 @@ export const PUBLIC_SCREENSHOTS = {
   weekoverzicht: publicAsset("voorbeeld_weekoverzicht.png"),
   matrix: publicAsset("voorbeeld_matrix.png"),
   uploads: publicAsset("voorbeeld_studiewijzer.png"),
+};
