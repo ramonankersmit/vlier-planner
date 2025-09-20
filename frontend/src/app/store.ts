@@ -106,6 +106,10 @@ type State = {
   setEnableHomeworkEditing: (value: boolean) => void;
   enableCustomHomework: boolean;
   setEnableCustomHomework: (value: boolean) => void;
+  notificationsEnabled: boolean;
+  setNotificationsEnabled: (value: boolean) => void;
+  notificationLeadTimeDays: number;
+  setNotificationLeadTimeDays: (value: number) => void;
 
   // ==== afvinkstatus gedeeld ====
   doneMap: Record<string, boolean>;
@@ -425,6 +429,8 @@ const createInitialState = (): Pick<
   surfaceOpacity: 100,
   enableHomeworkEditing: true,
   enableCustomHomework: true,
+  notificationsEnabled: true,
+  notificationLeadTimeDays: 2,
   doneMap: {},
   weekIdxWO: 0,
   niveauWO: "ALLE",
@@ -724,6 +730,14 @@ export const useAppStore = create<State>()(
         set(() => ({ enableHomeworkEditing: !!value })),
       setEnableCustomHomework: (value) =>
         set(() => ({ enableCustomHomework: !!value })),
+      setNotificationsEnabled: (value) =>
+        set(() => ({ notificationsEnabled: !!value })),
+      setNotificationLeadTimeDays: (value) =>
+        set(() => {
+          const numeric = Number.isFinite(value) ? Math.round(value) : 2;
+          const clamped = Math.min(14, Math.max(0, numeric));
+          return { notificationLeadTimeDays: clamped };
+        }),
 
       // ----------------------------
       // done-map
@@ -803,6 +817,8 @@ export const useAppStore = create<State>()(
         surfaceOpacity: state.surfaceOpacity,
         enableHomeworkEditing: state.enableHomeworkEditing,
         enableCustomHomework: state.enableCustomHomework,
+        notificationsEnabled: state.notificationsEnabled,
+        notificationLeadTimeDays: state.notificationLeadTimeDays,
         doneMap: state.doneMap,
         weekIdxWO: state.weekIdxWO,
         niveauWO: state.niveauWO,

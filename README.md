@@ -92,6 +92,10 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
 3. Upload één of meerdere studiewijzers via _Uploads_.
 4. Beheer huiswerk in Weekoverzicht of Matrix overzicht en bekijk events via _Belangrijke events_.
 
+## Onboarding tour
+- Bij het eerste bezoek start automatisch een rondleiding met vijf stappen: **Upload**, **Reviewwizard**, **Planner**, **Filters** en **Notificaties**.
+- Enter of spatie gaat naar de volgende stap, Escape sluit de tour. Via het menu-item **Rondleiding** in de header kun je de tour later opnieuw starten.
+- De status wordt opgeslagen in `localStorage` onder de sleutel `vlier.tourDone`.
 
 ## Licentie
 MIT

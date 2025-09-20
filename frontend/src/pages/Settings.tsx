@@ -21,6 +21,10 @@ export default function Settings() {
     setEnableHomeworkEditing,
     enableCustomHomework,
     setEnableCustomHomework,
+    notificationsEnabled,
+    setNotificationsEnabled,
+    notificationLeadTimeDays,
+    setNotificationLeadTimeDays,
     resetAppState,
   } = useAppStore();
   const docs = useAppStore((s) => s.docs) ?? [];
@@ -238,6 +242,48 @@ export default function Settings() {
             </div>
           </label>
         </div>
+      </div>
+
+      <div
+        data-tour-id="notification-settings"
+        className="rounded-2xl border theme-border theme-surface p-4 space-y-3"
+      >
+        <div className="font-medium theme-text">Notificaties</div>
+        <div className="text-sm theme-muted">
+          Herinneringen 2 dagen vooraf zodat deadlines niet worden gemist. Pas hier het gedrag aan.
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={notificationsEnabled}
+              onChange={(event) => setNotificationsEnabled(event.target.checked)}
+            />
+            <span>Schakel herinneringen in</span>
+          </label>
+          <div className="flex items-center gap-2 text-sm">
+            <label htmlFor="notification-lead-time" className="theme-muted">
+              Dagen vooraf
+            </label>
+            <input
+              id="notification-lead-time"
+              type="number"
+              min={0}
+              max={14}
+              value={notificationLeadTimeDays}
+              onChange={(event) => setNotificationLeadTimeDays(Number(event.target.value))}
+              className={`w-16 rounded-md border theme-border theme-surface px-2 py-1 ${
+                notificationsEnabled ? "" : "opacity-60"
+              }`}
+              disabled={!notificationsEnabled}
+              aria-describedby="notification-lead-hint"
+            />
+          </div>
+        </div>
+        <p id="notification-lead-hint" className="text-xs theme-muted">
+          Voorbeeld: waarde 2 stuurt een melding twee dagen voor een ingeplande activiteit. Wijkt het af van
+          jouw workflow? Pas het gerust aan.
+        </p>
       </div>
 
       <div className="rounded-2xl border theme-border theme-surface p-4 space-y-4">

@@ -9,6 +9,7 @@ import Settings from "./pages/Settings";
 import Handleiding from "./pages/Handleiding";
 import { hydrateDocsFromApi, useAppStore } from "./app/store";
 import { DocumentPreviewProvider } from "./components/DocumentPreviewProvider";
+import { OnboardingTourProvider } from "./components/OnboardingTour";
 
 type AppStoreWithPersist = typeof useAppStore & {
   persist: {
@@ -139,9 +140,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <DocumentPreviewProvider>
-        <AppShell>
-          <AppContent />
-        </AppShell>
+        <OnboardingTourProvider>
+          <AppShell>
+            <AppContent />
+          </AppShell>
+        </OnboardingTourProvider>
       </DocumentPreviewProvider>
     </BrowserRouter>
   );
