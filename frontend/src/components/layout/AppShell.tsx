@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { Coffee } from "lucide-react";
 import packageJson from "../../../package.json";
 import { useAppStore } from "../../app/store";
-import { LOGO_IMAGE, PUBLIC_ASSETS } from "../../assets/images";
+import { PUBLIC_LOGO } from "../../assets/images";
 import { useOnboardingTour } from "../OnboardingTour";
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
@@ -82,13 +82,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const handleLogoError = React.useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
-    const target = event.currentTarget;
-    if (target.src === LOGO_IMAGE.src) {
-      return;
-    }
-    target.src = LOGO_IMAGE.src;
-  }, []);
   return (
     <div className="min-h-screen theme-app" style={themeStyle}>
       <header
@@ -98,16 +91,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
           <div className="flex items-center gap-2">
             <img
-              src={PUBLIC_ASSETS.logo}
+              src={PUBLIC_LOGO}
               alt="Het Vlier Studiewijzer Planner"
-              className="h-11 w-11 rounded-xl border border-white/40 bg-white/95 p-1 object-contain shadow-sm"
-              onError={(event) => {
-                const target = event.currentTarget;
-                if (target.src === LOGO_IMAGE.src) {
-                  return;
-                }
-                target.src = LOGO_IMAGE.src;
-              }}
+              className="h-16 w-16 rounded-2xl border border-white/40 bg-white/95 p-1.5 object-contain"
             />
             <div className="text-xl font-semibold theme-text">Het Vlier Studiewijzer Planner</div>
           </div>
