@@ -231,9 +231,9 @@ export default function Settings() {
               className="mt-1"
             />
             <div className="flex-1">
-              <div className="text-sm font-medium theme-text">Eigen huiswerk toevoegen</div>
+              <div className="text-sm font-medium theme-text">Eigen taak toevoegen</div>
               <div className="text-xs leading-snug theme-muted">
-                Toon de knop om zelf extra huiswerkregels toe te voegen aan een week.
+                Toon de knop om zelf extra taakregels toe te voegen aan een week.
               </div>
             </div>
           </label>

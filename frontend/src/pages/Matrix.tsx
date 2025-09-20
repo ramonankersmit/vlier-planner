@@ -521,7 +521,7 @@ function MatrixCell({
                 rows={2}
                 value={customText}
                 onChange={(event) => setCustomText(event.target.value)}
-                placeholder="Eigen huiswerk"
+                placeholder="Eigen taak"
               />
               <div className="flex gap-2 justify-end">
                 <button
@@ -549,11 +549,11 @@ function MatrixCell({
             type="button"
             className="pointer-events-auto flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
             onClick={startAdd}
-            title="Eigen huiswerk toevoegen"
-            aria-label={`Voeg huiswerk toe voor ${vak}`}
+            title="Eigen taak toevoegen"
+            aria-label={`Voeg taak toe voor ${vak}`}
           >
             <Plus size={14} />
-            <span>Eigen huiswerk toevoegen</span>
+            <span>Eigen taak toevoegen</span>
           </button>
         </div>
       )}

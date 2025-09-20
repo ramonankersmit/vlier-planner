@@ -9,7 +9,7 @@ Een planner voor studiewijzers van het voortgezet onderwijs. Upload een studiewi
 - **Uploads & instellingen** – beheer geüploade studiewijzers, zichtbare vakken en thema.
 
 ## Huiswerk beheren
-- Voeg eigen huiswerk toe via de knop _“Eigen huiswerk toevoegen”_ onder elke vaksectie.
+- Voeg eigen taken toe via de knop _“Eigen taak toevoegen”_ onder elke vaksectie.
 - Bewerk bestaande items (zowel automatisch geïmporteerd als eigen notities) of verwijder ze.
 
 ## Functionaliteit
