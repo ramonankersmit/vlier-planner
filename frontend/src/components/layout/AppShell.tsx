@@ -61,7 +61,32 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return hexToRgba(theme.surface, headerAlpha);
   }, [theme.surface, surfaceOpacity]);
 
+  const navigationLinks = React.useMemo(
+    () => [
+      { to: "/", label: "Weekoverzicht" },
+      { to: "/matrix", label: "Matrix overzicht" },
+      { to: "/deadlines", label: "Belangrijke events" },
+      { to: "/uploads", label: "Uploads" },
+      { to: "/uitleg", label: "Uitleg" },
+      { to: "/settings", label: "Settings" },
+    ],
+    [],
+  );
+
   const linkBase = "rounded-md border px-3 py-1 text-sm transition-colors theme-border";
+  const resolveLinkClassName = React.useCallback(
+    (isActive: boolean) =>
+      `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`,
+    [],
+  );
+
+  const handleLogoError = React.useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    const target = event.currentTarget;
+    if (target.src === LOGO_IMAGE.src) {
+      return;
+    }
+    target.src = LOGO_IMAGE.src;
+  }, []);
   return (
     <div className="min-h-screen theme-app" style={themeStyle}>
       <header
@@ -85,54 +110,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="text-xl font-semibold theme-text">Het Vlier Studiewijzer Planner</div>
           </div>
           <nav className="ml-auto flex gap-1">
-            <NavLink
-              to="/"
-              className={({ isActive }) =>
-                `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`
-              }
-            >
-              Weekoverzicht
-            </NavLink>
-            <NavLink
-              to="/matrix"
-              className={({ isActive }) =>
-                `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`
-              }
-            >
-              Matrix overzicht
-            </NavLink>
-            <NavLink
-              to="/deadlines"
-              className={({ isActive }) =>
-                `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`
-              }
-            >
-              Belangrijke events
-            </NavLink>
-            <NavLink
-              to="/uploads"
-              className={({ isActive }) =>
-                `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`
-              }
-            >
-              Uploads
-            </NavLink>
-            <NavLink
-              to="/uitleg"
-              className={({ isActive }) =>
-                `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`
-              }
-            >
-              Uitleg
-            </NavLink>
-            <NavLink
-              to="/settings"
-              className={({ isActive }) =>
-                `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`
-              }
-            >
-              Settings
-            </NavLink>
+            {navigationLinks.map((link) => (
+              <NavLink key={link.to} to={link.to} className={({ isActive }) => resolveLinkClassName(isActive)}>
+                {link.label}
+              </NavLink>
+            ))}
           </nav>
         </div>
       </header>
