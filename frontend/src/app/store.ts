@@ -142,6 +142,22 @@ const formatVakName = (value: string): string => {
   return trimmed.charAt(0).toLocaleUpperCase("nl-NL") + trimmed.slice(1);
 };
 
+const uploadedAtTimestamp = (value?: string | null): number => {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  if (!Number.isNaN(parsed)) {
+    return parsed;
+  }
+  const normalized = value.trim().replace(/Z$/, "+00:00");
+  const fallback = Date.parse(normalized);
+  return Number.isNaN(fallback) ? 0 : fallback;
+};
+
+const sortDocsByUploadedAt = <T extends { uploadedAt?: string | null }>(docs: T[]): T[] =>
+  [...docs].sort(
+    (a, b) => uploadedAtTimestamp(b.uploadedAt) - uploadedAtTimestamp(a.uploadedAt)
+  );
+
 type MijnVakkenOptions = {
   ensure?: string[];
 };
@@ -427,14 +443,18 @@ export const useAppStore = create<State>()(
       setDocs: (d) => {
         const prevDocs = get().docs;
         const prevEnabled = new Map(prevDocs.map((doc) => [doc.fileId, doc.enabled] as const));
-        const nextDocs = d.map((doc) => {
-          const normalizedVak = formatVakName(doc.vak);
-          return {
-            ...doc,
-            vak: normalizedVak,
-            enabled: prevEnabled.get(doc.fileId) ?? true,
-          };
-        });
+        const nextDocs = sortDocsByUploadedAt(
+          d.map((doc) => {
+            const normalizedVak = formatVakName(doc.vak);
+            const uploadedAt = doc.uploadedAt ?? new Date().toISOString();
+            return {
+              ...doc,
+              vak: normalizedVak,
+              uploadedAt,
+              enabled: prevEnabled.get(doc.fileId) ?? true,
+            };
+          })
+        );
         const prevVakSet = new Set(prevDocs.map((doc) => doc.vak));
         const newlyEnabledVakken = nextDocs
           .filter((doc) => doc.enabled && !prevVakSet.has(doc.vak))
@@ -466,8 +486,9 @@ export const useAppStore = create<State>()(
       addDoc: (doc) => {
         const prevDocs = get().docs;
         const normalizedVak = formatVakName(doc.vak);
-        const nextDoc = { ...doc, vak: normalizedVak, enabled: true };
-        const next = [...prevDocs, nextDoc];
+        const uploadedAt = doc.uploadedAt ?? new Date().toISOString();
+        const nextDoc = { ...doc, vak: normalizedVak, uploadedAt, enabled: true };
+        const next = sortDocsByUploadedAt([...prevDocs, nextDoc]);
         const hadVakBefore = prevDocs.some((existing) => existing.vak === normalizedVak);
         const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
           ensure: hadVakBefore ? undefined : [normalizedVak],
@@ -481,8 +502,18 @@ export const useAppStore = create<State>()(
       },
       replaceDoc: (fileId, nextDoc) => {
         const normalizedVak = formatVakName(nextDoc.vak);
-        const next = get().docs.map((x) =>
-          x.fileId === fileId ? { ...nextDoc, vak: normalizedVak, enabled: x.enabled } : x
+        const next = sortDocsByUploadedAt(
+          get().docs.map((x) =>
+            x.fileId === fileId
+              ? {
+                  ...nextDoc,
+                  vak: normalizedVak,
+                  uploadedAt:
+                    nextDoc.uploadedAt ?? x.uploadedAt ?? new Date().toISOString(),
+                  enabled: x.enabled,
+                }
+              : x
+          )
         );
         const mijnVakken = computeMijnVakken(next, get().mijnVakken);
         const weekData = computeWeekAggregation(next, get().docRows);

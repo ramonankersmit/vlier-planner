@@ -43,6 +43,8 @@ export default function Uploads() {
   const [detailDoc, setDetailDoc] = React.useState<DocRecord | null>(null);
   const [isUploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [page, setPage] = React.useState(1);
+  const pageSize = 10;
 
   const meta = useMetadata(docs);
 
@@ -54,17 +56,51 @@ export default function Uploads() {
       periode: "",
     });
 
-  const filtered = docs.filter((d) => {
-    const byVak =
-      !filters.vak || d.vak.toLowerCase().includes(filters.vak.trim().toLowerCase());
-    const byNiv = !filters.niveau || d.niveau === (filters.niveau as any);
-    const byLeer = !filters.leerjaar || d.leerjaar === filters.leerjaar;
-    const byPer = !filters.periode || String(d.periode) === filters.periode;
-    return byVak && byNiv && byLeer && byPer;
-  });
+  const filtered = React.useMemo(() => {
+    const matches = docs.filter((d) => {
+      const byVak =
+        !filters.vak || d.vak.toLowerCase().includes(filters.vak.trim().toLowerCase());
+      const byNiv = !filters.niveau || d.niveau === (filters.niveau as any);
+      const byLeer = !filters.leerjaar || d.leerjaar === filters.leerjaar;
+      const byPer = !filters.periode || String(d.periode) === filters.periode;
+      return byVak && byNiv && byLeer && byPer;
+    });
+    const getTime = (doc: DocRecord) => {
+      if (!doc.uploadedAt) return 0;
+      const direct = Date.parse(doc.uploadedAt);
+      if (!Number.isNaN(direct)) {
+        return direct;
+      }
+      const normalized = doc.uploadedAt.trim().replace(/Z$/, "+00:00");
+      const fallback = Date.parse(normalized);
+      return Number.isNaN(fallback) ? 0 : fallback;
+    };
+    return matches.sort((a, b) => getTime(b) - getTime(a));
+  }, [docs, filters]);
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [filters.vak, filters.niveau, filters.leerjaar, filters.periode]);
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [docs.length]);
+
+  const totalPages = filtered.length ? Math.ceil(filtered.length / pageSize) : 1;
+  const clampedPage = Math.min(page, totalPages);
+
+  React.useEffect(() => {
+    if (clampedPage !== page) {
+      setPage(clampedPage);
+    }
+  }, [clampedPage, page]);
+
+  const startIdx = (clampedPage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, filtered.length);
+  const visibleDocs = filtered.slice(startIdx, endIdx);
 
   const gridTemplate =
-    "grid-cols-[90px_minmax(260px,3fr)_minmax(220px,2.2fr)_repeat(5,minmax(0,1fr))_repeat(2,minmax(90px,0.9fr))]";
+    "grid-cols-[90px_minmax(260px,3fr)_minmax(160px,1.5fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(90px,0.9fr))]";
 
   async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
     const files = ev.target.files;
@@ -196,12 +232,23 @@ export default function Uploads() {
     };
   }, [detailRows]);
 
-  const formatDate = React.useCallback((value?: string | null) => {
-    if (!value) return "—";
-    const parsed = parseIsoDate(value);
-    if (!parsed) return value;
-    return new Intl.DateTimeFormat("nl-NL").format(parsed);
-  }, []);
+  const dateFormatter = React.useMemo(() => new Intl.DateTimeFormat("nl-NL"), []);
+
+  const formatDate = React.useCallback(
+    (value?: string | null) => {
+      if (!value) return "—";
+      const parsed = parseIsoDate(value);
+      if (parsed) {
+        return dateFormatter.format(parsed);
+      }
+      const fallback = new Date(value);
+      if (!Number.isNaN(fallback.getTime())) {
+        return dateFormatter.format(fallback);
+      }
+      return value;
+    },
+    [dateFormatter]
+  );
 
   const previewRows = detailRows.slice(0, 8);
   const hasMoreRows = detailRows.length > previewRows.length;
@@ -331,6 +378,7 @@ export default function Uploads() {
         >
           <div className="flex justify-center">Gebruik</div>
           <div>Bestand</div>
+          <div>Upload datum</div>
           <div>Vak</div>
           <div>Niveau</div>
           <div>Leerjaar</div>
@@ -343,65 +391,96 @@ export default function Uploads() {
         {filtered.length === 0 ? (
           <div className="p-6 text-sm theme-muted">Geen documenten gevonden.</div>
         ) : (
-          filtered.map((d, i) => (
-            <div
-              key={d.fileId}
-              className={`grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
-                i > 0 ? "border-t theme-border" : ""
-              }`}
-            >
-              <div className="flex justify-center">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={d.enabled}
-                  onChange={() => toggleGebruik(d)}
-                  aria-label={
-                    d.enabled
-                      ? `Gebruik uitschakelen voor ${d.bestand}`
-                      : `Gebruik inschakelen voor ${d.bestand}`
-                  }
-                  title={
-                    d.enabled
-                      ? `Gebruik uitschakelen voor ${d.bestand}`
-                      : `Gebruik inschakelen voor ${d.bestand}`
-                  }
-                />
+          <>
+            {visibleDocs.map((d, i) => (
+              <div
+                key={d.fileId}
+                className={`grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
+                  i > 0 ? "border-t theme-border" : ""
+                }`}
+              >
+                <div className="flex justify-center">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={d.enabled}
+                    onChange={() => toggleGebruik(d)}
+                    aria-label={
+                      d.enabled
+                        ? `Gebruik uitschakelen voor ${d.bestand}`
+                        : `Gebruik inschakelen voor ${d.bestand}`
+                    }
+                    title={
+                      d.enabled
+                        ? `Gebruik uitschakelen voor ${d.bestand}`
+                        : `Gebruik inschakelen voor ${d.bestand}`
+                    }
+                  />
+                </div>
+                <div className="break-words" title={d.bestand}>
+                  {d.bestand}
+                </div>
+                <div>{formatDate(d.uploadedAt ?? null)}</div>
+                <div>{d.vak}</div>
+                <div>{d.niveau}</div>
+                <div>{d.leerjaar}</div>
+                <div>P{d.periode}</div>
+                <div>{d.beginWeek}</div>
+                <div>{d.eindWeek}</div>
+                <div className="flex gap-2 col-span-2">
+                  <button
+                    title={`Bron: ${d.bestand}`}
+                    className="rounded-lg border theme-border theme-surface p-1"
+                    onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
+                  >
+                    <FileText size={16} />
+                  </button>
+                  <button
+                    onClick={() => setDetailDoc(d)}
+                    title="Meta-details"
+                    className="rounded-lg border theme-border theme-surface p-1"
+                  >
+                    <Info size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(d)}
+                    title="Verwijder"
+                    className="rounded-lg border theme-border theme-surface p-1 text-red-600"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
-              <div className="break-words" title={d.bestand}>
-                {d.bestand}
+            ))}
+            {filtered.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t theme-border px-4 py-3 text-xs theme-muted">
+                <div>
+                  Toont {startIdx + 1}–{endIdx} van {filtered.length} bestanden
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPage(Math.max(1, clampedPage - 1))}
+                    disabled={clampedPage === 1}
+                    className="rounded-md border theme-border theme-surface px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Vorige
+                  </button>
+                  <span>
+                    Pagina {clampedPage} van {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage(Math.min(totalPages, clampedPage + 1))}
+                    disabled={clampedPage === totalPages}
+                    className="rounded-md border theme-border theme-surface px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Volgende
+                  </button>
+                </div>
               </div>
-              <div>{d.vak}</div>
-              <div>{d.niveau}</div>
-              <div>{d.leerjaar}</div>
-              <div>P{d.periode}</div>
-              <div>{d.beginWeek}</div>
-              <div>{d.eindWeek}</div>
-              <div className="flex gap-2 col-span-2">
-                <button
-                  title={`Bron: ${d.bestand}`}
-                  className="rounded-lg border theme-border theme-surface p-1"
-                  onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
-                >
-                  <FileText size={16} />
-                </button>
-                <button
-                  onClick={() => setDetailDoc(d)}
-                  title="Meta-details"
-                  className="rounded-lg border theme-border theme-surface p-1"
-                >
-                  <Info size={16} />
-                </button>
-                <button
-                  onClick={() => handleDelete(d)}
-                  title="Verwijder"
-                  className="rounded-lg border theme-border theme-surface p-1 text-red-600"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))
+            )}
+          </>
         )}
       </div>
 
