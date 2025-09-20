@@ -357,7 +357,11 @@ export function OnboardingTourProvider({ children }: { children: React.ReactNode
               >
                 <div className="mb-4 flex flex-col gap-1 text-[11px] font-medium uppercase tracking-[0.3em] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
                   <span className="order-2 sm:order-1">Stap {stepIndex + 1} van {steps.length}</span>
-                  <span className="order-1 text-slate-400 sm:order-2 sm:text-right">Enter = volgende • Esc = sluiten</span>
+                  <span className="order-1 text-slate-400 sm:order-2 sm:text-right">
+                    Enter = volgende
+                    <br />
+                    Esc = sluiten
+                  </span>
                 </div>
                 <h2 id={headingId} className="text-lg font-semibold text-slate-900">
                   {step.heading}
