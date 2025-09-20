@@ -5,7 +5,7 @@ const Matrix = () => {
         <div>
             {/* Other components */}
             {/* Ensure only one 'Add homework' button is present */}
-            <button onClick={handleAddHomework}>+ Eigen huiswerk toevoegen</button>
+            <button onClick={handleAddHomework}>+ Eigen taak toevoegen</button>
         </div>
     );
 };
