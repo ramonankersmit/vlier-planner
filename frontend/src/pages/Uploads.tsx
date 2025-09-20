@@ -100,7 +100,7 @@ export default function Uploads() {
   const visibleDocs = filtered.slice(startIdx, endIdx);
 
   const gridTemplate =
-    "grid-cols-[90px_minmax(260px,3fr)_minmax(220px,1.7fr)_repeat(6,minmax(0,1fr))_repeat(2,minmax(90px,0.9fr))]";
+    "grid-cols-[90px_minmax(240px,3fr)_minmax(190px,2fr)_minmax(170px,1.7fr)_minmax(120px,1.2fr)_minmax(110px,1.1fr)_minmax(100px,1fr)_minmax(95px,0.95fr)_minmax(95px,0.95fr)_minmax(85px,0.9fr)_minmax(85px,0.9fr)]";
 
   async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
     const files = ev.target.files;
@@ -372,9 +372,9 @@ export default function Uploads() {
       </div>
 
       {/* Tabel */}
-      <div className="rounded-2xl border theme-border theme-surface">
+      <div className="rounded-2xl border theme-border theme-surface overflow-x-auto">
         <div
-          className={`grid ${gridTemplate} gap-2 text-xs font-medium theme-muted border-b theme-border pb-2 px-4 pt-3`}
+          className={`min-w-[1100px] grid ${gridTemplate} gap-2 text-xs font-medium theme-muted border-b theme-border pb-2 px-4 pt-3`}
         >
           <div className="flex justify-center">Gebruik</div>
           <div>Bestand</div>
@@ -395,7 +395,7 @@ export default function Uploads() {
             {visibleDocs.map((d, i) => (
               <div
                 key={d.fileId}
-                className={`grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
+                className={`min-w-[1100px] grid ${gridTemplate} gap-2 text-sm items-center px-4 py-3 ${
                   i > 0 ? "border-t theme-border" : ""
                 }`}
               >
