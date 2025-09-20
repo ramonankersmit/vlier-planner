@@ -38,13 +38,13 @@ def _configure_logging() -> None:
         return
 
     file_handler.set_name(LOG_HANDLER_NAME)
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(logging.WARNING)
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     )
     root_logger.addHandler(file_handler)
-    if root_logger.level > logging.INFO:
-        root_logger.setLevel(logging.INFO)
+    if root_logger.level > logging.WARNING:
+        root_logger.setLevel(logging.WARNING)
 
     logging.getLogger(__name__).info("Logbestand: %s", log_path)
 
