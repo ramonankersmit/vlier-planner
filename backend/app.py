@@ -384,7 +384,7 @@ def _build_pending_payload(
     uploaded_at: Optional[str] = None,
 ) -> Dict[str, Any]:
     safe_rows = _ensure_rows(rows or [])
-    _auto_disable_duplicate_heads(safe_rows)
+    _auto_disable_duplicates(safe_rows)
 
     meta_copy = meta.copy(deep=True)
     _assign_ids(meta_copy)
@@ -440,19 +440,30 @@ def _ensure_rows(rows: List[DocRow]) -> List[DocRow]:
     return normalized
 
 
-def _auto_disable_duplicate_heads(rows: List[DocRow]) -> None:
-    active_indices: Dict[str, int] = {}
+def _auto_disable_duplicates(rows: List[DocRow]) -> None:
+    active_dates: Dict[str, int] = {}
+    active_weeks: Dict[int, int] = {}
     for index, row in enumerate(rows):
-        value = (row.datum or "").strip()
-        if not value:
-            continue
         if row.enabled is False:
-            # Keep disabled duplicates untouched; another active row may appear later.
             continue
-        active_index = active_indices.get(value)
-        if active_index is None or rows[active_index].enabled is False:
-            active_indices[value] = index
+
+        date_key = (row.datum or "").strip()
+        if date_key:
+            active_index = active_dates.get(date_key)
+            if active_index is None or rows[active_index].enabled is False:
+                active_dates[date_key] = index
+            else:
+                rows[index].enabled = False
+                continue
+
+        if row.week is None:
             continue
+
+        active_week = active_weeks.get(row.week)
+        if active_week is None or rows[active_week].enabled is False:
+            active_weeks[row.week] = index
+            continue
+
         rows[index].enabled = False
 
 
@@ -463,10 +474,13 @@ def _compute_warnings(meta: DocMeta, rows: List[DocRow]) -> Dict[str, bool]:
     missing_week = any(row.week is None for row in active_rows)
     dates = [row.datum for row in active_rows if getattr(row, "datum", None)]
     duplicate_date = len(dates) != len(set(dates))
+    weeks = [row.week for row in normalized_rows if isinstance(row.week, int)]
+    duplicate_week = len(weeks) != len(set(weeks))
     return {
         "unknownSubject": unknown_subject,
         "missingWeek": missing_week,
         "duplicateDate": duplicate_date,
+        "duplicateWeek": duplicate_week,
     }
 
 

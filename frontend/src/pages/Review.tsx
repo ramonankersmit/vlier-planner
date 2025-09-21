@@ -27,9 +27,18 @@ const warningLabels: Record<keyof ReviewDraft["warnings"], string> = {
   unknownSubject: "Vul het vak in",
   missingWeek: "Weeknummer ontbreekt",
   duplicateDate: "Dubbele datum gevonden",
+  duplicateWeek: "Dubbele week gevonden",
 };
 
 const niveauOptions: Array<"HAVO" | "VWO"> = ["HAVO", "VWO"];
+
+type DuplicateKind = "date" | "week";
+
+type DuplicateGroup = {
+  kind: DuplicateKind;
+  key: string;
+  indexes: number[];
+};
 
 const cloneRows = (rows: DocRow[]): DocRow[] =>
   rows.map((row) => ({
@@ -72,20 +81,40 @@ const formatRowList = (indexes: number[]): string =>
     .join(", ")
     .replace(/,([^,]*)$/, " en$1");
 
-const computeDuplicateGroups = (rows: DocRow[]) => {
-  const groups = new Map<string, number[]>();
+const computeDuplicateGroups = (rows: DocRow[]): DuplicateGroup[] => {
+  const groups: DuplicateGroup[] = [];
+  const dateMap = new Map<string, number[]>();
+  const weekMap = new Map<string, number[]>();
+
   rows.forEach((row, index) => {
-    const value = row?.datum?.trim();
-    if (!value) {
-      return;
+    const dateValue = row?.datum?.trim();
+    if (dateValue) {
+      const entries = dateMap.get(dateValue) ?? [];
+      entries.push(index);
+      dateMap.set(dateValue, entries);
     }
-    const entries = groups.get(value) ?? [];
-    entries.push(index);
-    groups.set(value, entries);
+
+    if (typeof row.week === "number" && Number.isFinite(row.week)) {
+      const key = row.week.toString();
+      const entries = weekMap.get(key) ?? [];
+      entries.push(index);
+      weekMap.set(key, entries);
+    }
   });
-  return Array.from(groups.entries())
-    .filter(([, indexes]) => indexes.length > 1)
-    .map(([date, indexes]) => ({ date, indexes }));
+
+  dateMap.forEach((indexes, key) => {
+    if (indexes.length > 1) {
+      groups.push({ kind: "date", key, indexes });
+    }
+  });
+
+  weekMap.forEach((indexes, key) => {
+    if (indexes.length > 1) {
+      groups.push({ kind: "week", key, indexes });
+    }
+  });
+
+  return groups.sort((a, b) => Math.min(...a.indexes) - Math.min(...b.indexes));
 };
 
 const diffRowBackground: Record<DiffStatus, string> = {
@@ -164,31 +193,50 @@ export default function Review() {
 
   const duplicateGroups = React.useMemo(() => computeDuplicateGroups(localRows), [localRows]);
 
-  const duplicateGroupsEnabled = React.useMemo(
+  const duplicateGroupDetails = React.useMemo(
     () =>
-      duplicateGroups
-        .map((group) => ({
-          ...group,
-          enabledIndexes: group.indexes.filter((idx) => localRows[idx]?.enabled !== false),
-        }))
-        .filter((group) => group.enabledIndexes.length > 1),
+      duplicateGroups.map((group) => {
+        const enabledIndexes = group.indexes.filter((idx) => localRows[idx]?.enabled !== false);
+        const disabledIndexes = group.indexes.filter((idx) => localRows[idx]?.enabled === false);
+        return { ...group, enabledIndexes, disabledIndexes };
+      }),
     [duplicateGroups, localRows]
+  );
+
+  const duplicateGroupsEnabled = React.useMemo(
+    () => duplicateGroupDetails.filter((group) => group.enabledIndexes.length > 1),
+    [duplicateGroupDetails]
+  );
+
+  const duplicateGroupsWithDisabled = React.useMemo(
+    () =>
+      duplicateGroupDetails.filter(
+        (group) => group.enabledIndexes.length <= 1 && group.indexes.length > 1
+      ),
+    [duplicateGroupDetails]
   );
 
   const duplicateIndexMap = React.useMemo(() => {
     const map = new Map<
       number,
-      { date: string; peers: number[]; enabledPeers: number[] }
+      Array<{ kind: DuplicateKind; key: string; peers: number[]; enabledPeers: number[] }>
     >();
-    duplicateGroups.forEach((group) => {
+    duplicateGroupDetails.forEach((group) => {
       group.indexes.forEach((index) => {
         const peers = group.indexes.filter((idx) => idx !== index);
         const enabledPeers = peers.filter((idx) => localRows[idx]?.enabled !== false);
-        map.set(index, { date: group.date, peers, enabledPeers });
+        const current = map.get(index) ?? [];
+        current.push({
+          kind: group.kind,
+          key: group.key,
+          peers,
+          enabledPeers,
+        });
+        map.set(index, current);
       });
     });
     return map;
-  }, [duplicateGroups, localRows]);
+  }, [duplicateGroupDetails, localRows]);
 
   const diffByIndex = React.useMemo(() => {
     const map = new Map<number, DiffRow>();
@@ -231,16 +279,31 @@ export default function Review() {
     if (missingWeekIndexes.length) {
       badges.push(warningLabels.missingWeek);
     }
-    if (duplicateGroupsEnabled.length) {
+    const hasDateEnabled = duplicateGroupsEnabled.some((group) => group.kind === "date");
+    const hasWeekEnabled = duplicateGroupsEnabled.some((group) => group.kind === "week");
+    if (hasDateEnabled) {
       badges.push(warningLabels.duplicateDate);
-    } else if (duplicateGroups.length) {
+    }
+    if (hasWeekEnabled) {
+      badges.push(warningLabels.duplicateWeek);
+    }
+    if (!hasDateEnabled && duplicateGroupsWithDisabled.some((group) => group.kind === "date")) {
       badges.push("Dubbele datum (rij uitgeschakeld)");
+    }
+    if (!hasWeekEnabled && duplicateGroupsWithDisabled.some((group) => group.kind === "week")) {
+      badges.push("Dubbele week (rij uitgeschakeld)");
     }
     if (!hasEnabledRows) {
       badges.push("Geen actieve rijen");
     }
     return badges;
-  }, [localMeta, missingWeekIndexes, duplicateGroupsEnabled, duplicateGroups, hasEnabledRows]);
+  }, [
+    localMeta,
+    missingWeekIndexes,
+    duplicateGroupsEnabled,
+    duplicateGroupsWithDisabled,
+    hasEnabledRows,
+  ]);
 
   const warningDetails = React.useMemo(() => {
     if (!localMeta) {
@@ -255,27 +318,44 @@ export default function Review() {
         `Weeknummer ontbreekt in ${formatRowList(missingWeekIndexes)}. Vul de weekkolom in of schakel de rij tijdelijk uit.`
       );
     }
-    if (duplicateGroupsEnabled.length) {
-      duplicateGroupsEnabled.forEach((group) => {
-        items.push(
-          `Dubbele datum ${formatDutchDate(group.date)} in ${formatRowList(group.enabledIndexes)}. Pas een datum aan of schakel een rij uit.`
-        );
-      });
-    } else if (duplicateGroups.length) {
-      duplicateGroups.forEach((group) => {
-        const disabled = group.indexes.filter((idx) => localRows[idx]?.enabled === false);
-        if (disabled.length) {
-          items.push(
-            `Dubbele datum ${formatDutchDate(group.date)} gevonden. ${formatRowList(disabled)} is uitgeschakeld; controleer of de juiste rij actief blijft.`
-          );
+    duplicateGroupsEnabled.forEach((group) => {
+      const label =
+        group.kind === "date"
+          ? `Dubbele datum ${formatDutchDate(group.key)}`
+          : `Dubbele week ${group.key}`;
+      const action =
+        group.kind === "date"
+          ? "Pas een datum aan of schakel een rij uit."
+          : "Pas het weeknummer aan of schakel een rij uit.";
+      items.push(`${label} in ${formatRowList(group.enabledIndexes)}. ${action}`);
+    });
+    if (!duplicateGroupsEnabled.length) {
+      duplicateGroupsWithDisabled.forEach((group) => {
+        if (!group.disabledIndexes.length) {
+          return;
         }
+        const label =
+          group.kind === "date"
+            ? `Dubbele datum ${formatDutchDate(group.key)} gevonden.`
+            : `Dubbele week ${group.key} gevonden.`;
+        const suffix =
+          group.kind === "date"
+            ? "is uitgeschakeld; controleer of de juiste rij actief blijft."
+            : "is uitgeschakeld; controleer of de juiste week actief blijft.";
+        items.push(`${label} ${formatRowList(group.disabledIndexes)} ${suffix}`);
       });
     }
     if (!hasEnabledRows) {
       items.push("Activeer minimaal één rij zodat de studiewijzer inhoud bevat.");
     }
     return items;
-  }, [localMeta, missingWeekIndexes, duplicateGroupsEnabled, duplicateGroups, localRows, hasEnabledRows]);
+  }, [
+    localMeta,
+    missingWeekIndexes,
+    duplicateGroupsEnabled,
+    duplicateGroupsWithDisabled,
+    hasEnabledRows,
+  ]);
 
   const hasBlockingWarnings = Boolean(
     !localMeta?.vak?.trim() ||
@@ -608,7 +688,9 @@ export default function Review() {
                   <tbody>
                     {localRows.map((row, index) => {
                       const hasMissingWeek = missingWeekIndexes.includes(index);
-                      const duplicateInfo = duplicateIndexMap.get(index);
+                      const duplicateInfos = duplicateIndexMap.get(index) ?? [];
+                      const dateDuplicate = duplicateInfos.find((info) => info.kind === "date");
+                      const weekDuplicate = duplicateInfos.find((info) => info.kind === "week");
                       const isDisabled = row.enabled === false;
                       const rowDiff = diffByIndex.get(index);
                       const rowStatus = (rowDiff?.status ?? "unchanged") as DiffStatus;
@@ -663,13 +745,23 @@ export default function Review() {
                               className={clsx(
                                 "w-20 rounded-md border px-2 py-1",
                                 diffFieldHighlight[resolveFieldStatus("week")],
-                                hasMissingWeek ? "border-amber-500 focus:border-amber-500 focus:ring-amber-200" : ""
+                                hasMissingWeek
+                                  ? "border-amber-500 focus:border-amber-500 focus:ring-amber-200"
+                                  : "",
+                                weekDuplicate && weekDuplicate.enabledPeers.length > 0
+                                  ? "border-amber-500 focus:border-amber-500 focus:ring-amber-200"
+                                  : "",
                               )}
                               disabled={isDisabled}
                             />
                             {hasMissingWeek && !isDisabled && (
                               <div className="mt-1 text-[11px] font-medium text-amber-700">
                                 Ontbrekend weeknummer
+                              </div>
+                            )}
+                            {weekDuplicate && weekDuplicate.peers.length > 0 && (
+                              <div className="mt-1 text-[11px] font-medium text-amber-700">
+                                Dubbel met {formatRowList(weekDuplicate.peers)}
                               </div>
                             )}
                           </td>
@@ -685,15 +777,15 @@ export default function Review() {
                               className={clsx(
                                 "rounded-md border px-2 py-1",
                                 diffFieldHighlight[resolveFieldStatus("datum")],
-                                duplicateInfo && duplicateInfo.enabledPeers.length > 0
+                                dateDuplicate && dateDuplicate.enabledPeers.length > 0
                                   ? "border-amber-500 focus:border-amber-500 focus:ring-amber-200"
                                   : ""
                               )}
                               disabled={isDisabled}
                             />
-                            {duplicateInfo && duplicateInfo.peers.length > 0 && (
+                            {dateDuplicate && dateDuplicate.peers.length > 0 && (
                               <div className="mt-1 text-[11px] font-medium text-amber-700">
-                                Dubbel met {formatRowList(duplicateInfo.peers)}
+                                Dubbel met {formatRowList(dateDuplicate.peers)}
                               </div>
                             )}
                             {isDisabled && (

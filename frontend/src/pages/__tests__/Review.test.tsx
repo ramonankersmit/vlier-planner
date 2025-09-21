@@ -72,7 +72,12 @@ describe("Review wizard", () => {
       parseId: "parse-1",
       meta: makeMeta({ vak: "" }),
       rows: [makeRow()],
-      warnings: { unknownSubject: true, missingWeek: true, duplicateDate: false },
+      warnings: {
+        unknownSubject: true,
+        missingWeek: true,
+        duplicateDate: false,
+        duplicateWeek: false,
+      },
       diffSummary: { added: 1, changed: 0, removed: 0, unchanged: 0 },
       diff: [
         {
@@ -98,7 +103,12 @@ describe("Review wizard", () => {
       ...review,
       meta: makeMeta({ vak: "Wiskunde" }),
       rows: [makeRow({ week: 1, datum: "2024-01-10" })],
-      warnings: { unknownSubject: false, missingWeek: false, duplicateDate: false },
+      warnings: {
+        unknownSubject: false,
+        missingWeek: false,
+        duplicateDate: false,
+        duplicateWeek: false,
+      },
       diffSummary: { added: 0, changed: 1, removed: 0, unchanged: 0 },
       diff: [
         {

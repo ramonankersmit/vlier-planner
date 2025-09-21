@@ -79,6 +79,26 @@ def _scenario_second_version() -> tuple[DocMeta, list[DocRow]]:
     return meta, rows
 
 
+def _scenario_week_duplicate() -> tuple[DocMeta, list[DocRow]]:
+    meta = DocMeta(
+        fileId="guide-dup",
+        bestand="week-dup.docx",
+        vak="Aardrijkskunde",
+        niveau="VWO",
+        leerjaar="4",
+        periode=1,
+        beginWeek=40,
+        eindWeek=46,
+        schooljaar="2025/2026",
+    )
+    rows = [
+        DocRow(week=44, datum="2025-10-28", onderwerp="Week 44"),
+        DocRow(week=44, datum="2025-10-28", onderwerp="Week 44 herhaling"),
+        DocRow(week=45, datum="2025-11-04", onderwerp="Week 45"),
+    ]
+    return meta, rows
+
+
 def _configure_parser(monkeypatch: pytest.MonkeyPatch, scenarios: Iterator[tuple[DocMeta, list[DocRow]]]) -> None:
     def fake_extract_all(path: str, name: str):
         try:
@@ -117,6 +137,7 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
     assert parse_data["warnings"]["unknownSubject"] is True
     assert parse_data["warnings"]["missingWeek"] is True
     assert parse_data["warnings"]["duplicateDate"] is False
+    assert parse_data["warnings"]["duplicateWeek"] is False
     assert parse_data["diffSummary"]["added"] == 2
     assert parse_data["rows"][0]["enabled"] is True
     assert parse_data["rows"][1]["enabled"] is False
@@ -138,6 +159,7 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
         "unknownSubject": False,
         "missingWeek": False,
         "duplicateDate": False,
+        "duplicateWeek": False,
     }
 
     commit_response = api_client.post(f"/api/reviews/{parse_id}/commit")
@@ -167,6 +189,7 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
         "unknownSubject": False,
         "missingWeek": False,
         "duplicateDate": False,
+        "duplicateWeek": False,
     }
     assert second_parse["diffSummary"]["added"] == 1
     assert second_parse["diffSummary"]["changed"] == 1
@@ -205,6 +228,7 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
         "unknownSubject": False,
         "missingWeek": False,
         "duplicateDate": False,
+        "duplicateWeek": False,
     }
 
     restart_rows = restart_payload["rows"]
@@ -235,3 +259,29 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
         restart_commit_data["version"]["meta"]["bestand"],
     )
     assert version_three_file.exists()
+
+
+def test_week_duplicate_rows_are_disabled(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    scenarios = iter([_scenario_week_duplicate()])
+    _configure_parser(monkeypatch, scenarios)
+
+    upload_payload = _upload_file(api_client)
+    assert len(upload_payload) == 1
+    parse = upload_payload[0]
+
+    enabled_flags = [row["enabled"] for row in parse["rows"]]
+    assert enabled_flags == [True, False, True]
+    assert parse["warnings"] == {
+        "unknownSubject": False,
+        "missingWeek": False,
+        "duplicateDate": False,
+        "duplicateWeek": True,
+    }
+
+    parse_id = parse["parseId"]
+    commit_response = api_client.post(f"/api/reviews/{parse_id}/commit")
+    assert commit_response.status_code == 200
+    commit_data = commit_response.json()
+    assert commit_data["version"]["diffSummary"]["added"] == 3

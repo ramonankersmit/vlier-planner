@@ -70,7 +70,12 @@ describe("useAppStore", () => {
       parseId: "parse-1",
       meta: makeMeta({ vak: "" }),
       rows: makeRows(),
-      warnings: { unknownSubject: true, missingWeek: true, duplicateDate: false },
+      warnings: {
+        unknownSubject: true,
+        missingWeek: true,
+        duplicateDate: false,
+        duplicateWeek: false,
+      },
       ...makeDiff(),
     };
 

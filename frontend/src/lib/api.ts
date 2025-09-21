@@ -72,6 +72,7 @@ export type UploadWarnings = {
   unknownSubject: boolean;
   missingWeek: boolean;
   duplicateDate: boolean;
+  duplicateWeek: boolean;
 };
 
 export type ReviewDraft = DocDiff & {

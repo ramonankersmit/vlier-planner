@@ -60,7 +60,12 @@ const makeReview = (overrides?: Partial<ReviewDraft>): ReviewDraft => ({
   parseId: "parse-1",
   meta: makeMeta(),
   rows: [makeRow()],
-  warnings: { unknownSubject: false, missingWeek: false, duplicateDate: false },
+  warnings: {
+    unknownSubject: false,
+    missingWeek: false,
+    duplicateDate: false,
+    duplicateWeek: false,
+  },
   diffSummary: { added: 1, changed: 0, removed: 0, unchanged: 0 },
   diff: [
     {
@@ -132,14 +137,19 @@ describe("Uploads page flow", () => {
     });
 
     expect(screen.getByText(/demo\.docx/)).toBeInTheDocument();
-    expect(screen.getAllByText(/In gebruik/)[0]).toBeInTheDocument();
+    expect(screen.queryByText(/In gebruik/i)).not.toBeInTheDocument();
   });
 
   it("toont pending review met waarschuwingen en start de wizard via de reviewknop", async () => {
     const pendingReview = makeReview({
       parseId: "parse-2",
       meta: makeMeta({ bestand: "nieuw.docx", vak: "" }),
-      warnings: { unknownSubject: true, missingWeek: true, duplicateDate: false },
+      warnings: {
+        unknownSubject: true,
+        missingWeek: true,
+        duplicateDate: false,
+        duplicateWeek: false,
+      },
     });
 
     await act(async () => {

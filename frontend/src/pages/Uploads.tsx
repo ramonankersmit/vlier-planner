@@ -15,6 +15,8 @@ import type { DocRecord } from "../app/store";
 import { useAppStore, hydrateDocRowsFromApi } from "../app/store";
 import type {
   DocDiff,
+  DiffRow,
+  DiffStatus,
   DocRow,
   ReviewDraft,
   StudyGuideVersion,
@@ -34,7 +36,12 @@ import {
 import { parseIsoDate } from "../lib/calendar";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 import { useFocusTrap } from "../lib/useFocusTrap";
-import { DiffRowsList, DiffSummaryBadges } from "../components/DiffViewer";
+import {
+  DiffRowsList,
+  DiffSummaryBadges,
+  diffStatusLabels,
+  diffStatusStyles,
+} from "../components/DiffViewer";
 
 type Filters = {
   vak: string;
@@ -53,6 +60,7 @@ const reviewWarningLabels: Record<keyof ReviewDraft["warnings"], string> = {
   unknownSubject: "Vak onbekend",
   missingWeek: "Week ontbreekt",
   duplicateDate: "Dubbele datum",
+  duplicateWeek: "Dubbele week",
 };
 
 function isValidWeek(value: unknown): value is number {
@@ -711,6 +719,19 @@ export default function Uploads() {
     return guideDiffs[detailDoc.fileId]?.[selectedVersionId] ?? null;
   }, [detailDoc, selectedGuideId, selectedVersionId, guideDiffs]);
 
+  const metadataDiffByIndex = React.useMemo(() => {
+    const map = new Map<number, DiffRow>();
+    if (!currentDiff) {
+      return map;
+    }
+    currentDiff.diff.forEach((entry) => {
+      if (entry.status !== "removed") {
+        map.set(entry.index, entry);
+      }
+    });
+    return map;
+  }, [currentDiff]);
+
   const detailWeekInfo = React.useMemo(() => {
     if (!detailDoc) {
       return null;
@@ -1174,7 +1195,7 @@ export default function Uploads() {
                       ? warnings.length
                         ? warnings.join(" · ")
                         : "Controleer en commit"
-                      : "In gebruik";
+                      : null;
                   const statusTextClass = clsx(
                     "text-xs",
                     entry.kind === "pending"
@@ -1285,7 +1306,9 @@ export default function Uploads() {
                           />
                           <div>
                             <div>{parseLabel}</div>
-                            <div className={statusTextClass}>{statusMessage}</div>
+                            {statusMessage && (
+                              <div className={statusTextClass}>{statusMessage}</div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -1501,65 +1524,132 @@ export default function Uploads() {
 
                   <div>
                     <div className="font-medium theme-text">Versies &amp; wijzigingen</div>
-                    <div className="mt-2 grid gap-4 lg:grid-cols-2">
-                      <div className="space-y-2">
-                        {versionList.map((version) => {
-                          const isActive =
-                            selectedGuideId === detailDoc.fileId &&
-                            selectedVersionId === version.versionId;
-                          return (
-                            <button
-                              key={version.versionId}
-                              onClick={() =>
-                                selectGuideVersion(detailDoc.fileId, version.versionId)
-                              }
-                              className={clsx(
-                                "w-full rounded-lg border px-3 py-2 text-left transition",
-                                isActive
-                                  ? "border-slate-600 bg-slate-100"
-                                  : "theme-border theme-surface hover:bg-slate-50"
-                              )}
-                            >
-                              <div className="text-sm font-medium theme-text">
+                    {versionList.length ? (
+                      <div className="mt-3 space-y-4">
+                        <label className="block text-xs font-medium uppercase tracking-wide theme-muted">
+                          Kies versie
+                          <select
+                            value={selectedVersionMeta?.versionId ?? ""}
+                            onChange={(event) => {
+                              const next = Number.parseInt(event.target.value, 10);
+                              selectGuideVersion(
+                                detailDoc.fileId,
+                                Number.isNaN(next) ? null : next
+                              );
+                            }}
+                            className="mt-1 w-full rounded-md border theme-border bg-white px-3 py-2 text-sm"
+                          >
+                            {versionList.map((version) => (
+                              <option key={version.versionId} value={version.versionId}>
                                 {formatVersionLabel(version)}
-                              </div>
-                              <DiffSummaryBadges
-                                summary={version.diffSummary}
-                                className="mt-1"
-                              />
-                            </button>
-                          );
-                        })}
-                        {versionList.length === 0 && (
-                          <div className="text-xs theme-muted">Geen versies beschikbaar.</div>
-                        )}
-                      </div>
-                      <div className="space-y-3">
-                        {selectedVersionMeta ? (
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        {selectedVersionMeta && (
                           <>
-                            <DiffSummaryBadges
-                              summary={
-                                currentDiff?.diffSummary ?? selectedVersionMeta.diffSummary
-                              }
-                            />
-                            {currentDiff ? (
-                              <DiffRowsList
-                                diff={currentDiff.diff}
-                                emptyLabel="Geen verschillen met de vorige versie."
+                            <div className="space-y-2 rounded-lg border theme-border theme-soft p-3">
+                              <DiffSummaryBadges
+                                summary={
+                                  currentDiff?.diffSummary ?? selectedVersionMeta.diffSummary
+                                }
                               />
-                            ) : selectedVersionMeta.versionId === 1 ? (
-                              <div className="text-xs theme-muted">
-                                Dit is de eerste versie van deze studiewijzer.
+                              {selectedVersionMeta.versionId === 1 ? (
+                                <div className="text-xs theme-muted">
+                                  Dit is de eerste versie van deze studiewijzer.
+                                </div>
+                              ) : currentDiff ? (
+                                <DiffRowsList
+                                  diff={currentDiff.diff}
+                                  emptyLabel="Geen verschillen met de vorige versie."
+                                />
+                              ) : (
+                                <div className="text-xs theme-muted">Diff wordt geladen…</div>
+                              )}
+                            </div>
+
+                            <div>
+                              <div className="text-sm font-medium theme-text">
+                                Rijen (alleen lezen)
                               </div>
-                            ) : (
-                              <div className="text-xs theme-muted">Diff wordt geladen…</div>
-                            )}
+                              <div className="mt-2 overflow-x-auto">
+                                <table className="min-w-full text-xs">
+                                  <thead>
+                                    <tr className="text-left theme-muted">
+                                      <th className="px-3 py-2">Status</th>
+                                      <th className="px-3 py-2">Actief</th>
+                                      <th className="px-3 py-2">Week</th>
+                                      <th className="px-3 py-2">Datum</th>
+                                      <th className="px-3 py-2">Les</th>
+                                      <th className="px-3 py-2">Onderwerp</th>
+                                      <th className="px-3 py-2">Huiswerk</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {detailRows.map((row, idx) => {
+                                      const rowDiff = metadataDiffByIndex.get(idx);
+                                      const rowStatus = (rowDiff?.status ?? "unchanged") as DiffStatus;
+                                      const isDisabled = row.enabled === false;
+                                      return (
+                                        <tr
+                                          key={`version-row-${idx}`}
+                                          className={clsx(
+                                            "border-t theme-border align-top",
+                                            isDisabled && "opacity-60"
+                                          )}
+                                        >
+                                          <td className="px-3 py-2 align-top">
+                                            <span
+                                              className={clsx(
+                                                "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+                                                diffStatusStyles[rowStatus]
+                                              )}
+                                            >
+                                              {diffStatusLabels[rowStatus]}
+                                            </span>
+                                          </td>
+                                          <td className="px-3 py-2 align-top">
+                                            {isDisabled ? "Uit" : "Aan"}
+                                          </td>
+                                          <td className="px-3 py-2 align-top font-semibold">
+                                            {row.week ?? "—"}
+                                          </td>
+                                          <td className="px-3 py-2 align-top">
+                                            {row.datum ? formatDate(row.datum) : "—"}
+                                          </td>
+                                          <td className="px-3 py-2 align-top whitespace-pre-wrap">
+                                            {row.les || "—"}
+                                          </td>
+                                          <td className="px-3 py-2 align-top whitespace-pre-wrap">
+                                            {row.onderwerp || "—"}
+                                          </td>
+                                          <td className="px-3 py-2 align-top whitespace-pre-wrap">
+                                            {row.huiswerk || "—"}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                    {detailRows.length === 0 && (
+                                      <tr>
+                                        <td
+                                          colSpan={7}
+                                          className="px-3 py-4 text-center theme-muted"
+                                        >
+                                          Geen rijen beschikbaar voor deze versie.
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
                           </>
-                        ) : (
-                          <div className="text-xs theme-muted">Geen versie geselecteerd.</div>
                         )}
                       </div>
-                    </div>
+                    ) : (
+                      <div className="mt-2 text-xs theme-muted">Geen versies beschikbaar.</div>
+                    )}
                   </div>
 
                   <div>

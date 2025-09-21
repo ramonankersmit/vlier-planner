@@ -15,7 +15,7 @@ Deze release introduceert versiebeheer voor alle studiewijzers en een verplichte
 
 ## Reviewwizard
 
-- `POST /api/uploads` retourneert nu een lijst pending parses met `parseId`, diffresultaat en parserwaarschuwingen (onbekend vak, ontbrekende week, dubbele datum).
+- `POST /api/uploads` retourneert nu een lijst pending parses met `parseId`, diffresultaat en parserwaarschuwingen (onbekend vak, ontbrekende week, dubbele datum, dubbele week).
 - Pending parses worden zowel in-memory als onder `storage/pending/{parseId}.json` bewaard en kunnen tussentijds worden aangepast via:
   - `GET /api/reviews/{parseId}`
   - `PATCH /api/reviews/{parseId}`
@@ -36,12 +36,13 @@ Deze release introduceert versiebeheer voor alle studiewijzers en een verplichte
 | **Vak onbekend**    | Vul het vak in bij de metadata en kies *Wijzigingen opslaan* om het vak te bevestigen. |
 | **Week ontbreekt**  | Controleer welke rijen in de tabel het label *Weeknummer ontbreekt* tonen. Vul het weeknummer in of schakel de rij tijdelijk uit. |
 | **Dubbele datum**   | Dezelfde datum komt meerdere keren voor. De eerste duplicaatrij wordt automatisch uitgeschakeld; controleer welke rij actief moet blijven, pas zonodig een datum aan en sla daarna de review op. |
+| **Dubbele week**    | Een weeknummer komt in meerdere rijen voor. De extra rij(en) worden uitgeschakeld maar blijven zichtbaar. Controleer of de juiste rij actief blijft of pas het weeknummer aan voordat je commit. |
 
 Je kunt rijen direct in de tabel aanpassen en via het vinkje per rij bepalen of hij meegenomen wordt. Elke wijziging wordt visueel gemarkeerd zodat je precies ziet welke velden aandacht vragen.
 
 ## Frontendwijzigingen
 
-- Uploadpagina bevat nu een versiehistoriepaneel inclusief diffkleuren per veld.
+- Uploadpagina bevat nu een versiehistoriepaneel inclusief diffkleuren per veld, een versie-drop-down in de metadata en een readonly-tabel met de rijen zoals ze in de reviewwizard verschijnen.
 - Nieuwe pagina `/review` begeleidt de gebruiker door upload → correctie → commit.
 - Store (`frontend/src/app/store.ts`) houdt versies, diffs, pending reviews en commitresultaten bij.
 
