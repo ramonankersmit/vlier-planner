@@ -6,7 +6,6 @@ import {
   Trash2,
   XCircle,
   ClipboardList,
-  CheckCircle2,
   AlertTriangle,
   XOctagon,
 } from "lucide-react";
@@ -1192,45 +1191,46 @@ export default function Uploads() {
                   const hasBlockingWarnings =
                     entry.kind === "pending" &&
                     (entry.review.warnings.unknownSubject || entry.review.warnings.missingWeek);
-                  const statusVariant: "success" | "error" =
-                    entry.kind === "pending" && hasBlockingWarnings ? "error" : "success";
-                  const statusColorClasses =
-                    statusVariant === "success" ? "text-emerald-600" : "text-red-600";
-                  const StatusIcon = statusVariant === "success" ? CheckCircle2 : XOctagon;
-                  const statusMessage =
-                    entry.kind === "pending"
-                      ? warningMessages.length
-                        ? warningMessages.join(" · ")
-                        : "Controleer en commit"
-                      : warningMessages.length
-                      ? warningMessages.join(" · ")
-                      : null;
+                  const hasActiveWarnings = warningMessages.length > 0;
+                  const StatusIcon = hasBlockingWarnings
+                    ? XOctagon
+                    : hasActiveWarnings
+                    ? AlertTriangle
+                    : null;
+                  const statusColorClasses = hasBlockingWarnings
+                    ? "text-red-600"
+                    : hasActiveWarnings
+                    ? "text-amber-600"
+                    : "";
+                  const statusMessage = hasActiveWarnings
+                    ? warningMessages.join(" · ")
+                    : entry.kind === "pending"
+                    ? "Controleer en commit"
+                    : null;
                   const statusTextClass = clsx(
                     "mt-0.5 flex items-center gap-1 text-xs",
                     entry.kind === "pending"
                       ? hasBlockingWarnings
                         ? "text-red-600"
-                        : warningMessages.length
+                        : hasActiveWarnings
                         ? "text-amber-700"
                         : "theme-muted"
-                      : warningMessages.length
+                      : hasActiveWarnings
                       ? "text-amber-700"
                       : "theme-muted"
                   );
-                  const statusIconTestId =
-                    entry.kind === "pending" && hasBlockingWarnings
-                      ? "status-icon-error"
-                      : "status-icon-success";
-                  const StatusMessageIcon =
-                    entry.kind === "pending"
-                      ? hasBlockingWarnings
-                        ? XOctagon
-                        : warningMessages.length
-                        ? AlertTriangle
-                        : Info
-                      : warningMessages.length
-                      ? AlertTriangle
-                      : null;
+                  const statusIconTestId = hasBlockingWarnings
+                    ? "status-icon-error"
+                    : hasActiveWarnings
+                    ? "status-icon-warning"
+                    : undefined;
+                  const StatusMessageIcon = hasBlockingWarnings
+                    ? XOctagon
+                    : hasActiveWarnings
+                    ? AlertTriangle
+                    : entry.kind === "pending"
+                    ? Info
+                    : null;
                   const rowClassName = clsx(
                     i > 0 ? "border-t theme-border" : "",
                     entry.kind === "pending" && "bg-amber-50"
@@ -1326,12 +1326,14 @@ export default function Uploads() {
                           <div className="text-xs text-amber-700">Review vereist</div>
                         )}
                         <div className="mt-1 flex items-start gap-2 text-xs leading-tight">
-                          <StatusIcon
-                            size={14}
-                            aria-hidden="true"
-                            data-testid={statusIconTestId}
-                            className={clsx("mt-0.5 flex-shrink-0", statusColorClasses)}
-                          />
+                          {StatusIcon && (
+                            <StatusIcon
+                              size={14}
+                              aria-hidden="true"
+                              data-testid={statusIconTestId}
+                              className={clsx("mt-0.5 flex-shrink-0", statusColorClasses)}
+                            />
+                          )}
                           <div>
                             <div>{parseLabel}</div>
                             {statusMessage && (

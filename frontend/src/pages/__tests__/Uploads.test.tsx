@@ -284,7 +284,7 @@ describe("Uploads page flow", () => {
     const rows = within(table).getAllByRole("row");
     const row = rows.find((candidate) => within(candidate).queryByText(/demo\.docx/));
     expect(row).toBeTruthy();
-    expect(within(row as HTMLElement).getByTestId("status-icon-success")).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByTestId("status-icon-warning")).toBeInTheDocument();
     expect(within(row as HTMLElement).getByText(/Dubbele week/)).toBeInTheDocument();
   });
 

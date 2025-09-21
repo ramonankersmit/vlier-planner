@@ -40,6 +40,9 @@ type DuplicateGroup = {
   indexes: number[];
 };
 
+
+type AttentionEntry = { key: string; text: string };
+type AttentionItem = AttentionEntry & { resolved: boolean };
 const cloneRows = (rows: DocRow[]): DocRow[] =>
   rows.map((row) => ({
     ...row,
@@ -225,6 +228,11 @@ export default function Review() {
   const [isCommitting, setCommitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
+  const [attentionItems, setAttentionItems] = React.useState<AttentionItem[]>([]);
+
+  React.useEffect(() => {
+    setAttentionItems([]);
+  }, [parseId]);
 
   React.useEffect(() => {
     if (!parseId) {
@@ -377,18 +385,22 @@ export default function Review() {
     hasEnabledRows,
   ]);
 
-  const warningDetails = React.useMemo(() => {
+  const attentionEntries = React.useMemo(() => {
     if (!localMeta) {
-      return [] as string[];
+      return [] as AttentionEntry[];
     }
-    const items: string[] = [];
+    const entries: AttentionEntry[] = [];
     if (!localMeta.vak?.trim()) {
-      items.push("Vul het vak in bij de metadata zodat de studiewijzer gekoppeld kan worden.");
+      entries.push({
+        key: "meta-vak",
+        text: "Vul het vak in bij de metadata zodat de studiewijzer gekoppeld kan worden.",
+      });
     }
     if (missingWeekIndexes.length) {
-      items.push(
-        `Weeknummer ontbreekt in ${formatRowList(missingWeekIndexes)}. Vul de weekkolom in of schakel de rij tijdelijk uit.`
-      );
+      entries.push({
+        key: "missing-week",
+        text: `Weeknummer ontbreekt in ${formatRowList(missingWeekIndexes)}. Vul de weekkolom in of schakel de rij tijdelijk uit.`,
+      });
     }
     duplicateGroupsEnabled.forEach((group) => {
       const label =
@@ -399,7 +411,10 @@ export default function Review() {
         group.kind === "date"
           ? "Pas een datum aan of schakel een rij uit."
           : "Pas het weeknummer aan of schakel een rij uit.";
-      items.push(`${label} in ${formatRowList(group.enabledIndexes)}. ${action}`);
+      entries.push({
+        key: `duplicate-${group.kind}-${group.key}`,
+        text: `${label} in ${formatRowList(group.enabledIndexes)}. ${action}`,
+      });
     });
     if (!duplicateGroupsEnabled.length) {
       duplicateGroupsWithDisabled.forEach((group) => {
@@ -414,13 +429,19 @@ export default function Review() {
           group.kind === "date"
             ? "is uitgeschakeld; controleer of de juiste rij actief blijft."
             : "is uitgeschakeld; controleer of de juiste week actief blijft.";
-        items.push(`${label} ${formatRowList(group.disabledIndexes)} ${suffix}`);
+        entries.push({
+          key: `duplicate-disabled-${group.kind}-${group.key}`,
+          text: `${label} ${formatRowList(group.disabledIndexes)} ${suffix}`,
+        });
       });
     }
     if (!hasEnabledRows) {
-      items.push("Activeer minimaal één rij zodat de studiewijzer inhoud bevat.");
+      entries.push({
+        key: "no-active-rows",
+        text: "Activeer minimaal één rij zodat de studiewijzer inhoud bevat.",
+      });
     }
-    return items;
+    return entries;
   }, [
     localMeta,
     missingWeekIndexes,
@@ -428,6 +449,25 @@ export default function Review() {
     duplicateGroupsWithDisabled,
     hasEnabledRows,
   ]);
+
+  React.useEffect(() => {
+    setAttentionItems((prev) => {
+      const currentMap = new Map(attentionEntries.map((entry) => [entry.key, entry.text]));
+      const currentKeys = new Set(currentMap.keys());
+      const existingKeys = new Set(prev.map((item) => item.key));
+      const next: AttentionItem[] = prev.map((item) => {
+        const text = currentMap.get(item.key) ?? item.text;
+        const resolved = !currentKeys.has(item.key);
+        return { key: item.key, text, resolved };
+      });
+      attentionEntries.forEach((entry) => {
+        if (!existingKeys.has(entry.key)) {
+          next.push({ key: entry.key, text: entry.text, resolved: false });
+        }
+      });
+      return next;
+    });
+  }, [attentionEntries]);
 
   const hasUnsavedChanges = React.useMemo(() => {
     if (!baselineMeta || !localMeta) {
@@ -438,6 +478,11 @@ export default function Review() {
     }
     return stableStringify(localRows) !== stableStringify(baselineRows);
   }, [baselineMeta, baselineRows, localMeta, localRows]);
+
+  const hasUnresolvedAttention = React.useMemo(
+    () => attentionItems.some((item) => !item.resolved),
+    [attentionItems]
+  );
 
   React.useEffect(() => {
     if (hasUnsavedChanges) {
@@ -649,12 +694,27 @@ export default function Review() {
                 </div>
               </div>
 
-              {warningDetails.length ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                  <div className="font-semibold text-sm">Los deze aandachtspunten op</div>
+              {attentionItems.length ? (
+                <div
+                  className={clsx(
+                    "rounded-md border p-3 text-xs",
+                    hasUnresolvedAttention
+                      ? "border-amber-200 bg-amber-50 text-amber-800"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  )}
+                >
+                  <div className="font-semibold text-sm">Aandachtspunten</div>
                   <ul className="mt-2 list-disc space-y-1 pl-4">
-                    {warningDetails.map((item, index) => (
-                      <li key={index}>{item}</li>
+                    {attentionItems.map((item) => (
+                      <li
+                        key={item.key}
+                        className={clsx(
+                          item.resolved &&
+                            "line-through decoration-emerald-600 decoration-2 text-emerald-700"
+                        )}
+                      >
+                        {item.text}
+                      </li>
                     ))}
                   </ul>
                 </div>
@@ -1012,6 +1072,7 @@ export default function Review() {
               <button
                 type="button"
                 onClick={handleDelete}
+                title="Verwijder deze review"
                 className="rounded-md border border-rose-300 px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50"
               >
                 Review verwijderen
@@ -1020,6 +1081,7 @@ export default function Review() {
                 <button
                   type="submit"
                   disabled={isSaving || isLoading || !hasUnsavedChanges}
+                  title="Sla de wijzigingen in deze review op"
                   className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSaving ? "Opslaan…" : "Wijzigingen opslaan"}
@@ -1028,6 +1090,7 @@ export default function Review() {
                   type="button"
                   onClick={handleCommit}
                   disabled={isCommitting || isSaving || isLoading || hasBlockingWarnings}
+                  title="Maak deze studiewijzer definitief"
                   className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isCommitting ? "Review opslaan…" : "Review opslaan"}

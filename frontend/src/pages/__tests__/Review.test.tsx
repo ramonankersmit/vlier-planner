@@ -161,7 +161,7 @@ describe("Review wizard", () => {
 
     await waitFor(() => expect(mockedApi.apiGetReview).toHaveBeenCalledTimes(1));
 
-    expect(await screen.findByText(/Los deze aandachtspunten op/i)).toBeInTheDocument();
+    expect(await screen.findAllByText(/Aandachtspunten/i)).not.toHaveLength(0);
     expect(screen.getByRole("columnheader", { name: /Status/i })).toBeInTheDocument();
     expect(screen.getAllByText(/^Nieuw$/i).length).toBeGreaterThan(0);
     expect(
@@ -187,6 +187,17 @@ describe("Review wizard", () => {
 
     await user.click(saveButton);
     await waitFor(() => expect(mockedApi.apiUpdateReview).toHaveBeenCalledTimes(1));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Vul het vak in bij de metadata zodat de studiewijzer gekoppeld kan worden\./i)
+      ).toHaveClass("line-through")
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Weeknummer ontbreekt in rij 1\. Vul de weekkolom in of schakel de rij tijdelijk uit\./i)
+      ).toHaveClass("line-through")
+    );
 
     await waitFor(() => expect(commitButton).toBeEnabled());
 
