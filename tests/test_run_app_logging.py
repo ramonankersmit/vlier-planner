@@ -40,12 +40,10 @@ def clean_logging_handlers():
 def test_uvicorn_log_config_disables_colors(monkeypatch, tmp_path):
     monkeypatch.setenv("VLIER_LOG_FILE", str(tmp_path / "vlier.log"))
     run_app = _import_run_app()
-
     config = run_app.get_uvicorn_log_config()
 
     assert config["formatters"]["default"]["use_colors"] is False
     assert config["formatters"]["access"]["use_colors"] is False
-
 
 def test_file_log_level_can_be_configured(monkeypatch, tmp_path):
     monkeypatch.setenv("VLIER_LOG_FILE", str(tmp_path / "vlier.log"))
@@ -62,3 +60,4 @@ def test_file_log_level_can_be_configured(monkeypatch, tmp_path):
 
     assert handler_levels == {logging.DEBUG}
     assert root_logger.level == logging.DEBUG
+
