@@ -25,6 +25,12 @@ type Filters = {
 
 type WeekSegment = { start: number; end: number };
 
+const reviewWarningLabels: Record<keyof ReviewDraft["warnings"], string> = {
+  unknownSubject: "Vak onbekend",
+  missingWeek: "Week ontbreekt",
+  duplicateDate: "Dubbele datum",
+};
+
 function isValidWeek(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= 53;
 }
@@ -173,6 +179,7 @@ export default function Uploads() {
     setGuideDiff,
     setPendingReview,
     setActiveReview,
+    pendingReviews,
   } = useAppStore();
   const navigate = useNavigate();
   const { openPreview } = useDocumentPreview();
@@ -195,6 +202,41 @@ export default function Uploads() {
   const pageSize = 10;
 
   const meta = useMetadata(docs, docRows);
+
+  const pendingReviewList = React.useMemo(() => {
+    const entries = Object.values(pendingReviews);
+    return entries.sort((a, b) => {
+      const tsA = Date.parse(a.meta.uploadedAt ?? "");
+      const tsB = Date.parse(b.meta.uploadedAt ?? "");
+      return (Number.isNaN(tsB) ? 0 : tsB) - (Number.isNaN(tsA) ? 0 : tsA);
+    });
+  }, [pendingReviews]);
+
+  const pendingReviewCount = pendingReviewList.length;
+
+  const handleOpenReviewWizard = React.useCallback(
+    (parseId?: string) => {
+      if (parseId) {
+        setActiveReview(parseId);
+      }
+      navigate("/review");
+    },
+    [navigate, setActiveReview]
+  );
+
+  const formatPendingMoment = React.useCallback((value?: string | null) => {
+    if (!value) {
+      return "Onbekend moment";
+    }
+    const parsed = parseIsoDate(value);
+    if (!parsed) {
+      return value;
+    }
+    return parsed.toLocaleString("nl-NL", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  }, []);
 
   const reset = () =>
     setFilters({
@@ -634,6 +676,81 @@ export default function Uploads() {
   return (
     <div className="space-y-4">
       <div className="text-lg font-semibold theme-text">Uploads &amp; Documentbeheer</div>
+
+      {pendingReviewCount > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-amber-900">
+                {pendingReviewCount === 1
+                  ? "Er staat 1 upload klaar voor review"
+                  : `Er staan ${pendingReviewCount} uploads klaar voor review`}
+              </div>
+              <p className="mt-1 text-xs text-amber-800">
+                Corrigeer de metadata en rijen in de reviewwizard voordat de planner wordt bijgewerkt.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleOpenReviewWizard(pendingReviewList[0]?.parseId)}
+              className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 shadow-sm hover:bg-amber-100"
+            >
+              Reviewwizard openen
+            </button>
+          </div>
+          <div className="mt-3 space-y-2">
+            {pendingReviewList.slice(0, 3).map((review) => {
+              const activeWarnings = Object.entries(review.warnings).filter(([, value]) => value);
+              return (
+                <button
+                  key={review.parseId}
+                  type="button"
+                  onClick={() => handleOpenReviewWizard(review.parseId)}
+                  className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-sm shadow-sm transition hover:bg-amber-50"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="font-medium text-amber-900">{review.meta.bestand}</div>
+                      <div className="text-xs text-amber-800">
+                        {review.meta.vak ? (
+                          <span>
+                            {review.meta.vak} • {review.meta.niveau ?? "niveau onbekend"} • leerjaar {review.meta.leerjaar ?? "?"}
+                          </span>
+                        ) : (
+                          <span>Vak nog onbekend</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-amber-700">{formatPendingMoment(review.meta.uploadedAt)}</div>
+                    </div>
+                    <DiffSummaryBadges summary={review.diffSummary} />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {activeWarnings.length ? (
+                      activeWarnings.map(([key]) => (
+                        <span
+                          key={key}
+                          className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800"
+                        >
+                          {reviewWarningLabels[key as keyof ReviewDraft["warnings"]]}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-700">
+                        Geen onzekerheden
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+            {pendingReviewCount > 3 && (
+              <div className="text-xs text-amber-800">
+                +{pendingReviewCount - 3} extra review(s) zichtbaar in de wizard.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Uploadblok */}
       <div className="rounded-2xl border theme-border theme-surface p-4">

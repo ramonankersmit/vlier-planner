@@ -143,6 +143,16 @@ describe("Review wizard", () => {
 
     await waitFor(() => expect(mockedApi.apiGetReview).toHaveBeenCalledTimes(1));
 
+    expect(await screen.findByText(/Los deze onzekerheden op/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Vul het vak in bij de metadata zodat de studiewijzer aan het juiste vak wordt gekoppeld/i
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Weeknummer ontbreekt in rij 1/i)
+    ).toBeInTheDocument();
+
     const commitButton = await screen.findByRole("button", { name: /Definitief opslaan/i });
     expect(commitButton).toBeDisabled();
 

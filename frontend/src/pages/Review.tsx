@@ -19,7 +19,7 @@ import { useAppStore } from "../app/store";
 
 const warningLabels: Record<keyof ReviewDraft["warnings"], string> = {
   unknownSubject: "Vul het vak in",
-  missingWeek: "Vul ontbrekende weken in",
+  missingWeek: "Weeknummer ontbreekt",
   duplicateDate: "Dubbele datum gevonden",
 };
 
@@ -44,6 +44,18 @@ const formatUploadMoment = (value?: string | null): string => {
   return parsed.toLocaleString("nl-NL", {
     dateStyle: "medium",
     timeStyle: "short",
+  });
+};
+
+const formatDutchDate = (value: string): string => {
+  const parsed = parseIsoDate(value);
+  if (!parsed) {
+    return value;
+  }
+  return parsed.toLocaleDateString("nl-NL", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
   });
 };
 
@@ -87,6 +99,106 @@ export default function Review() {
   const [isCommitting, setCommitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
+
+  const duplicateGroups = React.useMemo(() => {
+    const groups = new Map<string, number[]>();
+    localRows.forEach((row, index) => {
+      const value = row.datum?.trim();
+      if (!value) {
+        return;
+      }
+      const entries = groups.get(value) ?? [];
+      entries.push(index);
+      groups.set(value, entries);
+    });
+    return Array.from(groups.entries())
+      .filter(([, indexes]) => indexes.length > 1)
+      .map(([date, indexes]) => ({ date, indexes }));
+  }, [localRows]);
+
+  const duplicateIndexMap = React.useMemo(() => {
+    const map = new Map<number, { date: string; peers: number[] }>();
+    duplicateGroups.forEach((group) => {
+      group.indexes.forEach((index) => {
+        map.set(index, {
+          date: group.date,
+          peers: group.indexes.filter((idx) => idx !== index),
+        });
+      });
+    });
+    return map;
+  }, [duplicateGroups]);
+
+  const missingWeekIndexes = React.useMemo(() => {
+    const indexes: number[] = [];
+    localRows.forEach((row, index) => {
+      if (row.week === null || row.week === undefined) {
+        indexes.push(index);
+      }
+    });
+    return indexes;
+  }, [localRows]);
+
+  const attentionIndexSet = React.useMemo(() => {
+    const indices = new Set<number>();
+    missingWeekIndexes.forEach((index) => indices.add(index));
+    duplicateIndexMap.forEach((_, index) => indices.add(index));
+    return indices;
+  }, [missingWeekIndexes, duplicateIndexMap]);
+
+  const formatRowList = React.useCallback((indexes: number[]) => {
+    if (!indexes.length) {
+      return "";
+    }
+    return indexes
+      .map((idx) => `rij ${idx + 1}`)
+      .join(", ")
+      .replace(/,([^,]*)$/, " en$1");
+  }, []);
+
+  const warningDetails = React.useMemo(() => {
+    if (!activeReview || !localMeta) {
+      return [] as string[];
+    }
+    const items: string[] = [];
+    if (activeReview.warnings.unknownSubject) {
+      if (!localMeta.vak) {
+        items.push(
+          "Vul het vak in bij de metadata zodat de studiewijzer aan het juiste vak wordt gekoppeld."
+        );
+      } else {
+        items.push("Sla de metadata op zodat het ingevulde vak wordt bevestigd.");
+      }
+    }
+    if (activeReview.warnings.missingWeek) {
+      if (missingWeekIndexes.length) {
+        items.push(
+          `Weeknummer ontbreekt in ${formatRowList(missingWeekIndexes)}. Vul de weekkolom in of verwijder de rij.`
+        );
+      } else {
+        items.push("Sla je wijzigingen op zodat de ingevulde weeknummers bewaard worden.");
+      }
+    }
+    if (activeReview.warnings.duplicateDate) {
+      if (duplicateGroups.length) {
+        duplicateGroups.forEach((group) => {
+          const rows = formatRowList(group.indexes);
+          items.push(
+            `Dubbele datum ${formatDutchDate(group.date)} in ${rows}. Pas één van de datums aan of verwijder een van deze rijen.`
+          );
+        });
+      } else {
+        items.push("Dubbele datums opgelost? Klik op 'Wijzigingen opslaan' om de review bij te werken.");
+      }
+    }
+    return items;
+  }, [
+    activeReview,
+    localMeta,
+    missingWeekIndexes,
+    duplicateGroups,
+    formatRowList,
+  ]);
 
   React.useEffect(() => {
     if (!activeReviewId) {
@@ -158,6 +270,16 @@ export default function Review() {
 
   const handleRowDateChange = (index: number, value: string) => {
     handleRowChange(index, "datum", value ? value : null);
+  };
+
+  const handleRemoveRow = (index: number) => {
+    const confirmed = window.confirm(
+      `Weet je zeker dat je rij ${index + 1} wilt verwijderen? De rij wordt niet meegenomen bij het committen.`
+    );
+    if (!confirmed) {
+      return;
+    }
+    setLocalRows((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const hasBlockingWarnings = Boolean(
@@ -292,6 +414,9 @@ export default function Review() {
           <aside className="space-y-4">
             <div className="rounded-lg border theme-border bg-white p-3 shadow-sm">
               <div className="text-sm font-semibold theme-text">Openstaande reviews</div>
+              <p className="mt-1 text-xs theme-muted">
+                Klik op een review om de details te openen. Labels geven aan welke onzekerheden nog aandacht vragen.
+              </p>
               <div className="mt-2 space-y-2">
                 {reviewList.map((review) => {
                   const isActive = review.parseId === activeReviewId;
@@ -307,6 +432,15 @@ export default function Review() {
                       )}
                     >
                       <div className="font-medium theme-text">{review.meta.bestand}</div>
+                      <div className="text-xs theme-muted">
+                        {review.meta.vak ? (
+                          <span>
+                            {review.meta.vak} • {review.meta.niveau ?? "niveau onbekend"} • leerjaar {review.meta.leerjaar ?? "?"}
+                          </span>
+                        ) : (
+                          <span className="text-amber-700">Vak nog onbekend</span>
+                        )}
+                      </div>
                       <div className="text-xs theme-muted">
                         {formatUploadMoment(review.meta.uploadedAt)}
                       </div>
@@ -337,6 +471,21 @@ export default function Review() {
           </aside>
 
           <main className="space-y-6">
+            <section className="space-y-3 rounded-lg border theme-border bg-white p-4 shadow-sm">
+              <div>
+                <h2 className="text-lg font-semibold theme-text">Hoe werkt de review?</h2>
+                <p className="text-xs theme-muted">
+                  Doorloop de stappen om een upload definitief te maken. Zolang er onzekerheden zijn, blijft de commitknop uitgeschakeld.
+                </p>
+              </div>
+              <ol className="list-decimal space-y-1 pl-4 text-xs theme-muted">
+                <li>Selecteer links een openstaande review.</li>
+                <li>Controleer en vul de metadata aan.</li>
+                <li>Werk de tabelrijen bij. Je kunt rijen aanpassen of verwijderen.</li>
+                <li>Sla op en commit wanneer alle labels groen zijn.</li>
+              </ol>
+            </section>
+
             {isLoading && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                 Review wordt geladen…
@@ -360,13 +509,33 @@ export default function Review() {
                     <div className="text-xs">{renderWarnings(activeReview.warnings)}</div>
                   </div>
 
+                  {warningDetails.length ? (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      <div className="font-semibold text-sm">Los deze onzekerheden op</div>
+                      <ul className="mt-2 list-disc space-y-1 pl-4">
+                        {warningDetails.map((item, index) => (
+                          <li key={index}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+                      Alle verplichte velden zijn ingevuld. Je kunt committen zodra de wijzigingen zijn opgeslagen.
+                    </div>
+                  )}
+
                   <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                     <label className="text-xs font-medium uppercase tracking-wide theme-muted">
                       Vak
                       <input
                         value={localMeta.vak ?? ""}
                         onChange={(event) => updateMeta("vak", event.target.value)}
-                        className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                        className={clsx(
+                          "mt-1 w-full rounded-md border px-2 py-1 text-sm",
+                          activeReview.warnings.unknownSubject && !localMeta.vak
+                            ? "border-amber-500 focus:border-amber-500 focus:ring-amber-200"
+                            : ""
+                        )}
                         placeholder="Bijv. Wiskunde"
                       />
                     </label>
@@ -441,7 +610,7 @@ export default function Review() {
                   <div>
                     <h2 className="text-lg font-semibold theme-text">Rijen corrigeren</h2>
                     <p className="text-xs theme-muted">
-                      Vul minimaal de weeknummers en datums in voor rijen waar de parser twijfels heeft.
+                      Vul minimaal de weeknummers en datums in voor rijen waar de parser twijfels heeft. Je kunt ook rijen verwijderen die niet mee hoeven.
                     </p>
                   </div>
                   <div className="overflow-x-auto">
@@ -453,72 +622,119 @@ export default function Review() {
                           <th className="px-2 py-1 text-left">Les</th>
                           <th className="px-2 py-1 text-left">Onderwerp</th>
                           <th className="px-2 py-1 text-left">Huiswerk</th>
+                          <th className="px-2 py-1 text-left">Actie</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {localRows.map((row, index) => (
-                          <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                            <td className="px-2 py-1">
-                              <label className="sr-only" htmlFor={`row-week-${index}`}>
-                                Week rij {index + 1}
-                              </label>
-                              <input
-                                id={`row-week-${index}`}
-                                type="number"
-                                min={1}
-                                max={53}
-                                value={row.week ?? ""}
-                                onChange={(event) => handleRowWeekChange(index, event.target.value)}
-                                className="w-20 rounded-md border px-2 py-1"
-                              />
-                            </td>
-                            <td className="px-2 py-1">
-                              <label className="sr-only" htmlFor={`row-date-${index}`}>
-                                Datum rij {index + 1}
-                              </label>
-                              <input
-                                id={`row-date-${index}`}
-                                type="date"
-                                value={row.datum ?? ""}
-                                onChange={(event) => handleRowDateChange(index, event.target.value)}
-                                className="rounded-md border px-2 py-1"
-                              />
-                            </td>
-                            <td className="px-2 py-1">
-                              <label className="sr-only" htmlFor={`row-les-${index}`}>
-                                Les rij {index + 1}
-                              </label>
-                              <input
-                                id={`row-les-${index}`}
-                                value={row.les ?? ""}
-                                onChange={(event) => handleRowChange(index, "les", event.target.value)}
-                                className="w-full rounded-md border px-2 py-1"
-                              />
-                            </td>
-                            <td className="px-2 py-1">
-                              <label className="sr-only" htmlFor={`row-onderwerp-${index}`}>
-                                Onderwerp rij {index + 1}
-                              </label>
-                              <input
-                                id={`row-onderwerp-${index}`}
-                                value={row.onderwerp ?? ""}
-                                onChange={(event) => handleRowChange(index, "onderwerp", event.target.value)}
-                                className="w-full rounded-md border px-2 py-1"
-                              />
-                            </td>
-                            <td className="px-2 py-1">
-                              <label className="sr-only" htmlFor={`row-huiswerk-${index}`}>
-                                Huiswerk rij {index + 1}
-                              </label>
-                              <input
-                                id={`row-huiswerk-${index}`}
-                                value={row.huiswerk ?? ""}
-                                onChange={(event) => handleRowChange(index, "huiswerk", event.target.value)}
-                                className="w-full rounded-md border px-2 py-1"
-                              />
+                        {localRows.map((row, index) => {
+                          const hasMissingWeek = missingWeekIndexes.includes(index);
+                          const duplicateInfo = duplicateIndexMap.get(index);
+                          return (
+                            <tr
+                              key={index}
+                              className={clsx(
+                                index % 2 === 0 ? "bg-white" : "bg-slate-50",
+                                attentionIndexSet.has(index) && "bg-amber-50"
+                              )}
+                            >
+                              <td className="px-2 py-1">
+                                <label className="sr-only" htmlFor={`row-week-${index}`}>
+                                  Week rij {index + 1}
+                                </label>
+                                <input
+                                  id={`row-week-${index}`}
+                                  type="number"
+                                  min={1}
+                                  max={53}
+                                  value={row.week ?? ""}
+                                  onChange={(event) => handleRowWeekChange(index, event.target.value)}
+                                  className={clsx(
+                                    "w-20 rounded-md border px-2 py-1",
+                                    hasMissingWeek
+                                      ? "border-amber-500 focus:border-amber-500 focus:ring-amber-200"
+                                      : ""
+                                  )}
+                                />
+                                {hasMissingWeek && (
+                                  <div className="mt-1 text-[11px] font-medium text-amber-700">
+                                    Weeknummer ontbreekt
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-2 py-1">
+                                <label className="sr-only" htmlFor={`row-date-${index}`}>
+                                  Datum rij {index + 1}
+                                </label>
+                                <input
+                                  id={`row-date-${index}`}
+                                  type="date"
+                                  value={row.datum ?? ""}
+                                  onChange={(event) => handleRowDateChange(index, event.target.value)}
+                                  className={clsx(
+                                    "rounded-md border px-2 py-1",
+                                    duplicateInfo
+                                      ? "border-amber-500 focus:border-amber-500 focus:ring-amber-200"
+                                      : ""
+                                  )}
+                                />
+                                {duplicateInfo && (
+                                  <div className="mt-1 text-[11px] font-medium text-amber-700">
+                                    Dubbele datum met {formatRowList(duplicateInfo.peers)}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-2 py-1">
+                                <label className="sr-only" htmlFor={`row-les-${index}`}>
+                                  Les rij {index + 1}
+                                </label>
+                                <input
+                                  id={`row-les-${index}`}
+                                  value={row.les ?? ""}
+                                  onChange={(event) => handleRowChange(index, "les", event.target.value)}
+                                  className="w-full rounded-md border px-2 py-1"
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <label className="sr-only" htmlFor={`row-onderwerp-${index}`}>
+                                  Onderwerp rij {index + 1}
+                                </label>
+                                <input
+                                  id={`row-onderwerp-${index}`}
+                                  value={row.onderwerp ?? ""}
+                                  onChange={(event) => handleRowChange(index, "onderwerp", event.target.value)}
+                                  className="w-full rounded-md border px-2 py-1"
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <label className="sr-only" htmlFor={`row-huiswerk-${index}`}>
+                                  Huiswerk rij {index + 1}
+                                </label>
+                                <input
+                                  id={`row-huiswerk-${index}`}
+                                  value={row.huiswerk ?? ""}
+                                  onChange={(event) => handleRowChange(index, "huiswerk", event.target.value)}
+                                  className="w-full rounded-md border px-2 py-1"
+                                />
+                              </td>
+                              <td className="px-2 py-1 align-top">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveRow(index)}
+                                  className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                >
+                                  Rij verwijderen
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {localRows.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="px-2 py-3 text-center text-xs text-slate-500">
+                              Geen rijen meer over. Voeg minimaal één rij toe via de parser of upload opnieuw.
                             </td>
                           </tr>
-                        ))}
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -550,6 +766,11 @@ export default function Review() {
                     </button>
                   </div>
                 </div>
+                {hasBlockingWarnings && (
+                  <div className="text-xs text-amber-700">
+                    Los alle onzekerheden op en sla de wijzigingen op voordat je definitief kunt opslaan.
+                  </div>
+                )}
               </form>
             )}
           </main>

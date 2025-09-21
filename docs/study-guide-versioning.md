@@ -24,6 +24,21 @@ Deze release introduceert versiebeheer voor alle studiewijzers en een verplichte
 - De frontend opent na upload automatisch de reviewwizard. Zolang er waarschuwingen actief zijn, blijft de commitknop uitgeschakeld. De gebruiker kan metadata en rijen corrigeren en het diff-overzicht bekijken voordat hij commit.
 - Na een succesvolle commit hydrate de planner-store meteen met de nieuwe versie; bestaande consumenten kunnen via de oude endpoints blijven werken.
 
+### Navigatie en openstaande reviews
+
+- De uploadspagina toont een amberkleurige callout zodra er pending reviews klaarstaan. Van daaruit kun je direct naar de reviewwizard springen of een specifieke review kiezen.
+- In de wizard zie je links een lijst met openstaande reviews inclusief diff-samenvatting en waarschuwingen. Klik op een item om over te schakelen; het actieve item wordt gemarkeerd.
+
+### Onzekerheden oplossen
+
+| Waarschuwing        | Betekenis & oplossing |
+| ------------------- | --------------------- |
+| **Vak onbekend**    | Vul het vak in bij de metadata en kies *Wijzigingen opslaan* om het vak te bevestigen. |
+| **Week ontbreekt**  | Controleer welke rijen in de tabel het label *Weeknummer ontbreekt* tonen. Vul het weeknummer in of verwijder de rij als deze niet meegenomen hoeft te worden. |
+| **Dubbele datum**   | Dezelfde datum komt meerdere keren voor. Pas de datum aan of gebruik de knop *Rij verwijderen* om dubbelen te schrappen. Sla daarna de review op. |
+
+Je kunt rijen direct in de tabel aanpassen, inclusief het verwijderen van rijen die niet gepubliceerd hoeven te worden. Elke wijziging wordt visueel gemarkeerd zodat je precies ziet welke velden aandacht vragen.
+
 ## Frontendwijzigingen
 
 - Uploadpagina bevat nu een versiehistoriepaneel inclusief diffkleuren per veld.
