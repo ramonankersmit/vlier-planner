@@ -16,13 +16,11 @@ export default function Settings() {
     removeCustomTheme,
     theme,
     setThemeColor,
-    resetTheme,
     backgroundImage,
     setBackgroundImage,
     resetBackgroundImage,
     surfaceOpacity,
     setSurfaceOpacity,
-    resetSurfaceOpacity,
     enableHomeworkEditing,
     setEnableHomeworkEditing,
     enableCustomHomework,
@@ -182,12 +180,6 @@ export default function Settings() {
     };
     reader.readAsDataURL(file);
     event.target.value = "";
-  };
-
-  const resetAllAppearance = () => {
-    resetTheme();
-    resetBackgroundImage();
-    resetSurfaceOpacity();
   };
 
   const handleResetApplication = async () => {
@@ -503,12 +495,6 @@ export default function Settings() {
               disabled={!canEditActiveTheme || !backgroundImage}
             >
               Achtergrond resetten
-            </button>
-            <button
-              onClick={resetAllAppearance}
-              className="rounded-md border theme-border theme-surface px-3 py-1 text-sm"
-            >
-              Reset thema &amp; achtergrond
             </button>
           </div>
           {backgroundImage ? (
