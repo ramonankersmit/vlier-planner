@@ -11,6 +11,7 @@ from typing import Any, TYPE_CHECKING
 
 import uvicorn
 from uvicorn.config import LOGGING_CONFIG
+from uvicorn.main import STARTUP_FAILURE
 
 try:  # pragma: no cover - afhankelijk van platform
     import pystray
@@ -240,6 +241,9 @@ def main() -> None:
     finally:
         _SERVER = None
         _stop_tray_icon()
+
+    if not server.started:
+        sys.exit(STARTUP_FAILURE)
 
 
 if __name__ == "__main__":
