@@ -241,6 +241,39 @@ describe("Uploads page flow", () => {
     await waitFor(() => expect(screen.getByText(/Review pagina/)).toBeInTheDocument());
   });
 
+  it("toont een groen vinkje met waarschuwingstekst bij niet-blokkerende waarschuwingen", async () => {
+    const pendingReview = makeReview({
+      parseId: "parse-warning",
+      warnings: {
+        unknownSubject: false,
+        missingWeek: false,
+        duplicateDate: false,
+        duplicateWeek: true,
+      },
+    });
+
+    await act(async () => {
+      const store = useAppStore.getState();
+      store.setPendingReview(pendingReview);
+      store.setActiveReview(null);
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/uploads"]}>
+        <Routes>
+          <Route path="/uploads" element={<Uploads />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const table = screen.getByRole("table");
+    const rows = within(table).getAllByRole("row");
+    const row = rows.find((candidate) => within(candidate).queryByText(/demo\.docx/));
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByTestId("status-icon-success")).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByText(/Dubbele week/)).toBeInTheDocument();
+  });
+
   it("start nieuwe review voor actieve studiewijzer via de actieknop", async () => {
     const meta = makeMeta();
     const rows = [makeRow()];

@@ -1179,24 +1179,14 @@ export default function Uploads() {
                       ? entry.review.diffSummary
                       : entry.guide?.latestVersion.diffSummary ?? null;
                   const parseLabel = formatDiffSummaryLabel(parseSummary);
-                  const statusVariant: "success" | "warning" | "error" =
-                    entry.kind === "pending"
-                      ? warnings.length
-                        ? "warning"
-                        : "error"
-                      : "success";
+                  const hasBlockingWarnings =
+                    entry.kind === "pending" &&
+                    (entry.review.warnings.unknownSubject || entry.review.warnings.missingWeek);
+                  const statusVariant: "success" | "error" =
+                    entry.kind === "pending" && hasBlockingWarnings ? "error" : "success";
                   const statusColorClasses =
-                    statusVariant === "success"
-                      ? "text-emerald-600"
-                      : statusVariant === "warning"
-                      ? "text-amber-600"
-                      : "text-red-600";
-                  const StatusIcon =
-                    statusVariant === "success"
-                      ? CheckCircle2
-                      : statusVariant === "warning"
-                      ? AlertTriangle
-                      : XOctagon;
+                    statusVariant === "success" ? "text-emerald-600" : "text-red-600";
+                  const StatusIcon = statusVariant === "success" ? CheckCircle2 : XOctagon;
                   const statusMessage =
                     entry.kind === "pending"
                       ? warnings.length
@@ -1204,13 +1194,27 @@ export default function Uploads() {
                         : "Controleer en commit"
                       : null;
                   const statusTextClass = clsx(
-                    "text-xs",
+                    "mt-0.5 flex items-center gap-1 text-xs",
                     entry.kind === "pending"
-                      ? warnings.length
+                      ? hasBlockingWarnings
+                        ? "text-red-600"
+                        : warnings.length
                         ? "text-amber-700"
-                        : "text-red-600"
+                        : "theme-muted"
                       : "theme-muted"
                   );
+                  const statusIconTestId =
+                    entry.kind === "pending" && hasBlockingWarnings
+                      ? "status-icon-error"
+                      : "status-icon-success";
+                  const StatusMessageIcon =
+                    entry.kind === "pending"
+                      ? hasBlockingWarnings
+                        ? XOctagon
+                        : warnings.length
+                        ? AlertTriangle
+                        : Info
+                      : null;
                   const rowClassName = clsx(
                     i > 0 ? "border-t theme-border" : "",
                     entry.kind === "pending" && "bg-amber-50"
@@ -1309,12 +1313,22 @@ export default function Uploads() {
                           <StatusIcon
                             size={14}
                             aria-hidden="true"
+                            data-testid={statusIconTestId}
                             className={clsx("mt-0.5 flex-shrink-0", statusColorClasses)}
                           />
                           <div>
                             <div>{parseLabel}</div>
                             {statusMessage && (
-                              <div className={statusTextClass}>{statusMessage}</div>
+                              <div className={statusTextClass}>
+                                {StatusMessageIcon && (
+                                  <StatusMessageIcon
+                                    size={12}
+                                    aria-hidden="true"
+                                    className="flex-shrink-0"
+                                  />
+                                )}
+                                <span>{statusMessage}</span>
+                              </div>
                             )}
                           </div>
                         </div>
