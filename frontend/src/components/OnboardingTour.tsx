@@ -336,10 +336,10 @@ export function OnboardingTourProvider({ children }: { children: React.ReactNode
       {isActive && portalTarget && step
         ? createPortal(
             <div className="fixed inset-0 z-[9999]" aria-live="polite">
-              <div className="absolute inset-0 bg-slate-900/70" aria-hidden="true" />
+              <div className="absolute inset-0 bg-slate-900/10" aria-hidden="true" />
               {highlightStyle ? (
                 <div
-                  className="pointer-events-none absolute border-2 border-white/90 bg-white/40 shadow-[0_0_0_9999px_rgba(15,23,42,0.6)]"
+                  className="pointer-events-none absolute border-2 border-white/90 shadow-[0_0_0_9999px_rgba(15,23,42,0.6)]"
                   style={highlightStyle}
                   aria-hidden="true"
                 />
