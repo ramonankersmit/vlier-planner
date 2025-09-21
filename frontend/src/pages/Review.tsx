@@ -1,7 +1,11 @@
 import React from "react";
 import clsx from "clsx";
 import { useNavigate, useParams } from "react-router-dom";
-import { DiffRowsList, DiffSummaryBadges } from "../components/DiffViewer";
+import {
+  DiffSummaryBadges,
+  diffStatusLabels,
+  diffStatusStyles,
+} from "../components/DiffViewer";
 import {
   apiCommitReview,
   apiDeleteReview,
@@ -10,6 +14,8 @@ import {
   apiUpdateReview,
   type CommitResponse,
   type DocDiff,
+  type DiffStatus,
+  type DiffRow,
   type DocRow,
   type ReviewDraft,
   type ReviewUpdatePayload,
@@ -80,6 +86,20 @@ const computeDuplicateGroups = (rows: DocRow[]) => {
   return Array.from(groups.entries())
     .filter(([, indexes]) => indexes.length > 1)
     .map(([date, indexes]) => ({ date, indexes }));
+};
+
+const diffRowBackground: Record<DiffStatus, string> = {
+  added: "bg-emerald-50",
+  changed: "bg-amber-50",
+  removed: "bg-rose-50",
+  unchanged: "bg-white",
+};
+
+const diffFieldHighlight: Record<DiffStatus, string> = {
+  added: "border-emerald-300 bg-emerald-50 focus:border-emerald-400 focus:ring-emerald-200",
+  changed: "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-amber-200",
+  removed: "border-rose-300 bg-rose-50 focus:border-rose-400 focus:ring-rose-200",
+  unchanged: "",
 };
 
 export default function Review() {
@@ -170,6 +190,21 @@ export default function Review() {
     return map;
   }, [duplicateGroups, localRows]);
 
+  const diffByIndex = React.useMemo(() => {
+    const map = new Map<number, DiffRow>();
+    activeReview?.diff.forEach((entry) => {
+      if (entry.status !== "removed") {
+        map.set(entry.index, entry);
+      }
+    });
+    return map;
+  }, [activeReview]);
+
+  const removedDiffs = React.useMemo(
+    () => activeReview?.diff.filter((entry) => entry.status === "removed") ?? [],
+    [activeReview]
+  );
+
   const missingWeekIndexes = React.useMemo(() => {
     const indexes: number[] = [];
     localRows.forEach((row, index) => {
@@ -184,22 +219,6 @@ export default function Review() {
   }, [localRows]);
 
   const hasEnabledRows = React.useMemo(() => localRows.some((row) => row.enabled !== false), [localRows]);
-
-  const attentionIndexSet = React.useMemo(() => {
-    const indices = new Set<number>();
-    missingWeekIndexes.forEach((index) => indices.add(index));
-    duplicateGroupsEnabled.forEach((group) => {
-      group.indexes.forEach((idx) => indices.add(idx));
-    });
-    duplicateGroups.forEach((group) => {
-      group.indexes.forEach((idx) => {
-        if (localRows[idx]?.enabled === false) {
-          indices.add(idx);
-        }
-      });
-    });
-    return indices;
-  }, [missingWeekIndexes, duplicateGroupsEnabled, duplicateGroups, localRows]);
 
   const warningBadges = React.useMemo(() => {
     if (!localMeta) {
@@ -577,6 +596,7 @@ export default function Review() {
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
+                      <th className="px-2 py-1 text-left">Status</th>
                       <th className="px-2 py-1 text-left">Actief</th>
                       <th className="px-2 py-1 text-left">Week</th>
                       <th className="px-2 py-1 text-left">Datum</th>
@@ -590,15 +610,28 @@ export default function Review() {
                       const hasMissingWeek = missingWeekIndexes.includes(index);
                       const duplicateInfo = duplicateIndexMap.get(index);
                       const isDisabled = row.enabled === false;
+                      const rowDiff = diffByIndex.get(index);
+                      const rowStatus = (rowDiff?.status ?? "unchanged") as DiffStatus;
+                      const resolveFieldStatus = (field: string): DiffStatus => {
+                        const diffField = rowDiff?.fields?.[field];
+                        const status = diffField?.status ?? rowStatus;
+                        return status as DiffStatus;
+                      };
                       return (
                         <tr
                           key={index}
-                          className={clsx(
-                            index % 2 === 0 ? "bg-white" : "bg-slate-50",
-                            attentionIndexSet.has(index) && "bg-amber-50",
-                            isDisabled && "opacity-70"
-                          )}
+                          className={clsx(diffRowBackground[rowStatus], isDisabled && "opacity-70")}
                         >
+                          <td className="px-2 py-1 align-top">
+                            <span
+                              className={clsx(
+                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide",
+                                diffStatusStyles[rowStatus]
+                              )}
+                            >
+                              {diffStatusLabels[rowStatus]}
+                            </span>
+                          </td>
                           <td className="px-2 py-1 align-top">
                             <label className="sr-only" htmlFor={`row-enabled-${index}`}>
                               Rij {index + 1} activeren
@@ -610,8 +643,13 @@ export default function Review() {
                               onChange={() => handleToggleRowEnabled(index)}
                               className="h-4 w-4"
                             />
+                            {rowDiff?.fields?.enabled?.status === "changed" && (
+                              <div className="mt-1 text-[11px] text-amber-700">
+                                Rijstatus gewijzigd sinds vorige versie
+                              </div>
+                            )}
                           </td>
-                          <td className="px-2 py-1">
+                          <td className="px-2 py-1 align-top">
                             <label className="sr-only" htmlFor={`row-week-${index}`}>
                               Week rij {index + 1}
                             </label>
@@ -624,6 +662,7 @@ export default function Review() {
                               onChange={(event) => handleRowWeekChange(index, event.target.value)}
                               className={clsx(
                                 "w-20 rounded-md border px-2 py-1",
+                                diffFieldHighlight[resolveFieldStatus("week")],
                                 hasMissingWeek ? "border-amber-500 focus:border-amber-500 focus:ring-amber-200" : ""
                               )}
                               disabled={isDisabled}
@@ -634,7 +673,7 @@ export default function Review() {
                               </div>
                             )}
                           </td>
-                          <td className="px-2 py-1">
+                          <td className="px-2 py-1 align-top">
                             <label className="sr-only" htmlFor={`row-date-${index}`}>
                               Datum rij {index + 1}
                             </label>
@@ -645,6 +684,7 @@ export default function Review() {
                               onChange={(event) => handleRowDateChange(index, event.target.value)}
                               className={clsx(
                                 "rounded-md border px-2 py-1",
+                                diffFieldHighlight[resolveFieldStatus("datum")],
                                 duplicateInfo && duplicateInfo.enabledPeers.length > 0
                                   ? "border-amber-500 focus:border-amber-500 focus:ring-amber-200"
                                   : ""
@@ -660,7 +700,7 @@ export default function Review() {
                               <div className="mt-1 text-[11px] text-slate-600">Rij uitgeschakeld</div>
                             )}
                           </td>
-                          <td className="px-2 py-1">
+                          <td className="px-2 py-1 align-top">
                             <label className="sr-only" htmlFor={`row-les-${index}`}>
                               Les rij {index + 1}
                             </label>
@@ -668,11 +708,14 @@ export default function Review() {
                               id={`row-les-${index}`}
                               value={row.les ?? ""}
                               onChange={(event) => handleRowChange(index, "les", event.target.value)}
-                              className="w-full rounded-md border px-2 py-1"
+                              className={clsx(
+                                "w-full rounded-md border px-2 py-1",
+                                diffFieldHighlight[resolveFieldStatus("les")]
+                              )}
                               disabled={isDisabled}
                             />
                           </td>
-                          <td className="px-2 py-1">
+                          <td className="px-2 py-1 align-top">
                             <label className="sr-only" htmlFor={`row-onderwerp-${index}`}>
                               Onderwerp rij {index + 1}
                             </label>
@@ -680,11 +723,14 @@ export default function Review() {
                               id={`row-onderwerp-${index}`}
                               value={row.onderwerp ?? ""}
                               onChange={(event) => handleRowChange(index, "onderwerp", event.target.value)}
-                              className="w-full rounded-md border px-2 py-1"
+                              className={clsx(
+                                "w-full rounded-md border px-2 py-1",
+                                diffFieldHighlight[resolveFieldStatus("onderwerp")]
+                              )}
                               disabled={isDisabled}
                             />
                           </td>
-                          <td className="px-2 py-1">
+                          <td className="px-2 py-1 align-top">
                             <label className="sr-only" htmlFor={`row-huiswerk-${index}`}>
                               Huiswerk rij {index + 1}
                             </label>
@@ -692,16 +738,75 @@ export default function Review() {
                               id={`row-huiswerk-${index}`}
                               value={row.huiswerk ?? ""}
                               onChange={(event) => handleRowChange(index, "huiswerk", event.target.value)}
-                              className="w-full rounded-md border px-2 py-1"
+                              className={clsx(
+                                "w-full rounded-md border px-2 py-1",
+                                diffFieldHighlight[resolveFieldStatus("huiswerk")]
+                              )}
                               disabled={isDisabled}
                             />
                           </td>
                         </tr>
                       );
                     })}
-                    {localRows.length === 0 && (
+                    {removedDiffs.map((diff) => {
+                      const formatOldValue = (fieldKey: string): string => {
+                        const field = diff.fields[fieldKey];
+                        const value = field?.old;
+                        if (value == null || value === "") {
+                          return "—";
+                        }
+                        if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                          return formatDutchDate(value);
+                        }
+                        return String(value);
+                      };
+                      return (
+                        <tr
+                          key={`removed-${diff.index}`}
+                          className={clsx(diffRowBackground.removed, "text-rose-800")}
+                        >
+                          <td className="px-2 py-1 align-top">
+                            <span
+                              className={clsx(
+                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide",
+                                diffStatusStyles.removed
+                              )}
+                            >
+                              {diffStatusLabels.removed}
+                            </span>
+                          </td>
+                          <td className="px-2 py-1 align-top">—</td>
+                          <td className="px-2 py-1 align-top">
+                            <div className="rounded-md border border-rose-200 bg-white/60 px-2 py-1 text-sm">
+                              {formatOldValue("week")}
+                            </div>
+                          </td>
+                          <td className="px-2 py-1 align-top">
+                            <div className="rounded-md border border-rose-200 bg-white/60 px-2 py-1 text-sm">
+                              {formatOldValue("datum")}
+                            </div>
+                          </td>
+                          <td className="px-2 py-1 align-top">
+                            <div className="rounded-md border border-rose-200 bg-white/60 px-2 py-1 text-sm">
+                              {formatOldValue("les")}
+                            </div>
+                          </td>
+                          <td className="px-2 py-1 align-top">
+                            <div className="rounded-md border border-rose-200 bg-white/60 px-2 py-1 text-sm">
+                              {formatOldValue("onderwerp")}
+                            </div>
+                          </td>
+                          <td className="px-2 py-1 align-top">
+                            <div className="rounded-md border border-rose-200 bg-white/60 px-2 py-1 text-sm">
+                              {formatOldValue("huiswerk")}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {localRows.length === 0 && removedDiffs.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-2 py-3 text-center text-xs text-slate-500">
+                        <td colSpan={7} className="px-2 py-3 text-center text-xs text-slate-500">
                           Geen rijen meer over. Voeg minimaal één rij toe via de parser of upload opnieuw.
                         </td>
                       </tr>
@@ -710,9 +815,13 @@ export default function Review() {
                 </table>
               </div>
 
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
-                <DiffRowsList diff={activeReview.diff} emptyLabel="Geen verschillen met de vorige versie." />
-              </div>
+              {removedDiffs.length > 0 && (
+                <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+                  {removedDiffs.length === 1
+                    ? "1 rij uit de vorige versie wordt verwijderd na commit."
+                    : `${removedDiffs.length} rijen uit de vorige versie worden verwijderd na commit.`}
+                </div>
+              )}
             </section>
 
             <div className="flex flex-wrap items-center justify-between gap-3">

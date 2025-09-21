@@ -170,6 +170,9 @@ function reviewToDocRecord(review: ReviewDraft): DocRecord {
 function hasDuplicateDates(rows: DocRow[]): boolean {
   const seen = new Set<string>();
   for (const row of rows) {
+    if (row.enabled === false) {
+      continue;
+    }
     const value = row?.datum?.trim();
     if (!value) {
       continue;

@@ -146,6 +146,8 @@ describe("Review wizard", () => {
     await waitFor(() => expect(mockedApi.apiGetReview).toHaveBeenCalledTimes(1));
 
     expect(await screen.findByText(/Los deze aandachtspunten op/i)).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Status/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/^Nieuw$/i).length).toBeGreaterThan(0);
     expect(
       screen.getByText(/Vul het vak in bij de metadata zodat de studiewijzer gekoppeld kan worden\./i)
     ).toBeInTheDocument();

@@ -118,8 +118,8 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
     assert parse_data["warnings"]["missingWeek"] is True
     assert parse_data["warnings"]["duplicateDate"] is False
     assert parse_data["diffSummary"]["added"] == 2
-    assert parse_data["rows"][0]["enabled"] is False
-    assert parse_data["rows"][1]["enabled"] is True
+    assert parse_data["rows"][0]["enabled"] is True
+    assert parse_data["rows"][1]["enabled"] is False
 
     parse_id = parse_data["parseId"]
     review_data = api_client.get(f"/api/reviews/{parse_id}").json()

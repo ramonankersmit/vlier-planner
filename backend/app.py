@@ -402,17 +402,19 @@ def _ensure_rows(rows: List[DocRow]) -> List[DocRow]:
 
 
 def _auto_disable_duplicate_heads(rows: List[DocRow]) -> None:
-    seen: Dict[str, int] = {}
+    active_indices: Dict[str, int] = {}
     for index, row in enumerate(rows):
         value = (row.datum or "").strip()
         if not value:
             continue
-        if value not in seen:
-            seen[value] = index
+        if row.enabled is False:
+            # Keep disabled duplicates untouched; another active row may appear later.
             continue
-        first_idx = seen[value]
-        if rows[first_idx].enabled:
-            rows[first_idx].enabled = False
+        active_index = active_indices.get(value)
+        if active_index is None or rows[active_index].enabled is False:
+            active_indices[value] = index
+            continue
+        rows[index].enabled = False
 
 
 def _compute_warnings(meta: DocMeta, rows: List[DocRow]) -> Dict[str, bool]:
