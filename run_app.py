@@ -34,6 +34,17 @@ LOG_LEVEL_ENV_VAR = "VLIER_LOG_LEVEL"
 TRAY_THREAD_NAME = "vlier-planner-tray"
 FILE_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 _FILE_HANDLER_SETTINGS: dict[str, Any] | None = None
+_ICON_FILENAMES = ("favicon.ico", "logo.png")
+_ICON_SEARCH_DIRECTORIES = (
+    "",
+    "frontend",
+    "frontend/public",
+    "public",
+    "dist",
+    "static/dist",
+    "backend/static",
+    "backend/static/dist",
+)
 
 def _get_configured_log_level(default: int = logging.WARNING) -> int:
     """Resolve the desired log level from the environment."""
@@ -178,13 +189,70 @@ def open_browser(host: str, port: int, delay: float = 1.0) -> None:
     threading.Timer(delay, webbrowser.open, args=(url, 2)).start()
 
 
+def _iter_icon_candidates() -> list[Path]:
+    roots: list[Path] = []
+
+    if getattr(sys, "frozen", False):  # pragma: no cover - platform afhankelijk
+        exe_path = Path(sys.executable).resolve()
+        roots.append(exe_path.parent)
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            roots.append(Path(meipass))
+
+    module_root = Path(__file__).resolve().parent
+    roots.append(module_root)
+
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    for root in roots:
+        for directory in _ICON_SEARCH_DIRECTORIES:
+            for filename in _ICON_FILENAMES:
+                candidate = (root / directory / filename).resolve()
+                if candidate in seen:
+                    continue
+                seen.add(candidate)
+                candidates.append(candidate)
+
+    return candidates
+
+
+def _load_icon_from_disk(size: tuple[int, int]) -> "Image.Image" | None:
+    if Image is None:  # pragma: no cover - afhankelijk van import
+        return None
+
+    for candidate in _iter_icon_candidates():
+        if not candidate.is_file():
+            continue
+
+        try:
+            with Image.open(candidate) as source:
+                image = source.convert("RGBA")
+        except Exception:  # pragma: no cover - afhankelijk van IO
+            LOGGER.warning("Kon system tray icoon %s niet laden", candidate)
+            continue
+
+        if image.size != size:
+            resample = getattr(Image, "LANCZOS", Image.BICUBIC)
+            image = image.resize(size, resample=resample)
+
+        LOGGER.debug("System tray icoon geladen vanaf %s", candidate)
+        return image
+
+    return None
+
+
 def _create_tray_image() -> "Image.Image":
     size = (64, 64)
-    image = Image.new("RGBA", size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
+    image = _load_icon_from_disk(size)
+    if image is not None:
+        return image
+
+    fallback = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(fallback)
     draw.ellipse((8, 8, 56, 56), fill=(12, 77, 162, 255))
     draw.rectangle((22, 28, 42, 46), fill=(255, 255, 255, 255))
-    return image
+    return fallback
 
 
 def _request_shutdown() -> None:
