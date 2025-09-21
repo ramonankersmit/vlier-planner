@@ -339,7 +339,7 @@ export function OnboardingTourProvider({ children }: { children: React.ReactNode
               <div className="absolute inset-0 bg-slate-900/70" aria-hidden="true" />
               {highlightStyle ? (
                 <div
-                  className="pointer-events-none absolute border-2 border-white/90 bg-white/20 shadow-[0_0_0_9999px_rgba(15,23,42,0.6)] backdrop-blur-[1px]"
+                  className="pointer-events-none absolute border-2 border-white/90 bg-white/40 shadow-[0_0_0_9999px_rgba(15,23,42,0.6)]"
                   style={highlightStyle}
                   aria-hidden="true"
                 />
