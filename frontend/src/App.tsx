@@ -164,7 +164,10 @@ export default function App() {
 
     (async () => {
       try {
-        const api = await import("./lib/api");
+        const [api, prompt] = await Promise.all([
+          import("./lib/api"),
+          import("./lib/updatePrompt"),
+        ]);
         const result = await api.apiCheckForUpdate();
         if (cancelled) {
           return;
@@ -176,36 +179,7 @@ export default function App() {
           return;
         }
         lastPromptedVersionRef.current = result.latestVersion;
-
-        const rawNotes = (result.notes ?? "").trim();
-        const maxLength = 600;
-        const snippet =
-          rawNotes && rawNotes.length > maxLength
-            ? `${rawNotes.slice(0, maxLength - 3)}...`
-            : rawNotes;
-
-        let message = `Er is een nieuwe versie beschikbaar (v${result.latestVersion}).`;
-        message += `\nHuidige versie: v${result.currentVersion}.`;
-        if (snippet) {
-          message += `\n\nWijzigingen:\n${snippet}`;
-        }
-        message += "\n\nWil je de update nu installeren?";
-
-        const confirmed = window.confirm(message);
-        if (!confirmed) {
-          return;
-        }
-
-        try {
-          await api.apiInstallUpdate(result.latestVersion);
-          window.alert(
-            "De installer is gestart. Sluit Vlier Planner af wanneer daarom wordt gevraagd om de update te voltooien."
-          );
-        } catch (error) {
-          console.error("Kon update niet starten:", error);
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          window.alert(`Update kon niet worden gestart: ${errorMessage}`);
-        }
+        await prompt.promptUpdateInstallation(result);
       } catch (error) {
         if (!cancelled) {
           console.warn("Automatische update-check mislukt:", error);

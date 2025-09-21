@@ -27,6 +27,11 @@ export default function Settings() {
   } = useAppStore();
   const docs = useAppStore((s) => s.docs) ?? [];
 
+  const [isCheckingUpdate, setIsCheckingUpdate] = React.useState(false);
+  const [updateCheckStatus, setUpdateCheckStatus] = React.useState<
+    { type: "info" | "success" | "error"; message: string } | null
+  >(null);
+
   const allVakken = React.useMemo(
     () => Array.from(new Set(docs.filter((d) => d.enabled).map((d) => d.vak))).sort(),
     [docs]
@@ -130,6 +135,51 @@ export default function Settings() {
       await hydrateDocsFromApi();
     } catch (error) {
       console.error("Kon plannerdata niet herladen", error);
+    }
+  };
+
+  const handleManualUpdateCheck = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateCheckStatus(null);
+    try {
+      const [api, prompt] = await Promise.all([
+        import("../lib/api"),
+        import("../lib/updatePrompt"),
+      ]);
+      const result = await api.apiCheckForUpdate();
+      if (!result.updateAvailable || !result.latestVersion) {
+        setUpdateCheckStatus({
+          type: "info",
+          message: `Je gebruikt de nieuwste versie (v${result.currentVersion}).`,
+        });
+        return;
+      }
+
+      const updateStarted = await prompt.promptUpdateInstallation(result, {
+        suppressSuccessAlert: true,
+      });
+
+      if (updateStarted) {
+        setUpdateCheckStatus({
+          type: "success",
+          message:
+            "De update is gestart. Sluit Vlier Planner af wanneer de installer daarom vraagt om te voltooien.",
+        });
+      } else {
+        setUpdateCheckStatus({
+          type: "info",
+          message: `Er is een update beschikbaar (v${result.latestVersion}). Je kunt deze later opnieuw starten.`,
+        });
+      }
+    } catch (error) {
+      console.error("Handmatige update-check mislukt:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      setUpdateCheckStatus({
+        type: "error",
+        message: `Controle mislukt: ${message}`,
+      });
+    } finally {
+      setIsCheckingUpdate(false);
     }
   };
 
@@ -250,6 +300,29 @@ export default function Settings() {
               <div className="text-sm font-medium theme-text">Automatisch op updates controleren</div>
               <div className="text-xs leading-snug theme-muted">
                 Vraag bij het opstarten om een nieuwe versie te installeren wanneer die beschikbaar is.
+              </div>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <button
+                  type="button"
+                  onClick={handleManualUpdateCheck}
+                  className="w-full sm:w-auto rounded-md border theme-border theme-surface px-3 py-1 text-sm disabled:opacity-60"
+                  disabled={isCheckingUpdate}
+                >
+                  {isCheckingUpdate ? "Controleren..." : "Controleer nu op updates"}
+                </button>
+                {updateCheckStatus ? (
+                  <span
+                    className={`text-xs sm:text-sm ${
+                      updateCheckStatus.type === "error"
+                        ? "text-red-600"
+                        : updateCheckStatus.type === "success"
+                        ? "text-green-600"
+                        : "theme-muted"
+                    }`}
+                  >
+                    {updateCheckStatus.message}
+                  </span>
+                ) : null}
               </div>
             </div>
           </label>
