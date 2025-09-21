@@ -140,6 +140,62 @@ describe("Uploads page flow", () => {
     expect(screen.queryByText(/In gebruik/i)).not.toBeInTheDocument();
   });
 
+  it("commits automatisch bij enkel dubbele waarschuwingen", async () => {
+    const review = makeReview({
+      parseId: "parse-dup",
+      rows: [
+        makeRow({ week: 44, datum: "2024-10-28", enabled: true }),
+        makeRow({ week: 44, datum: "2024-10-28", enabled: false }),
+      ],
+      warnings: {
+        unknownSubject: false,
+        missingWeek: false,
+        duplicateDate: false,
+        duplicateWeek: true,
+      },
+    });
+    const commitResponse: CommitResponse = {
+      guideId: review.meta.fileId,
+      version: {
+        versionId: 2,
+        createdAt: "2024-02-01T09:00:00.000Z",
+        meta: makeMeta({ uploadedAt: "2024-02-01T09:00:00.000Z" }),
+        diffSummary: review.diffSummary,
+      },
+    };
+
+    mockedApi.apiUploadDoc.mockResolvedValue([review]);
+    mockedApi.apiCommitReview.mockResolvedValue(commitResponse);
+
+    const user = userEvent.setup();
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/uploads"]}>
+        <Routes>
+          <Route path="/uploads" element={<Uploads />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["fake"], "duplicate.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+
+    await act(async () => {
+      await user.upload(fileInput, file);
+    });
+
+    await waitFor(() => expect(mockedApi.apiUploadDoc).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockedApi.apiCommitReview).toHaveBeenCalledWith(review.parseId));
+
+    await waitFor(() => {
+      const state = useAppStore.getState();
+      expect(Object.keys(state.pendingReviews)).toHaveLength(0);
+      expect(state.docs.some((doc) => doc.fileId === commitResponse.guideId)).toBe(true);
+    });
+  });
+
   it("toont pending review met waarschuwingen en start de wizard via de reviewknop", async () => {
     const pendingReview = makeReview({
       parseId: "parse-2",

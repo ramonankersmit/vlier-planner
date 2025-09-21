@@ -204,10 +204,17 @@ function hasDuplicateDates(rows: DocRow[]): boolean {
 }
 
 function hasReviewWarnings(review: ReviewDraft): boolean {
-  if (Object.values(review.warnings).some(Boolean)) {
+  const blockingWarningKeys: Array<keyof ReviewDraft["warnings"]> = [
+    "unknownSubject",
+    "missingWeek",
+  ];
+  if (blockingWarningKeys.some((key) => review.warnings[key])) {
     return true;
   }
-  return hasDuplicateDates(review.rows);
+  if (hasDuplicateDates(review.rows)) {
+    return true;
+  }
+  return false;
 }
 
 function formatDiffSummaryLabel(summary?: DiffSummary | null): string {
