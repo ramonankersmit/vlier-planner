@@ -5,9 +5,12 @@ import os
 import sys
 import threading
 import webbrowser
+from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import uvicorn
+from uvicorn.config import LOGGING_CONFIG
 
 LOG_HANDLER_NAME = "vlier-planner-file"
 
@@ -49,6 +52,22 @@ def _configure_logging() -> None:
     logging.getLogger(__name__).info("Logbestand: %s", log_path)
 
 
+def get_uvicorn_log_config() -> dict[str, Any]:
+    """Return a logging configuration that avoids isatty() calls in Uvicorn."""
+
+    log_config: dict[str, Any] = deepcopy(LOGGING_CONFIG)
+    formatters = log_config.get("formatters", {})
+
+    for formatter_name in ("default", "access"):
+        formatter = formatters.get(formatter_name)
+        if isinstance(formatter, dict):
+            # Ensure Uvicorn does not call isatty() on replaced stdio streams.
+            formatter = {**formatter, "use_colors": False}
+            formatters[formatter_name] = formatter
+
+    return log_config
+
+
 # Ensure the backend knows it should serve the built frontend before it is imported
 os.environ.setdefault("SERVE_FRONTEND", "1")
 _configure_logging()
@@ -84,6 +103,7 @@ def main() -> None:
         host=host,
         port=port,
         log_level=os.getenv("UVICORN_LOG_LEVEL", "info"),
+        log_config=get_uvicorn_log_config(),
     )
 
 
