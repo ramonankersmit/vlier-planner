@@ -41,9 +41,30 @@ def test_uvicorn_log_config_disables_colors(monkeypatch, tmp_path):
     monkeypatch.setenv("VLIER_LOG_FILE", str(tmp_path / "vlier.log"))
     run_app = _import_run_app()
     config = run_app.get_uvicorn_log_config()
-
     assert config["formatters"]["default"]["use_colors"] is False
     assert config["formatters"]["access"]["use_colors"] is False
+
+def test_uvicorn_log_config_writes_to_file(monkeypatch, tmp_path):
+    log_file = tmp_path / "vlier.log"
+    monkeypatch.setenv("VLIER_LOG_FILE", str(log_file))
+    monkeypatch.setenv("VLIER_LOG_LEVEL", "DEBUG")
+
+    run_app = _import_run_app()
+
+    config = run_app.get_uvicorn_log_config()
+
+    handler = config["handlers"][run_app.LOG_HANDLER_NAME]
+    assert handler["filename"] == str(log_file)
+    assert handler["encoding"] == "utf-8"
+    assert handler["formatter"] == "vlier-planner-file"
+    assert handler["level"] == "DEBUG"
+
+    formatter = config["formatters"]["vlier-planner-file"]
+    assert formatter["fmt"] == run_app.FILE_FORMAT
+
+    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        handlers = config["loggers"][logger_name]["handlers"]
+        assert run_app.LOG_HANDLER_NAME in handlers
 
 def test_file_log_level_can_be_configured(monkeypatch, tmp_path):
     monkeypatch.setenv("VLIER_LOG_FILE", str(tmp_path / "vlier.log"))
