@@ -55,6 +55,13 @@ export type ThemeSettings = {
   accentText: string;
 };
 
+export type ThemePreset = {
+  id: string;
+  name: string;
+  settings: ThemeSettings;
+  builtIn?: boolean;
+};
+
 const defaultTheme: ThemeSettings = {
   background: "#f8fafc",
   surface: "#ffffff",
@@ -63,6 +70,45 @@ const defaultTheme: ThemeSettings = {
   muted: "#64748b",
   border: "#e2e8f0",
   accentText: "#ffffff",
+};
+
+const darkTheme: ThemeSettings = {
+  background: "#0f172a",
+  surface: "#1e293b",
+  accent: "#38bdf8",
+  text: "#e2e8f0",
+  muted: "#94a3b8",
+  border: "#334155",
+  accentText: "#0f172a",
+};
+
+const builtinThemePresets: ThemePreset[] = [
+  { id: "default", name: "Standaard", settings: defaultTheme, builtIn: true },
+  { id: "dark", name: "Donker", settings: darkTheme, builtIn: true },
+];
+
+const builtinThemeIds = new Set(builtinThemePresets.map((preset) => preset.id));
+
+const cloneThemeSettings = (theme: ThemeSettings): ThemeSettings => ({ ...theme });
+
+const createThemePresets = (customPresets: ThemePreset[] = []): ThemePreset[] => {
+  const custom = customPresets
+    .filter((preset) => !builtinThemeIds.has(preset.id))
+    .map((preset) => ({
+      id: preset.id,
+      name: preset.name,
+      builtIn: false,
+      settings: cloneThemeSettings(preset.settings),
+    }));
+  return [
+    ...builtinThemePresets.map((preset) => ({
+      id: preset.id,
+      name: preset.name,
+      builtIn: true,
+      settings: cloneThemeSettings(preset.settings),
+    })),
+    ...custom,
+  ];
 };
 
 type State = {
@@ -93,6 +139,15 @@ type State = {
   setMijnVakken: (v: string[]) => void;
   huiswerkWeergave: "perOpdracht" | "gecombineerd";
   setHuiswerkWeergave: (mode: "perOpdracht" | "gecombineerd") => void;
+  themePresets: ThemePreset[];
+  activeThemeId: string;
+  setActiveTheme: (id: string) => void;
+  addCustomTheme: (name: string, settings: ThemeSettings) => void;
+  updateCustomTheme: (
+    id: string,
+    update: { name?: string; settings?: ThemeSettings }
+  ) => void;
+  removeCustomTheme: (id: string) => void;
   theme: ThemeSettings;
   setThemeColor: (key: keyof ThemeSettings, value: string) => void;
   resetTheme: () => void;
@@ -397,6 +452,8 @@ const createInitialState = (): Pick<
   | "homeworkAdjustments"
   | "mijnVakken"
   | "huiswerkWeergave"
+  | "themePresets"
+  | "activeThemeId"
   | "theme"
   | "backgroundImage"
   | "surfaceOpacity"
@@ -420,6 +477,8 @@ const createInitialState = (): Pick<
   homeworkAdjustments: {},
   mijnVakken: [],
   huiswerkWeergave: "perOpdracht",
+  themePresets: createThemePresets(),
+  activeThemeId: "default",
   theme: { ...defaultTheme },
   backgroundImage: null,
   surfaceOpacity: 100,
@@ -708,9 +767,109 @@ export const useAppStore = create<State>()(
       // ----------------------------
       setMijnVakken: (v) => set({ mijnVakken: v }),
       setHuiswerkWeergave: (mode) => set({ huiswerkWeergave: mode }),
+      setActiveTheme: (id) =>
+        set((state) => {
+          const preset = state.themePresets.find((item) => item.id === id);
+          if (!preset) {
+            const fallback = state.themePresets.find((item) => item.id === "default") ??
+              builtinThemePresets[0];
+            return {
+              activeThemeId: fallback.id,
+              theme: cloneThemeSettings(fallback.settings),
+            };
+          }
+          return {
+            activeThemeId: preset.id,
+            theme: cloneThemeSettings(preset.settings),
+          };
+        }),
+      addCustomTheme: (name, settings) => {
+        const trimmed = name.trim();
+        const id = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        set((state) => {
+          const nextPreset: ThemePreset = {
+            id,
+            name: trimmed || "Mijn thema",
+            settings: cloneThemeSettings(settings),
+          };
+          return {
+            themePresets: [...state.themePresets, nextPreset],
+            activeThemeId: id,
+            theme: cloneThemeSettings(settings),
+          };
+        });
+      },
+      updateCustomTheme: (id, update) =>
+        set((state) => {
+          const idx = state.themePresets.findIndex(
+            (preset) => preset.id === id && !preset.builtIn
+          );
+          if (idx === -1) {
+            return {};
+          }
+          const nextPresets = [...state.themePresets];
+          const current = nextPresets[idx];
+          const nextPreset: ThemePreset = {
+            ...current,
+            name: update.name?.trim() ? update.name.trim() : current.name,
+            settings: update.settings
+              ? cloneThemeSettings(update.settings)
+              : cloneThemeSettings(current.settings),
+            builtIn: false,
+          };
+          nextPresets[idx] = nextPreset;
+          const patch: Partial<State> = { themePresets: nextPresets };
+          if (state.activeThemeId === id && update.settings) {
+            patch.theme = cloneThemeSettings(nextPreset.settings);
+          }
+          return patch;
+        }),
+      removeCustomTheme: (id) =>
+        set((state) => {
+          const target = state.themePresets.find((preset) => preset.id === id);
+          if (!target || target.builtIn) {
+            return {};
+          }
+          const nextPresets = state.themePresets.filter((preset) => preset.id !== id);
+          if (state.activeThemeId === id) {
+            const fallback = nextPresets.find((preset) => preset.id === "default") ??
+              builtinThemePresets[0];
+            return {
+              themePresets: nextPresets,
+              activeThemeId: fallback.id,
+              theme: cloneThemeSettings(fallback.settings),
+            };
+          }
+          return {
+            themePresets: nextPresets,
+          };
+        }),
       setThemeColor: (key, value) =>
-        set((state) => ({ theme: { ...state.theme, [key]: value } })),
-      resetTheme: () => set({ theme: { ...defaultTheme } }),
+        set((state) => {
+          const nextTheme = { ...state.theme, [key]: value };
+          const activePresetIdx = state.themePresets.findIndex(
+            (preset) => preset.id === state.activeThemeId && !preset.builtIn
+          );
+          if (activePresetIdx === -1) {
+            return { theme: nextTheme };
+          }
+          const nextPresets = [...state.themePresets];
+          const current = nextPresets[activePresetIdx];
+          nextPresets[activePresetIdx] = {
+            ...current,
+            settings: { ...current.settings, [key]: value },
+          };
+          return { theme: nextTheme, themePresets: nextPresets };
+        }),
+      resetTheme: () =>
+        set((state) => {
+          const fallback = state.themePresets.find((preset) => preset.id === "default") ??
+            builtinThemePresets[0];
+          return {
+            activeThemeId: fallback.id,
+            theme: cloneThemeSettings(fallback.settings),
+          };
+        }),
       setBackgroundImage: (value) => set({ backgroundImage: value }),
       resetBackgroundImage: () => set({ backgroundImage: null }),
       setSurfaceOpacity: (value) =>
@@ -789,7 +948,7 @@ export const useAppStore = create<State>()(
     }),
     {
       name: "vlier-planner-state",
-      version: 2,
+      version: 3,
       partialize: (state) => ({
         docs: state.docs,
         docRows: state.docRows,
@@ -798,6 +957,8 @@ export const useAppStore = create<State>()(
         homeworkAdjustments: state.homeworkAdjustments,
         mijnVakken: state.mijnVakken,
         huiswerkWeergave: state.huiswerkWeergave,
+        themePresets: state.themePresets,
+        activeThemeId: state.activeThemeId,
         theme: state.theme,
         backgroundImage: state.backgroundImage,
         surfaceOpacity: state.surfaceOpacity,
@@ -813,6 +974,64 @@ export const useAppStore = create<State>()(
         matrixLeerjaar: state.matrixLeerjaar,
         lastVisitedRoute: state.lastVisitedRoute,
       }),
+      migrate: (persistedState, version) => {
+        if (!persistedState) {
+          return createInitialState();
+        }
+        if (version >= 3) {
+          const state = persistedState as State;
+          const presets = createThemePresets(state.themePresets);
+          const hasActive = presets.some((preset) => preset.id === state.activeThemeId);
+          const activePreset = hasActive
+            ? presets.find((preset) => preset.id === state.activeThemeId)
+            : presets[0];
+          return {
+            ...state,
+            themePresets: presets,
+            activeThemeId: activePreset?.id ?? "default",
+            theme: cloneThemeSettings(activePreset?.settings ?? defaultTheme),
+          };
+        }
+        const legacy = persistedState as State & {
+          themePresets?: ThemePreset[];
+          activeThemeId?: string;
+        };
+        const presets = createThemePresets(legacy.themePresets);
+        const storedTheme = legacy.theme ?? defaultTheme;
+        const matchingPreset = presets.find((preset) => {
+          const settings = preset.settings;
+          return (
+            settings.background === storedTheme.background &&
+            settings.surface === storedTheme.surface &&
+            settings.accent === storedTheme.accent &&
+            settings.text === storedTheme.text &&
+            settings.muted === storedTheme.muted &&
+            settings.border === storedTheme.border &&
+            settings.accentText === storedTheme.accentText
+          );
+        });
+        let activeThemeId = matchingPreset?.id ?? legacy.activeThemeId ?? "default";
+        let nextPresets = presets;
+        if (!matchingPreset) {
+          const customId = "custom-migrated";
+          nextPresets = [
+            ...presets,
+            {
+              id: customId,
+              name: "Mijn thema",
+              settings: cloneThemeSettings(storedTheme),
+            },
+          ];
+          activeThemeId = customId;
+        }
+        const activePreset = nextPresets.find((preset) => preset.id === activeThemeId);
+        return {
+          ...legacy,
+          themePresets: nextPresets,
+          activeThemeId: activePreset?.id ?? "default",
+          theme: cloneThemeSettings(activePreset?.settings ?? defaultTheme),
+        };
+      },
     }
   )
 );

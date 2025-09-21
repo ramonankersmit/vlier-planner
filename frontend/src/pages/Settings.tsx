@@ -8,6 +8,12 @@ export default function Settings() {
     setMijnVakken,
     huiswerkWeergave,
     setHuiswerkWeergave,
+    themePresets,
+    activeThemeId,
+    setActiveTheme,
+    addCustomTheme,
+    updateCustomTheme,
+    removeCustomTheme,
     theme,
     setThemeColor,
     resetTheme,
@@ -24,6 +30,15 @@ export default function Settings() {
     resetAppState,
   } = useAppStore();
   const docs = useAppStore((s) => s.docs) ?? [];
+
+  const activeTheme = React.useMemo(
+    () => themePresets.find((preset) => preset.id === activeThemeId),
+    [themePresets, activeThemeId]
+  );
+  const canEditThemeColors = !!activeTheme && !activeTheme.builtIn;
+  const [newThemeName, setNewThemeName] = React.useState("");
+  const [editingThemeId, setEditingThemeId] = React.useState<string | null>(null);
+  const [editingThemeName, setEditingThemeName] = React.useState("");
 
   const allVakken = React.useMemo(
     () => Array.from(new Set(docs.filter((d) => d.enabled).map((d) => d.vak))).sort(),
@@ -83,6 +98,44 @@ export default function Settings() {
     if (/^#[0-9a-fA-F]{6}$/.test(value)) {
       setThemeColor(key, value.toLowerCase());
     }
+  };
+
+  const handleAddCustomTheme = () => {
+    addCustomTheme(newThemeName || "Mijn thema", theme);
+    setNewThemeName("");
+  };
+
+  const startEditTheme = (id: string, currentName: string) => {
+    setEditingThemeId(id);
+    setEditingThemeName(currentName);
+  };
+
+  const saveThemeName = () => {
+    if (!editingThemeId) {
+      return;
+    }
+    updateCustomTheme(editingThemeId, { name: editingThemeName || "Mijn thema" });
+    setEditingThemeId(null);
+    setEditingThemeName("");
+  };
+
+  const cancelThemeNameEdit = () => {
+    setEditingThemeId(null);
+    setEditingThemeName("");
+  };
+
+  const handleRemoveTheme = (id: string) => {
+    const preset = themePresets.find((item) => item.id === id);
+    if (!preset) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `Weet je zeker dat je het thema "${preset.name}" wilt verwijderen?`
+    );
+    if (!confirmed) {
+      return;
+    }
+    removeCustomTheme(id);
   };
 
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -247,6 +300,90 @@ export default function Settings() {
       >
         <div className="font-medium theme-text">Thema &amp; achtergrond</div>
 
+        <div className="space-y-3">
+          <div className="text-sm font-medium theme-text">Kleurenpaletten</div>
+          <div className="space-y-2">
+            {themePresets.map((preset) => (
+              <div
+                key={preset.id}
+                className="flex flex-col gap-2 rounded-xl border theme-border theme-soft p-3 md:flex-row md:items-center md:justify-between"
+              >
+                <label className="flex items-center gap-2 text-sm font-medium theme-text">
+                  <input
+                    type="radio"
+                    name="theme-select"
+                    value={preset.id}
+                    checked={activeThemeId === preset.id}
+                    onChange={() => setActiveTheme(preset.id)}
+                  />
+                  <span>{preset.name}</span>
+                  {preset.builtIn && (
+                    <span className="text-xs font-normal theme-muted">Vast thema</span>
+                  )}
+                </label>
+                {!preset.builtIn && (
+                  editingThemeId === preset.id ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="text"
+                        value={editingThemeName}
+                        onChange={(event) => setEditingThemeName(event.target.value)}
+                        className="w-full rounded-md border theme-border theme-surface px-2 py-1 text-sm md:w-48"
+                        placeholder="Naam van thema"
+                      />
+                      <button
+                        onClick={saveThemeName}
+                        className="rounded-md border theme-border theme-surface px-2 py-1 text-xs font-medium"
+                      >
+                        Opslaan
+                      </button>
+                      <button
+                        onClick={cancelThemeNameEdit}
+                        className="rounded-md border theme-border theme-surface px-2 py-1 text-xs"
+                      >
+                        Annuleren
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => startEditTheme(preset.id, preset.name)}
+                        className="rounded-md border theme-border theme-surface px-2 py-1 text-xs"
+                      >
+                        Naam wijzigen
+                      </button>
+                      <button
+                        onClick={() => handleRemoveTheme(preset.id)}
+                        className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 transition-colors hover:bg-red-100"
+                      >
+                        Verwijderen
+                      </button>
+                    </div>
+                  )
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={newThemeName}
+              onChange={(event) => setNewThemeName(event.target.value)}
+              className="w-full rounded-md border theme-border theme-surface px-2 py-1 text-sm md:w-64"
+              placeholder="Naam voor nieuw thema"
+            />
+            <button
+              onClick={handleAddCustomTheme}
+              className="rounded-md border theme-border theme-surface px-3 py-1 text-sm"
+            >
+              Nieuw thema opslaan
+            </button>
+          </div>
+          <div className="text-xs theme-muted">
+            Een nieuw thema start met de kleuren van het momenteel geselecteerde thema.
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {colorOptions.map((option) => (
             <div
@@ -263,13 +400,20 @@ export default function Settings() {
                   aria-label={option.label}
                   value={theme[option.key]}
                   onChange={(event) => handleColorChange(option.key, event.target.value)}
-                  className="h-10 w-10 cursor-pointer rounded-md border theme-border bg-transparent p-0"
+                  className="h-10 w-10 cursor-pointer rounded-md border theme-border bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!canEditThemeColors}
                 />
                 <span className="font-mono text-sm theme-text">{theme[option.key].toUpperCase()}</span>
               </div>
             </div>
           ))}
         </div>
+
+        {!canEditThemeColors && (
+          <div className="text-xs theme-muted">
+            Selecteer een eigen thema om de kleuren aan te passen.
+          </div>
+        )}
 
         <div className="space-y-3">
           <div className="text-sm font-medium theme-text">Achtergrondafbeelding</div>
