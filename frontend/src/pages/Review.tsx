@@ -41,7 +41,7 @@ type DuplicateGroup = {
 };
 
 
-type AttentionEntry = { key: string; text: string };
+type AttentionEntry = { key: string; text: string; resolved?: boolean };
 type AttentionItem = AttentionEntry & { resolved: boolean };
 const cloneRows = (rows: DocRow[]): DocRow[] =>
   rows.map((row) => ({
@@ -432,6 +432,7 @@ export default function Review() {
         entries.push({
           key: `duplicate-disabled-${group.kind}-${group.key}`,
           text: `${label} ${formatRowList(group.disabledIndexes)} ${suffix}`,
+          resolved: true,
         });
       });
     }
@@ -453,16 +454,25 @@ export default function Review() {
   React.useEffect(() => {
     setAttentionItems((prev) => {
       const currentMap = new Map(attentionEntries.map((entry) => [entry.key, entry.text]));
+      const currentResolvedMap = new Map(
+        attentionEntries.map((entry) => [entry.key, entry.resolved ?? false])
+      );
       const currentKeys = new Set(currentMap.keys());
       const existingKeys = new Set(prev.map((item) => item.key));
       const next: AttentionItem[] = prev.map((item) => {
         const text = currentMap.get(item.key) ?? item.text;
-        const resolved = !currentKeys.has(item.key);
+        const resolved = currentKeys.has(item.key)
+          ? currentResolvedMap.get(item.key) ?? false
+          : true;
         return { key: item.key, text, resolved };
       });
       attentionEntries.forEach((entry) => {
         if (!existingKeys.has(entry.key)) {
-          next.push({ key: entry.key, text: entry.text, resolved: false });
+          next.push({
+            key: entry.key,
+            text: entry.text,
+            resolved: entry.resolved ?? false,
+          });
         }
       });
       return next;

@@ -246,7 +246,7 @@ describe("Uploads page flow", () => {
     expect(row).toBeTruthy();
     const utils = within(row as HTMLElement);
     expect(utils.getByText(/Review vereist/)).toBeInTheDocument();
-    expect(utils.getByText(/1 toegevoegd/)).toBeInTheDocument();
+    expect(utils.queryByText(/1 toegevoegd/)).not.toBeInTheDocument();
     expect(utils.getByText(/Vak onbekend/)).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Review openen"));
@@ -284,8 +284,10 @@ describe("Uploads page flow", () => {
     const rows = within(table).getAllByRole("row");
     const row = rows.find((candidate) => within(candidate).queryByText(/demo\.docx/));
     expect(row).toBeTruthy();
-    expect(within(row as HTMLElement).getByTestId("status-icon-warning")).toBeInTheDocument();
-    expect(within(row as HTMLElement).getByText(/Dubbele week/)).toBeInTheDocument();
+    const utils = within(row as HTMLElement);
+    expect(utils.getByTestId("status-icon-warning")).toBeInTheDocument();
+    expect(utils.queryByText(/1 toegevoegd/)).not.toBeInTheDocument();
+    expect(utils.getByText(/Dubbele week/)).toBeInTheDocument();
   });
 
   it("start nieuwe review voor actieve studiewijzer via de actieknop", async () => {

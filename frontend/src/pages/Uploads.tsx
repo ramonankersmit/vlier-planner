@@ -19,7 +19,6 @@ import type {
   DocRow,
   ReviewDraft,
   StudyGuideVersion,
-  DiffSummary,
   CommitResponse,
   StudyGuide,
 } from "../lib/api";
@@ -214,26 +213,6 @@ function hasReviewWarnings(review: ReviewDraft): boolean {
     return true;
   }
   return false;
-}
-
-function formatDiffSummaryLabel(summary?: DiffSummary | null): string {
-  if (!summary) {
-    return "Geen parse-informatie";
-  }
-  const parts: string[] = [];
-  if (summary.added) {
-    parts.push(`${summary.added} toegevoegd`);
-  }
-  if (summary.changed) {
-    parts.push(`${summary.changed} gewijzigd`);
-  }
-  if (summary.removed) {
-    parts.push(`${summary.removed} verwijderd`);
-  }
-  if (!parts.length) {
-    return "Geen wijzigingen gevonden";
-  }
-  return parts.join(" · ");
 }
 
 function useMetadata(docs: DocRecord[], docRows: Record<string, DocRow[]>) {
@@ -1183,11 +1162,6 @@ export default function Uploads() {
                     }
                     return labels;
                   })();
-                  const parseSummary =
-                    entry.kind === "pending"
-                      ? entry.review.diffSummary
-                      : entry.guide?.latestVersion.diffSummary ?? null;
-                  const parseLabel = formatDiffSummaryLabel(parseSummary);
                   const hasBlockingWarnings =
                     entry.kind === "pending" &&
                     (entry.review.warnings.unknownSubject || entry.review.warnings.missingWeek);
@@ -1202,35 +1176,17 @@ export default function Uploads() {
                     : hasActiveWarnings
                     ? "text-amber-600"
                     : "";
-                  const statusMessage = hasActiveWarnings
-                    ? warningMessages.join(" · ")
-                    : entry.kind === "pending"
-                    ? "Controleer en commit"
-                    : null;
-                  const statusTextClass = clsx(
-                    "mt-0.5 flex items-center gap-1 text-xs",
-                    entry.kind === "pending"
-                      ? hasBlockingWarnings
-                        ? "text-red-600"
-                        : hasActiveWarnings
-                        ? "text-amber-700"
-                        : "theme-muted"
-                      : hasActiveWarnings
-                      ? "text-amber-700"
-                      : "theme-muted"
-                  );
+                  const statusTextColor = hasBlockingWarnings
+                    ? "text-red-600"
+                    : hasActiveWarnings
+                    ? "text-amber-700"
+                    : "theme-muted";
                   const statusIconTestId = hasBlockingWarnings
                     ? "status-icon-error"
                     : hasActiveWarnings
                     ? "status-icon-warning"
                     : undefined;
-                  const StatusMessageIcon = hasBlockingWarnings
-                    ? XOctagon
-                    : hasActiveWarnings
-                    ? AlertTriangle
-                    : entry.kind === "pending"
-                    ? Info
-                    : null;
+                  const showWarnings = hasActiveWarnings;
                   const rowClassName = clsx(
                     i > 0 ? "border-t theme-border" : "",
                     entry.kind === "pending" && "bg-amber-50"
@@ -1325,31 +1281,23 @@ export default function Uploads() {
                         {entry.kind === "pending" && (
                           <div className="text-xs text-amber-700">Review vereist</div>
                         )}
-                        <div className="mt-1 flex items-start gap-2 text-xs leading-tight">
-                          {StatusIcon && (
-                            <StatusIcon
-                              size={14}
-                              aria-hidden="true"
-                              data-testid={statusIconTestId}
-                              className={clsx("mt-0.5 flex-shrink-0", statusColorClasses)}
-                            />
-                          )}
-                          <div>
-                            <div>{parseLabel}</div>
-                            {statusMessage && (
-                              <div className={statusTextClass}>
-                                {StatusMessageIcon && (
-                                  <StatusMessageIcon
-                                    size={12}
-                                    aria-hidden="true"
-                                    className="flex-shrink-0"
-                                  />
-                                )}
-                                <span>{statusMessage}</span>
-                              </div>
+                        {showWarnings && (
+                          <div className="mt-1 flex items-start gap-2 text-xs leading-tight">
+                            {StatusIcon && (
+                              <StatusIcon
+                                size={14}
+                                aria-hidden="true"
+                                data-testid={statusIconTestId}
+                                className={clsx("mt-0.5 flex-shrink-0", statusColorClasses)}
+                              />
                             )}
+                            <div className={clsx("space-y-0.5", statusTextColor)}>
+                              {warningMessages.map((message, index) => (
+                                <div key={`${d.fileId}-warning-${index}`}>{message}</div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 align-top">
                         <div className="leading-tight">

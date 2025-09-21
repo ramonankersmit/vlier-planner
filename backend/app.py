@@ -231,7 +231,9 @@ def _load_state() -> None:
                 if not getattr(version.meta, "uploadedAt", None):
                     version.meta.uploadedAt = datetime.now(timezone.utc).isoformat()
                 if not version.warnings:
-                    version.warnings = _compute_warnings(version.meta, version.rows)
+                    version.warnings = _compute_warnings(
+                        version.meta, version.rows, ignore_disabled_duplicates=True
+                    )
                 _ensure_file_location(guide.guide_id, version)
             GUIDES[guide.guide_id] = guide
         _refresh_docs_index()
@@ -263,7 +265,7 @@ def _load_state() -> None:
             rows=rows,
             diff_summary={"added": 0, "removed": 0, "changed": 0, "unchanged": len(rows)},
             diff=[],
-            warnings=_compute_warnings(meta, rows),
+            warnings=_compute_warnings(meta, rows, ignore_disabled_duplicates=True),
         )
         _ensure_file_location(guide_id, version, legacy_file_id=file_id)
         guide = GUIDES.setdefault(guide_id, StudyGuide(guide_id=guide_id, versions=[]))
@@ -468,14 +470,20 @@ def _auto_disable_duplicates(rows: List[DocRow]) -> None:
         rows[index].enabled = False
 
 
-def _compute_warnings(meta: DocMeta, rows: List[DocRow]) -> Dict[str, bool]:
+def _compute_warnings(
+    meta: DocMeta,
+    rows: List[DocRow],
+    *,
+    ignore_disabled_duplicates: bool = False,
+) -> Dict[str, bool]:
     normalized_rows = _ensure_rows(rows)
     active_rows = [row for row in normalized_rows if row.enabled]
     unknown_subject = not bool(meta.vak)
     missing_week = any(row.week is None for row in active_rows)
     dates = [row.datum for row in active_rows if getattr(row, "datum", None)]
     duplicate_date = len(dates) != len(set(dates))
-    weeks = [row.week for row in normalized_rows if isinstance(row.week, int)]
+    week_source = active_rows if ignore_disabled_duplicates else normalized_rows
+    weeks = [row.week for row in week_source if isinstance(row.week, int)]
     duplicate_week = len(weeks) != len(set(weeks))
     return {
         "unknownSubject": unknown_subject,
@@ -780,7 +788,7 @@ def update_review(parse_id: str, payload: Dict[str, Any] = Body(...)):
     meta = DocMeta(**pending["meta"])
     rows = _ensure_rows([DocRow(**row) for row in pending.get("rows", [])])
     diff_summary, diff_detail = _diff_for_meta(meta, rows)
-    warnings = _compute_warnings(meta, rows)
+    warnings = _compute_warnings(meta, rows, ignore_disabled_duplicates=True)
 
     pending["meta"] = meta.dict()
     pending["rows"] = [row.dict() for row in rows]
@@ -811,7 +819,7 @@ def commit_review(parse_id: str):
     now = datetime.now(timezone.utc).isoformat()
     meta.uploadedAt = now
     diff_summary, diff_detail = _diff_for_meta(meta, rows)
-    warnings = _compute_warnings(meta, rows)
+    warnings = _compute_warnings(meta, rows, ignore_disabled_duplicates=True)
 
     version = StudyGuideVersion(
         version_id=version_id,
