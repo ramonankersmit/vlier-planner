@@ -7,13 +7,31 @@ import threading
 import webbrowser
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import uvicorn
 from uvicorn.config import LOGGING_CONFIG
+from uvicorn.main import STARTUP_FAILURE
+
+try:  # pragma: no cover - afhankelijk van platform
+    import pystray
+except Exception:  # pragma: no cover - afhankelijk van platform
+    pystray = None
+
+try:  # pragma: no cover - afhankelijk van platform
+    from PIL import Image, ImageDraw
+except Exception:  # pragma: no cover - afhankelijk van platform
+    Image = None
+    ImageDraw = None
+
+if TYPE_CHECKING:  # pragma: no cover - alleen voor type checkers
+    from pystray import Icon as TrayIcon
+else:
+    TrayIcon = Any  # type: ignore[assignment]
 
 LOG_HANDLER_NAME = "vlier-planner-file"
 LOG_LEVEL_ENV_VAR = "VLIER_LOG_LEVEL"
+TRAY_THREAD_NAME = "vlier-planner-tray"
 FILE_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 _FILE_HANDLER_SETTINGS: dict[str, Any] | None = None
 
@@ -137,6 +155,11 @@ _configure_logging()
 
 from backend import app as backend_app
 
+LOGGER = logging.getLogger(__name__)
+
+_SERVER: uvicorn.Server | None = None
+_TRAY_ICON: TrayIcon | None = None
+
 FALSE_VALUES = {"0", "false", "no", "off"}
 
 
@@ -146,9 +169,83 @@ def should_enable(value: str | None, default: bool = True) -> bool:
     return value.strip().lower() not in FALSE_VALUES
 
 
-def open_browser(host: str, port: int) -> None:
+def open_browser(host: str, port: int, delay: float = 1.0) -> None:
     url = f"http://{host}:{port}"
-    threading.Timer(1.0, webbrowser.open, args=(url, 2)).start()
+    if delay <= 0:
+        webbrowser.open(url, 2)
+        return
+
+    threading.Timer(delay, webbrowser.open, args=(url, 2)).start()
+
+
+def _create_tray_image() -> "Image.Image":
+    size = (64, 64)
+    image = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((8, 8, 56, 56), fill=(12, 77, 162, 255))
+    draw.rectangle((22, 28, 42, 46), fill=(255, 255, 255, 255))
+    return image
+
+
+def _request_shutdown() -> None:
+    server = _SERVER
+    if server is None:
+        os._exit(0)
+    server.should_exit = True
+
+
+def _stop_tray_icon() -> None:
+    icon = _TRAY_ICON
+    if icon is None:
+        return
+
+    try:
+        icon.visible = False
+        icon.stop()
+    except Exception:  # pragma: no cover - afhankelijk van platform
+        LOGGER.exception("Kon system tray icoon niet stoppen")
+
+
+def _start_tray_icon(host: str, port: int) -> None:
+    if pystray is None or Image is None or ImageDraw is None:
+        LOGGER.info("System tray niet beschikbaar: pystray of Pillow ontbreekt")
+        return
+
+    def on_open(icon: TrayIcon, item: Any) -> None:  # pragma: no cover - UI callback
+        open_browser(host, port, delay=0.0)
+
+    def on_quit(icon: TrayIcon, item: Any) -> None:  # pragma: no cover - UI callback
+        LOGGER.info("Stop aangevraagd via system tray")
+        _request_shutdown()
+        icon.visible = False
+        icon.stop()
+
+    def run_tray() -> None:  # pragma: no cover - UI thread
+        global _TRAY_ICON
+        try:
+            icon = pystray.Icon(
+                "VlierPlanner",
+                _create_tray_image(),
+                "Vlier Planner",
+                menu=pystray.Menu(
+                    pystray.MenuItem("Openen in browser", on_open),
+                    pystray.MenuItem("Stoppen", on_quit),
+                ),
+            )
+        except Exception:
+            LOGGER.exception("Kon system tray icoon niet initialiseren")
+            return
+
+        _TRAY_ICON = icon
+        try:
+            icon.run()
+        finally:
+            _TRAY_ICON = None
+
+    try:
+        threading.Thread(target=run_tray, name=TRAY_THREAD_NAME, daemon=True).start()
+    except Exception:  # pragma: no cover - afhankelijk van platform
+        LOGGER.exception("Kon system tray thread niet starten")
 
 
 def main() -> None:
@@ -161,13 +258,28 @@ def main() -> None:
     if should_enable(os.getenv("VLIER_OPEN_BROWSER")):
         open_browser(host, port)
 
-    uvicorn.run(
+    _start_tray_icon(host, port)
+
+    config = uvicorn.Config(
         backend_app.app,
         host=host,
         port=port,
         log_level=os.getenv("UVICORN_LOG_LEVEL", "info"),
         log_config=get_uvicorn_log_config(),
     )
+
+    server = uvicorn.Server(config)
+
+    global _SERVER
+    _SERVER = server
+    try:
+        server.run()
+    finally:
+        _SERVER = None
+        _stop_tray_icon()
+
+    if not server.started:
+        sys.exit(STARTUP_FAILURE)
 
 
 if __name__ == "__main__":
