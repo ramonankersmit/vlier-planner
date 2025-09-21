@@ -15,10 +15,7 @@ from uvicorn.config import LOGGING_CONFIG
 LOG_HANDLER_NAME = "vlier-planner-file"
 LOG_LEVEL_ENV_VAR = "VLIER_LOG_LEVEL"
 FILE_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-
-
 _FILE_HANDLER_SETTINGS: dict[str, Any] | None = None
-
 
 def _get_configured_log_level(default: int = logging.WARNING) -> int:
     """Resolve the desired log level from the environment."""
