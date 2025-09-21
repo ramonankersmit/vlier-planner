@@ -278,6 +278,12 @@ def _load_pending() -> None:
         if not data:
             continue
         parse_id = data.get("parseId") or pending_file.stem
+        rows_data = data.get("rows") or []
+        try:
+            normalized_rows = _ensure_rows([DocRow(**row) for row in rows_data])
+        except Exception:
+            normalized_rows = []
+        data["rows"] = [row.dict() for row in normalized_rows]
         PENDING_PARSES[parse_id] = data
 
 
@@ -385,10 +391,36 @@ def _version_payload(version: StudyGuideVersion) -> Dict[str, Any]:
     }
 
 
+def _ensure_rows(rows: List[DocRow]) -> List[DocRow]:
+    normalized: List[DocRow] = []
+    for row in rows:
+        data = _row_to_dict(row)
+        if data.get("enabled") is None:
+            data["enabled"] = True
+        normalized.append(DocRow(**data))
+    return normalized
+
+
+def _auto_disable_duplicate_heads(rows: List[DocRow]) -> None:
+    seen: Dict[str, int] = {}
+    for index, row in enumerate(rows):
+        value = (row.datum or "").strip()
+        if not value:
+            continue
+        if value not in seen:
+            seen[value] = index
+            continue
+        first_idx = seen[value]
+        if rows[first_idx].enabled:
+            rows[first_idx].enabled = False
+
+
 def _compute_warnings(meta: DocMeta, rows: List[DocRow]) -> Dict[str, bool]:
+    normalized_rows = _ensure_rows(rows)
+    active_rows = [row for row in normalized_rows if row.enabled]
     unknown_subject = not bool(meta.vak)
-    missing_week = any(row.week is None for row in rows)
-    dates = [row.datum for row in rows if getattr(row, "datum", None)]
+    missing_week = any(row.week is None for row in active_rows)
+    dates = [row.datum for row in active_rows if getattr(row, "datum", None)]
     duplicate_date = len(dates) != len(set(dates))
     return {
         "unknownSubject": unknown_subject,
@@ -540,14 +572,16 @@ def _parse_upload(temp_path: Path, file_name: str, suffix: str) -> List[Tuple[Do
 
 
 def _diff_for_meta(meta: DocMeta, rows: List[DocRow]) -> Tuple[Dict[str, int], List[Dict[str, Any]]]:
+    normalized_rows = _ensure_rows(rows)
     guide_id = meta.guideId or _assign_ids(meta)
     if not meta.fileId:
         meta.fileId = guide_id
     guide = GUIDES.get(guide_id)
     if not guide or not guide.versions:
-        return compute_diff([], rows)
+        return compute_diff([], normalized_rows)
     latest = guide.latest_version()
-    return compute_diff(latest.rows, rows)
+    latest_rows = _ensure_rows(latest.rows)
+    return compute_diff(latest_rows, normalized_rows)
 
 
 @app.post("/api/uploads")
@@ -577,7 +611,8 @@ async def upload_doc(file: UploadFile = File(...)):
     file_bytes = temp_path.read_bytes()
 
     for meta, rows in parsed_docs:
-        safe_rows = rows or []
+        safe_rows = _ensure_rows(rows or [])
+        _auto_disable_duplicate_heads(safe_rows)
         meta_copy = meta.copy(deep=True)
         meta_copy.uploadedAt = uploaded_at
         guide_id = _assign_ids(meta_copy)
@@ -662,7 +697,7 @@ def update_review(parse_id: str, payload: Dict[str, Any] = Body(...)):
         pending["rows"] = rows_data
 
     meta = DocMeta(**pending["meta"])
-    rows = [DocRow(**row) for row in pending.get("rows", [])]
+    rows = _ensure_rows([DocRow(**row) for row in pending.get("rows", [])])
     diff_summary, diff_detail = _diff_for_meta(meta, rows)
     warnings = _compute_warnings(meta, rows)
 
@@ -686,7 +721,7 @@ def _next_version_id(guide: Optional[StudyGuide]) -> int:
 def commit_review(parse_id: str):
     pending = _pending_or_404(parse_id)
     meta = DocMeta(**pending["meta"])
-    rows = [DocRow(**row) for row in pending.get("rows", [])]
+    rows = _ensure_rows([DocRow(**row) for row in pending.get("rows", [])])
 
     guide_id = _assign_ids(meta)
     guide = GUIDES.get(guide_id)

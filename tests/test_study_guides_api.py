@@ -116,15 +116,17 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
     parse_data = upload_payload[0]
     assert parse_data["warnings"]["unknownSubject"] is True
     assert parse_data["warnings"]["missingWeek"] is True
-    assert parse_data["warnings"]["duplicateDate"] is True
+    assert parse_data["warnings"]["duplicateDate"] is False
     assert parse_data["diffSummary"]["added"] == 2
+    assert parse_data["rows"][0]["enabled"] is False
+    assert parse_data["rows"][1]["enabled"] is True
 
     parse_id = parse_data["parseId"]
     review_data = api_client.get(f"/api/reviews/{parse_id}").json()
     assert review_data["parseId"] == parse_id
 
     updated_rows = [
-        {**parse_data["rows"][0], "week": 1, "datum": "2024-01-08"},
+        {**parse_data["rows"][0], "enabled": True, "week": 1, "datum": "2024-01-08"},
         {**parse_data["rows"][1], "week": 2, "datum": "2024-01-15"},
     ]
     update_payload = {

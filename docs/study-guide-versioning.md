@@ -21,23 +21,23 @@ Deze release introduceert versiebeheer voor alle studiewijzers en een verplichte
   - `PATCH /api/reviews/{parseId}`
   - `POST /api/reviews/{parseId}/commit`
   - `DELETE /api/reviews/{parseId}`
-- De frontend opent na upload automatisch de reviewwizard. Zolang er waarschuwingen actief zijn, blijft de commitknop uitgeschakeld. De gebruiker kan metadata en rijen corrigeren en het diff-overzicht bekijken voordat hij commit.
+- De frontend toont na upload meteen de resultaten in de uploadtabel. Van daaruit start je per document een review. Zolang er waarschuwingen of aandachtspunten openstaan, blijft de commitknop uitgeschakeld. De gebruiker kan metadata en rijen corrigeren, rijen tijdelijk uitschakelen en het diff-overzicht bekijken voordat hij commit.
 - Na een succesvolle commit hydrate de planner-store meteen met de nieuwe versie; bestaande consumenten kunnen via de oude endpoints blijven werken.
 
 ### Navigatie en openstaande reviews
 
-- De uploadspagina toont een amberkleurige callout zodra er pending reviews klaarstaan. Van daaruit kun je direct naar de reviewwizard springen of een specifieke review kiezen.
-- In de wizard zie je links een lijst met openstaande reviews inclusief diff-samenvatting en waarschuwingen. Klik op een item om over te schakelen; het actieve item wordt gemarkeerd.
+- De uploadspagina toont een amberkleurige callout zodra er pending reviews klaarstaan. Elke uploadrij heeft een eigen reviewknop die opent op `/review/{parseId}`.
+- De wizard toont één document per keer. Metadata, diff-samenvatting en de tabel met rijcorrecties staan nu gegroepeerd zodat je alle wijzigingen in één scherm afrondt.
 
 ### Onzekerheden oplossen
 
 | Waarschuwing        | Betekenis & oplossing |
 | ------------------- | --------------------- |
 | **Vak onbekend**    | Vul het vak in bij de metadata en kies *Wijzigingen opslaan* om het vak te bevestigen. |
-| **Week ontbreekt**  | Controleer welke rijen in de tabel het label *Weeknummer ontbreekt* tonen. Vul het weeknummer in of verwijder de rij als deze niet meegenomen hoeft te worden. |
-| **Dubbele datum**   | Dezelfde datum komt meerdere keren voor. Pas de datum aan of gebruik de knop *Rij verwijderen* om dubbelen te schrappen. Sla daarna de review op. |
+| **Week ontbreekt**  | Controleer welke rijen in de tabel het label *Weeknummer ontbreekt* tonen. Vul het weeknummer in of schakel de rij tijdelijk uit. |
+| **Dubbele datum**   | Dezelfde datum komt meerdere keren voor. De eerste duplicaatrij wordt automatisch uitgeschakeld; controleer welke rij actief moet blijven, pas zonodig een datum aan en sla daarna de review op. |
 
-Je kunt rijen direct in de tabel aanpassen, inclusief het verwijderen van rijen die niet gepubliceerd hoeven te worden. Elke wijziging wordt visueel gemarkeerd zodat je precies ziet welke velden aandacht vragen.
+Je kunt rijen direct in de tabel aanpassen en via het vinkje per rij bepalen of hij meegenomen wordt. Elke wijziging wordt visueel gemarkeerd zodat je precies ziet welke velden aandacht vragen.
 
 ## Frontendwijzigingen
 

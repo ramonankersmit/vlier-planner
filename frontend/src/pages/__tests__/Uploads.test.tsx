@@ -154,6 +154,7 @@ describe("Uploads page flow", () => {
         <Routes>
           <Route path="/uploads" element={<Uploads />} />
           <Route path="/review" element={<div>Review pagina</div>} />
+          <Route path="/review/:parseId" element={<div>Review pagina</div>} />
         </Routes>
       </MemoryRouter>
     );

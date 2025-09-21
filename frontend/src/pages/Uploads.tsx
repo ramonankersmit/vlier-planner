@@ -167,8 +167,26 @@ function reviewToDocRecord(review: ReviewDraft): DocRecord {
   };
 }
 
+function hasDuplicateDates(rows: DocRow[]): boolean {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const value = row?.datum?.trim();
+    if (!value) {
+      continue;
+    }
+    if (seen.has(value)) {
+      return true;
+    }
+    seen.add(value);
+  }
+  return false;
+}
+
 function hasReviewWarnings(review: ReviewDraft): boolean {
-  return Object.values(review.warnings).some(Boolean);
+  if (Object.values(review.warnings).some(Boolean)) {
+    return true;
+  }
+  return hasDuplicateDates(review.rows);
 }
 
 function formatDiffSummaryLabel(summary?: DiffSummary | null): string {
@@ -297,10 +315,11 @@ export default function Uploads() {
 
   const handleOpenReviewWizard = React.useCallback(
     (parseId?: string) => {
-      if (parseId) {
-        setActiveReview(parseId);
+      if (!parseId) {
+        return;
       }
-      navigate("/review");
+      setActiveReview(parseId);
+      navigate(`/review/${parseId}`);
     },
     [navigate, setActiveReview]
   );
@@ -308,8 +327,9 @@ export default function Uploads() {
   const handleReviewEntry = React.useCallback(
     (entry: UploadListEntry) => {
       if (entry.kind === "pending") {
-        setActiveReview(entry.review.parseId);
-        navigate("/review");
+        const { parseId } = entry.review;
+        setActiveReview(parseId);
+        navigate(`/review/${parseId}`);
         return;
       }
       setDetailDoc(entry.doc);
@@ -430,10 +450,6 @@ export default function Uploads() {
     pending.forEach((review) => {
       setPendingReview(review);
     });
-    if (pending.length) {
-      setActiveReview(pending[0].parseId);
-      navigate("/review");
-    }
     if (errors.length) {
       setError(errors.join(" | "));
     }
@@ -818,7 +834,13 @@ export default function Uploads() {
           </div>
           <div className="mt-3 space-y-2">
             {pendingReviewList.slice(0, 3).map((review) => {
-              const activeWarnings = Object.entries(review.warnings).filter(([, value]) => value);
+              const duplicateDetected = hasDuplicateDates(review.rows);
+              const warningLabels = Object.entries(review.warnings)
+                .filter(([, value]) => value)
+                .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
+              if (duplicateDetected && !review.warnings.duplicateDate) {
+                warningLabels.push("Dubbele datum gevonden");
+              }
               return (
                 <button
                   key={review.parseId}
@@ -843,13 +865,13 @@ export default function Uploads() {
                     <DiffSummaryBadges summary={review.diffSummary} />
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {activeWarnings.length ? (
-                      activeWarnings.map(([key]) => (
+                    {warningLabels.length ? (
+                      warningLabels.map((label) => (
                         <span
-                          key={key}
+                          key={label}
                           className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800"
                         >
-                          {reviewWarningLabels[key as keyof ReviewDraft["warnings"]]}
+                          {label}
                         </span>
                       ))
                     ) : (
@@ -1065,9 +1087,16 @@ export default function Uploads() {
                     beginLabel === "—" && endLabel === "—" ? "—" : `wk ${beginLabel}–${endLabel}`;
                   const warnings =
                     entry.kind === "pending"
-                      ? Object.entries(entry.review.warnings)
-                          .filter(([, value]) => value)
-                          .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]])
+                      ? (() => {
+                          const duplicateDetected = hasDuplicateDates(entry.review.rows);
+                          const labels = Object.entries(entry.review.warnings)
+                            .filter(([, value]) => value)
+                            .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
+                          if (duplicateDetected && !entry.review.warnings.duplicateDate) {
+                            labels.push("Dubbele datum gevonden");
+                          }
+                          return labels;
+                        })()
                       : [];
                   const parseSummary =
                     entry.kind === "pending"

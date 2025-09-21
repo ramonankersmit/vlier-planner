@@ -50,6 +50,7 @@ const makeRow = (overrides?: Partial<DocRow>): DocRow => ({
   notities: null,
   klas_of_groep: null,
   locatie: null,
+  enabled: true,
   ...overrides,
 });
 
@@ -132,8 +133,9 @@ describe("Review wizard", () => {
 
     await act(async () => {
       render(
-        <MemoryRouter initialEntries={["/review"]}>
+        <MemoryRouter initialEntries={["/review/parse-1"]}>
           <Routes>
+            <Route path="/review/:parseId" element={<Review />} />
             <Route path="/review" element={<Review />} />
             <Route path="/uploads" element={<div>Uploads Page</div>} />
           </Routes>
@@ -143,14 +145,12 @@ describe("Review wizard", () => {
 
     await waitFor(() => expect(mockedApi.apiGetReview).toHaveBeenCalledTimes(1));
 
-    expect(await screen.findByText(/Los deze onzekerheden op/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Los deze aandachtspunten op/i)).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /Vul het vak in bij de metadata zodat de studiewijzer aan het juiste vak wordt gekoppeld/i
-      )
+      screen.getByText(/Vul het vak in bij de metadata zodat de studiewijzer gekoppeld kan worden\./i)
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Weeknummer ontbreekt in rij 1/i)
+      screen.getByText(/Weeknummer ontbreekt in rij 1. Vul de weekkolom in of schakel de rij tijdelijk uit./i)
     ).toBeInTheDocument();
 
     const commitButton = await screen.findByRole("button", { name: /Definitief opslaan/i });

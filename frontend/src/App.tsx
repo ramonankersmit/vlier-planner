@@ -127,6 +127,7 @@ function AppContent() {
       <Route path="/agenda" element={<Deadlines />} />
       <Route path="/uploads" element={<Uploads />} />
       <Route path="/review" element={<Review />} />
+      <Route path="/review/:parseId" element={<Review />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/uitleg" element={<Handleiding />} />
     </Routes>

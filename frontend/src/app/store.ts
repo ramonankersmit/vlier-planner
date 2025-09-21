@@ -281,6 +281,9 @@ const computeWeekAggregation = (
     }
 
     for (const row of rows) {
+      if (row && row.enabled === false) {
+        continue;
+      }
       const wk = typeof row.week === "number" ? row.week : undefined;
       if (!wk || wk < 1 || wk > 53) {
         continue;

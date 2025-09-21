@@ -39,6 +39,7 @@ export type DocRow = {
   notities?: string | null;
   klas_of_groep?: string | null;
   locatie?: string | null;
+  enabled?: boolean | null;
 };
 
 export type DiffStatus = "added" | "removed" | "changed" | "unchanged";

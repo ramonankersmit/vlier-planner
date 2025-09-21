@@ -42,3 +42,4 @@ class DocRow(BaseModel):
     notities: Optional[str] = None
     klas_of_groep: Optional[str] = None
     locatie: Optional[str] = None
+    enabled: bool = True
