@@ -250,3 +250,22 @@ export async function apiDeleteReview(parseId: string): Promise<void> {
     throw new Error(`delete_review failed: ${r.status}`);
   }
 }
+
+export async function apiCreateReviewFromVersion(
+  guideId: string,
+  versionId?: number | null
+): Promise<ReviewDraft> {
+  const payload: { guideId: string; versionId?: number } = { guideId };
+  if (versionId != null) {
+    payload.versionId = versionId;
+  }
+  const r = await fetch(`${BASE}/api/reviews`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    throw new Error(`create_review failed: ${r.status}`);
+  }
+  return (await r.json()) as ReviewDraft;
+}

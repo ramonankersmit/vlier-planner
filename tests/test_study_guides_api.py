@@ -195,3 +195,43 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
     assert len(latest_rows) == 3
     historical_rows = api_client.get(f"/api/docs/{guide_id}/rows", params={"versionId": 1}).json()
     assert len(historical_rows) == 2
+
+    restart_response = api_client.post("/api/reviews", json={"guideId": guide_id})
+    assert restart_response.status_code == 200
+    restart_payload = restart_response.json()
+    assert restart_payload["meta"]["fileId"] == guide_id
+    assert restart_payload["diffSummary"]["unchanged"] == 3
+    assert restart_payload["warnings"] == {
+        "unknownSubject": False,
+        "missingWeek": False,
+        "duplicateDate": False,
+    }
+
+    restart_rows = restart_payload["rows"]
+    restart_rows[1] = {
+        **restart_rows[1],
+        "onderwerp": "Bijgewerkte les",
+        "huiswerk": "Samenvatten",
+    }
+    restart_update = api_client.patch(
+        f"/api/reviews/{restart_payload['parseId']}",
+        json={"rows": restart_rows},
+    )
+    assert restart_update.status_code == 200
+    assert restart_update.json()["diffSummary"]["changed"] >= 1
+
+    restart_commit = api_client.post(f"/api/reviews/{restart_payload['parseId']}/commit")
+    assert restart_commit.status_code == 200
+    restart_commit_data = restart_commit.json()
+    assert restart_commit_data["guideId"] == guide_id
+    assert restart_commit_data["version"]["versionId"] == 3
+
+    diff_third = api_client.get(f"/api/study-guides/{guide_id}/diff/3").json()
+    assert diff_third["diffSummary"]["changed"] >= 1
+
+    version_three_file = backend_app._version_file_path(
+        guide_id,
+        3,
+        restart_commit_data["version"]["meta"]["bestand"],
+    )
+    assert version_three_file.exists()

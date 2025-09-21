@@ -20,6 +20,7 @@ import {
   apiGetStudyGuideDiff,
   apiCommitReview,
   apiDeleteReview,
+  apiCreateReviewFromVersion,
 } from "../lib/api";
 import { parseIsoDate } from "../lib/calendar";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
@@ -267,6 +268,7 @@ export default function Uploads() {
   const dragCounterRef = React.useRef(0);
   const [isDragOver, setIsDragOver] = React.useState(false);
   const detailDialogRef = React.useRef<HTMLDivElement | null>(null);
+  const [startingReviewId, setStartingReviewId] = React.useState<string | null>(null);
   const pageSize = 10;
 
   const pendingReviewList = React.useMemo(() => {
@@ -327,18 +329,51 @@ export default function Uploads() {
     [navigate, setActiveReview]
   );
 
-  const handleReviewEntry = React.useCallback(
-    (entry: UploadListEntry) => {
+  const handleReviewClick = React.useCallback(
+    async (entry: UploadListEntry) => {
       if (entry.kind === "pending") {
         const { parseId } = entry.review;
         setActiveReview(parseId);
+        setDetailDoc(null);
         navigate(`/review/${parseId}`);
         return;
       }
-      setDetailDoc(entry.doc);
-      selectGuideVersion(entry.doc.fileId, entry.doc.versionId ?? null);
+      const existing = pendingReviewList.find(
+        (review) => review.meta.fileId === entry.doc.fileId
+      );
+      if (existing) {
+        setActiveReview(existing.parseId);
+        setDetailDoc(null);
+        navigate(`/review/${existing.parseId}`);
+        return;
+      }
+      setStartingReviewId(entry.doc.fileId);
+      setError(null);
+      try {
+        const review = await apiCreateReviewFromVersion(
+          entry.doc.fileId,
+          entry.doc.versionId ?? null
+        );
+        setPendingReview(review);
+        setActiveReview(review.parseId);
+        setDetailDoc(null);
+        navigate(`/review/${review.parseId}`);
+      } catch (err: any) {
+        console.warn(err);
+        setError(err?.message || "Review starten mislukt");
+      } finally {
+        setStartingReviewId(null);
+      }
     },
-    [navigate, setActiveReview, setDetailDoc, selectGuideVersion]
+    [
+      navigate,
+      pendingReviewList,
+      setActiveReview,
+      setDetailDoc,
+      setError,
+      setPendingReview,
+      setStartingReviewId,
+    ]
   );
 
   const handleDeletePending = React.useCallback(
@@ -1112,10 +1147,12 @@ export default function Uploads() {
                   );
                   const reviewButtonTitle =
                     entry.kind === "pending"
-                      ? "Start review"
-                      : "Bekijk versies & diff";
+                      ? "Review openen"
+                      : "Start nieuwe review";
+                  const isReviewLoading =
+                    entry.kind === "active" && startingReviewId === d.fileId;
                   const reviewButtonClass = clsx(
-                    "rounded-lg border p-1",
+                    "rounded-lg border p-1 disabled:cursor-not-allowed disabled:opacity-60",
                     entry.kind === "pending"
                       ? "border-amber-500 bg-amber-100 text-amber-900 hover:bg-amber-200"
                       : "theme-border theme-surface"
@@ -1148,9 +1185,11 @@ export default function Uploads() {
                       <td className="px-4 py-3 align-top">
                         <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
                           <button
-                            onClick={() => handleReviewEntry(entry)}
+                            onClick={() => void handleReviewClick(entry)}
                             title={reviewButtonTitle}
                             aria-label={reviewButtonTitle}
+                            aria-busy={isReviewLoading}
+                            disabled={isReviewLoading}
                             className={reviewButtonClass}
                           >
                             <ClipboardList size={16} />

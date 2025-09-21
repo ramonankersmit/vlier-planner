@@ -14,6 +14,7 @@ vi.mock("../../lib/api", async () => {
     apiUploadDoc: vi.fn(),
     apiCommitReview: vi.fn(),
     apiDeleteReview: vi.fn(),
+    apiCreateReviewFromVersion: vi.fn(),
   };
 });
 
@@ -168,9 +169,108 @@ describe("Uploads page flow", () => {
     expect(utils.getByText(/1 toegevoegd/)).toBeInTheDocument();
     expect(utils.getByText(/Vak onbekend/)).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText("Start review"));
+    await user.click(screen.getByLabelText("Review openen"));
 
     await waitFor(() => expect(useAppStore.getState().activeReviewId).toBe(pendingReview.parseId));
+    await waitFor(() => expect(screen.getByText(/Review pagina/)).toBeInTheDocument());
+  });
+
+  it("start nieuwe review voor actieve studiewijzer via de actieknop", async () => {
+    const meta = makeMeta();
+    const rows = [makeRow()];
+    const restartReview = makeReview({
+      parseId: "restart-1",
+      rows,
+      diffSummary: { added: 0, changed: 0, removed: 0, unchanged: 1 },
+      diff: [
+        {
+          index: 0,
+          status: "unchanged",
+          fields: {},
+        },
+      ],
+    });
+
+    mockedApi.apiCreateReviewFromVersion.mockResolvedValue(restartReview);
+
+    await act(async () => {
+      const store = useAppStore.getState();
+      store.setDocs([meta]);
+      store.setDocRows(meta.fileId, rows);
+      store.setStudyGuides([
+        {
+          guideId: meta.fileId,
+          latestVersion: {
+            versionId: meta.versionId ?? 1,
+            createdAt: meta.uploadedAt ?? "2024-01-10T08:00:00.000Z",
+            meta,
+            diffSummary: { added: 0, changed: 0, removed: 0, unchanged: 1 },
+          },
+          versionCount: 1,
+        },
+      ]);
+      store.setActiveReview(null);
+    });
+
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={["/uploads"]}>
+        <Routes>
+          <Route path="/uploads" element={<Uploads />} />
+          <Route path="/review/:parseId" element={<div>Review pagina</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const reviewButton = screen.getByLabelText("Start nieuwe review");
+    await user.click(reviewButton);
+
+    await waitFor(() =>
+      expect(mockedApi.apiCreateReviewFromVersion).toHaveBeenCalledWith(
+        meta.fileId,
+        meta.versionId
+      )
+    );
+    await waitFor(() =>
+      expect(useAppStore.getState().pendingReviews[restartReview.parseId]).toBeDefined()
+    );
+    await waitFor(() => expect(screen.getByText(/Review pagina/)).toBeInTheDocument());
+  });
+
+  it("heropent bestaande pending review voor hetzelfde document", async () => {
+    const meta = makeMeta();
+    const pending = makeReview({
+      parseId: "pending-1",
+      meta,
+      rows: [makeRow()],
+    });
+
+    await act(async () => {
+      const store = useAppStore.getState();
+      store.setDocs([meta]);
+      store.setPendingReview(pending);
+      store.setActiveReview(null);
+    });
+
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={["/uploads"]}>
+        <Routes>
+          <Route path="/uploads" element={<Uploads />} />
+          <Route path="/review/:parseId" element={<div>Review pagina</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const reviewButton = screen.getByLabelText("Start nieuwe review");
+    await user.click(reviewButton);
+
+    await waitFor(() =>
+      expect(useAppStore.getState().activeReviewId).toBe(pending.parseId)
+    );
+    expect(mockedApi.apiCreateReviewFromVersion).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByText(/Review pagina/)).toBeInTheDocument());
   });
 });

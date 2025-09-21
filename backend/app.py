@@ -370,6 +370,45 @@ def _save_pending(parse_data: Dict[str, Any]) -> None:
     write_pending_parse(_pending_json_path(parse_id), parse_data)
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _build_pending_payload(
+    meta: DocMeta,
+    rows: List[DocRow],
+    *,
+    parse_id: Optional[str] = None,
+    file_name: Optional[str] = None,
+    stored_file: Optional[str] = None,
+    uploaded_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    safe_rows = _ensure_rows(rows or [])
+    _auto_disable_duplicate_heads(safe_rows)
+
+    meta_copy = meta.copy(deep=True)
+    _assign_ids(meta_copy)
+    if not meta_copy.bestand and file_name:
+        meta_copy.bestand = file_name
+    meta_copy.uploadedAt = uploaded_at or meta_copy.uploadedAt or _now_iso()
+    diff_summary, diff_detail = _diff_for_meta(meta_copy, safe_rows)
+    warnings = _compute_warnings(meta_copy, safe_rows)
+
+    parse_key = parse_id or uuid.uuid4().hex[:12]
+    payload = {
+        "parseId": parse_key,
+        "meta": meta_copy.dict(),
+        "rows": [row.dict() for row in safe_rows],
+        "diffSummary": diff_summary,
+        "diff": diff_detail,
+        "warnings": warnings,
+        "fileName": file_name or meta_copy.bestand,
+    }
+    if stored_file:
+        payload["storedFile"] = stored_file
+    return payload
+
+
 def _remove_pending(parse_id: str) -> None:
     PENDING_PARSES.pop(parse_id, None)
     json_path = _pending_json_path(parse_id)
@@ -613,29 +652,21 @@ async def upload_doc(file: UploadFile = File(...)):
     file_bytes = temp_path.read_bytes()
 
     for meta, rows in parsed_docs:
-        safe_rows = _ensure_rows(rows or [])
-        _auto_disable_duplicate_heads(safe_rows)
         meta_copy = meta.copy(deep=True)
         meta_copy.uploadedAt = uploaded_at
-        guide_id = _assign_ids(meta_copy)
 
         parse_id = uuid.uuid4().hex[:12]
         stored_file = _pending_file_path(parse_id, file.filename)
         stored_file.write_bytes(file_bytes)
 
-        diff_summary, diff_detail = _diff_for_meta(meta_copy, safe_rows)
-        warnings = _compute_warnings(meta_copy, safe_rows)
-
-        payload = {
-            "parseId": parse_id,
-            "meta": meta_copy.dict(),
-            "rows": [row.dict() for row in safe_rows],
-            "diffSummary": diff_summary,
-            "diff": diff_detail,
-            "warnings": warnings,
-            "fileName": file.filename,
-            "storedFile": str(stored_file.relative_to(PENDING_DIR)),
-        }
+        payload = _build_pending_payload(
+            meta_copy,
+            rows or [],
+            parse_id=parse_id,
+            file_name=file.filename,
+            stored_file=str(stored_file.relative_to(PENDING_DIR)),
+            uploaded_at=uploaded_at,
+        )
         _save_pending(payload)
         responses.append(payload)
 
@@ -680,6 +711,39 @@ def get_study_guide_diff(guide_id: str, version_id: int):
         "diffSummary": version.diff_summary,
         "diff": version.diff,
     }
+
+
+@app.post("/api/reviews")
+def create_review(payload: Dict[str, Any] = Body(...)):
+    guide_id = payload.get("guideId")
+    if not guide_id:
+        raise HTTPException(400, "guideId verplicht")
+    version_id = payload.get("versionId")
+    guide = _guide_or_404(str(guide_id))
+    version = _version_or_404(guide, version_id)
+
+    parse_id = uuid.uuid4().hex[:12]
+    stored_rel: Optional[str] = None
+    try:
+        source_file = _version_file_or_404(guide.guide_id, version)
+    except HTTPException:
+        source_file = None
+    if source_file and source_file.exists():
+        pending_copy = _pending_file_path(parse_id, source_file.name)
+        shutil.copyfile(source_file, pending_copy)
+        stored_rel = str(pending_copy.relative_to(PENDING_DIR))
+
+    meta_copy = version.meta.copy(deep=True)
+    payload_data = _build_pending_payload(
+        meta_copy,
+        version.rows,
+        parse_id=parse_id,
+        file_name=version.file_name,
+        stored_file=stored_rel,
+        uploaded_at=_now_iso(),
+    )
+    _save_pending(payload_data)
+    return payload_data
 
 
 @app.get("/api/reviews/{parse_id}")
