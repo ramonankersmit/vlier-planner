@@ -43,14 +43,17 @@ function useStoreHydration() {
   return hydrated;
 }
 
-function AppContent() {
+type AppContentProps = {
+  hasHydratedStore: boolean;
+};
+
+function AppContent({ hasHydratedStore }: AppContentProps) {
   const hasDocs = useAppStore((state) => state.docs.length > 0);
   const docsInitialized = useAppStore((state) => state.docsInitialized);
   const lastVisitedRoute = useAppStore((state) => state.lastVisitedRoute);
   const setLastVisitedRoute = useAppStore((state) => state.setLastVisitedRoute);
   const navigate = useNavigate();
   const location = useLocation();
-  const hasHydratedStore = useStoreHydration();
   const [initialRouteHandled, setInitialRouteHandled] = React.useState(false);
   const previousHasDocsRef = React.useRef<boolean | null>(null);
 
@@ -135,6 +138,63 @@ function AppContent() {
 }
 
 export default function App() {
+  const hasHydratedStore = useStoreHydration();
+  const enableAutoUpdate = useAppStore((state) => state.enableAutoUpdate);
+  const [shouldCheckUpdate, setShouldCheckUpdate] = React.useState(true);
+  const lastPromptedVersionRef = React.useRef<string | null>(null);
+  const prevAutoUpdateRef = React.useRef(enableAutoUpdate);
+
+  React.useEffect(() => {
+    if (!hasHydratedStore) {
+      return;
+    }
+    if (prevAutoUpdateRef.current === enableAutoUpdate) {
+      return;
+    }
+    if (enableAutoUpdate) {
+      setShouldCheckUpdate(true);
+    }
+    prevAutoUpdateRef.current = enableAutoUpdate;
+  }, [enableAutoUpdate, hasHydratedStore]);
+
+  React.useEffect(() => {
+    if (!hasHydratedStore || !enableAutoUpdate || !shouldCheckUpdate) {
+      return;
+    }
+
+    let cancelled = false;
+    setShouldCheckUpdate(false);
+
+    (async () => {
+      try {
+        const [api, prompt] = await Promise.all([
+          import("./lib/api"),
+          import("./lib/updatePrompt"),
+        ]);
+        const result = await api.apiCheckForUpdate();
+        if (cancelled) {
+          return;
+        }
+        if (!result.updateAvailable || !result.latestVersion) {
+          return;
+        }
+        if (lastPromptedVersionRef.current === result.latestVersion) {
+          return;
+        }
+        lastPromptedVersionRef.current = result.latestVersion;
+        await prompt.promptUpdateInstallation(result);
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("Automatische update-check mislukt:", error);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enableAutoUpdate, hasHydratedStore, shouldCheckUpdate]);
+
   // Hydrate globale docs-store vanaf de backend zodra de app mount
   useEffect(() => {
     hydrateDocsFromApi();
@@ -145,7 +205,7 @@ export default function App() {
       <DocumentPreviewProvider>
         <OnboardingTourProvider>
           <AppShell>
-            <AppContent />
+            <AppContent hasHydratedStore={hasHydratedStore} />
           </AppShell>
         </OnboardingTourProvider>
       </DocumentPreviewProvider>

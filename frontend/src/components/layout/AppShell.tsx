@@ -1,26 +1,12 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { Coffee } from "lucide-react";
+import { Coffee, Sparkles, Info, UploadCloud, Settings as SettingsIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import packageJson from "../../../package.json";
 import { useAppStore } from "../../app/store";
 import { PUBLIC_LOGO } from "../../assets/images";
+import { clamp01, withAlpha } from "../../lib/color";
 import { useOnboardingTour } from "../OnboardingTour";
-
-const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
-
-const hexToRgba = (color: string, alpha: number) => {
-  const match = color.match(/^#?([0-9a-f]{6})$/i);
-  if (!match) {
-    return color;
-  }
-  const hex = match[1];
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  const normalized = clamp01(alpha);
-  const roundedAlpha = Math.round(normalized * 100) / 100;
-  return `rgba(${r}, ${g}, ${b}, ${roundedAlpha})`;
-};
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useAppStore((state) => state.theme);
@@ -31,7 +17,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const themeStyle = React.useMemo(() => {
     const surfaceAlpha = clamp01(surfaceOpacity / 100);
-    const resolvedSurface = hexToRgba(theme.surface, surfaceAlpha);
+    const resolvedSurface = withAlpha(theme.surface, surfaceAlpha);
     const base = {
       "--app-background": theme.background,
       "--app-surface": resolvedSurface,
@@ -60,22 +46,30 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const headerBackground = React.useMemo(() => {
     const surfaceAlpha = clamp01(surfaceOpacity / 100);
     const headerAlpha = clamp01(surfaceAlpha * 0.6 + 0.2);
-    return hexToRgba(theme.surface, headerAlpha);
+    return withAlpha(theme.surface, headerAlpha);
   }, [theme.surface, surfaceOpacity]);
 
-  const navigationLinks = React.useMemo(
+  type NavigationLink = {
+    to: string;
+    label: string;
+    icon?: LucideIcon;
+    hideLabel?: boolean;
+  };
+
+  const navigationLinks: NavigationLink[] = React.useMemo(
     () => [
       { to: "/", label: "Weekoverzicht" },
       { to: "/matrix", label: "Matrix overzicht" },
       { to: "/deadlines", label: "Belangrijke events" },
-      { to: "/uploads", label: "Uploads" },
-      { to: "/uitleg", label: "Uitleg" },
-      { to: "/settings", label: "Settings" },
+      { to: "/uploads", label: "Uploads", icon: UploadCloud },
+      { to: "/uitleg", label: "Uitleg", icon: Info, hideLabel: true },
+      { to: "/settings", label: "Settings", icon: SettingsIcon, hideLabel: true },
     ],
     [],
   );
 
-  const linkBase = "rounded-md border px-3 py-1 text-sm transition-colors theme-border";
+  const linkBase =
+    "inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm transition-colors theme-border";
   const resolveLinkClassName = React.useCallback(
     (isActive: boolean) =>
       `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`,
@@ -98,18 +92,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="text-xl font-semibold theme-text">Het Vlier Studiewijzer Planner</div>
           </div>
           <nav className="ml-auto flex gap-1">
-            {navigationLinks.map((link) => (
-              <NavLink key={link.to} to={link.to} className={({ isActive }) => resolveLinkClassName(isActive)}>
-                {link.label}
-              </NavLink>
-            ))}
+            {navigationLinks.map((link) => {
+              const Icon = link.icon;
+              return (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  className={({ isActive }) => resolveLinkClassName(isActive)}
+                  aria-label={link.hideLabel ? link.label : undefined}
+                >
+                  {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+                  <span className={link.hideLabel ? "sr-only" : undefined}>{link.label}</span>
+                </NavLink>
+              );
+            })}
             <button
               type="button"
               onClick={() => restartTour()}
-              className={`${resolveLinkClassName(false)} whitespace-nowrap`}
+              className={`${resolveLinkClassName(false)} flex items-center justify-center !px-2 !py-2`}
               aria-label="Rondleiding opnieuw starten"
             >
-              Rondleiding
+              <Sparkles size={18} aria-hidden="true" />
             </button>
           </nav>
         </div>

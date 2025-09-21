@@ -27,6 +27,7 @@ import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
 import { hasMeaningfulContent } from "../lib/contentUtils";
+import { withAlpha } from "../lib/color";
 
 type MatrixItem = {
   text: string;
@@ -53,6 +54,9 @@ function MatrixCell({
   customHomework,
   onAddCustom,
   onRemoveCustom,
+  isCurrentWeek,
+  highlightColor,
+  highlightBorderColor,
 }: {
   vak: string;
   week: WeekInfo;
@@ -65,6 +69,9 @@ function MatrixCell({
   customHomework: CustomHomeworkEntry[];
   onAddCustom: (text: string) => void;
   onRemoveCustom: (entryId: string) => void;
+  isCurrentWeek: boolean;
+  highlightColor: string;
+  highlightBorderColor?: string;
 }) {
   const [adding, setAdding] = React.useState(false);
   const [customText, setCustomText] = React.useState("");
@@ -290,8 +297,17 @@ function MatrixCell({
     }
   }, [enableHomeworkEditing]);
 
+  const highlightStyle: React.CSSProperties | undefined = isCurrentWeek
+    ? {
+        backgroundColor: highlightColor,
+        boxShadow: highlightBorderColor
+          ? `inset 1px 0 0 0 ${highlightBorderColor}, inset -1px 0 0 0 ${highlightBorderColor}`
+          : undefined,
+      }
+    : undefined;
+
   return (
-    <td className="relative h-full px-4 py-2 align-top">
+    <td className="relative h-full px-4 py-2 align-top" style={highlightStyle}>
       <div className="flex h-full min-w-[14rem] flex-col gap-2 pb-8">
         <div className="flex flex-wrap items-center gap-2 text-xs theme-muted">
           {hasOpmerkingen && (
@@ -579,6 +595,7 @@ export default function Matrix() {
   const setNiveau = useAppStore((s) => s.setMatrixNiveau);
   const leerjaar = useAppStore((s) => s.matrixLeerjaar);
   const setLeerjaar = useAppStore((s) => s.setMatrixLeerjaar);
+  const accentColor = useAppStore((s) => s.theme.accent);
   const { openPreview } = useDocumentPreview();
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
@@ -664,6 +681,17 @@ export default function Matrix() {
     return (weekData.weeks ?? []).filter((w) => allowed.has(w.id));
   }, [allowedWeekIdSet, weekData.weeks]);
 
+  const currentWeekIdx = React.useMemo(() => calcCurrentWeekIdx(allWeeks), [allWeeks]);
+  const currentWeekId = allWeeks[currentWeekIdx]?.id;
+  const currentWeekHighlightColor = React.useMemo(
+    () => withAlpha(accentColor, 0.12),
+    [accentColor],
+  );
+  const currentWeekBorderColor = React.useMemo(() => {
+    const resolved = withAlpha(accentColor, 0.28);
+    return resolved === accentColor ? undefined : resolved;
+  }, [accentColor]);
+
   const hasWeekData = allWeeks.length > 0;
   const disableWeekControls = !hasAnyDocs || !hasWeekData;
 
@@ -680,13 +708,17 @@ export default function Matrix() {
     if (disableWeekControls) return;
     setStartIdx(Math.min(maxStart, clampedStart + 1));
   };
-  const goThisWeek = React.useCallback(() => {
-    if (disableWeekControls) return;
-    const idx = calcCurrentWeekIdx(allWeeks);
-    const targetWeekId = allWeeks[idx]?.id;
-    const start = computeWindowStartForWeek(allWeeks, count, targetWeekId);
-    setStartIdx(start);
-  }, [allWeeks, count, disableWeekControls]);
+  const goThisWeek = React.useCallback(
+    (align: "center" | "start" = "center") => {
+      if (disableWeekControls) return;
+      const targetWeekId = allWeeks[currentWeekIdx]?.id;
+      const start = computeWindowStartForWeek(allWeeks, count, targetWeekId, {
+        align,
+      });
+      setStartIdx(start);
+    },
+    [allWeeks, count, currentWeekIdx, disableWeekControls, setStartIdx]
+  );
 
   React.useEffect(() => {
     if (disableWeekControls) {
@@ -731,7 +763,7 @@ export default function Matrix() {
       </div>
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
-          onClick={goThisWeek}
+          onClick={() => goThisWeek("start")}
           className="rounded-md border theme-border theme-surface px-2 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title="Spring naar huidige week"
           aria-label="Deze week"
@@ -830,12 +862,28 @@ export default function Matrix() {
             <thead className="theme-soft">
               <tr>
                 <th className="px-4 py-2 text-left whitespace-nowrap">Vak</th>
-                {weeks.map((w) => (
-                  <th key={w.id} className="px-4 py-2 text-left">
-                    <div className="font-medium">Week {w.nr}</div>
-                    <div className="text-xs theme-muted">{formatRange(w)}</div>
-                  </th>
-                ))}
+                {weeks.map((w) => {
+                  const isCurrent = w.id === currentWeekId;
+                  const headerStyle: React.CSSProperties | undefined = isCurrent
+                    ? {
+                        backgroundColor: currentWeekHighlightColor,
+                        boxShadow: currentWeekBorderColor
+                          ? `inset 0 -2px 0 0 ${currentWeekBorderColor}`
+                          : undefined,
+                      }
+                    : undefined;
+                  return (
+                    <th
+                      key={w.id}
+                      className="px-4 py-2 text-left"
+                      style={headerStyle}
+                      aria-current={isCurrent ? "true" : undefined}
+                    >
+                      <div className="font-medium">Week {w.nr}</div>
+                      <div className="text-xs theme-muted">{formatRange(w)}</div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -866,6 +914,9 @@ export default function Matrix() {
                         customHomework={customEntries}
                         onAddCustom={(text) => addCustomHomework(w.id, vak, text)}
                         onRemoveCustom={(entryId) => removeCustomHomework(w.id, vak, entryId)}
+                        isCurrentWeek={w.id === currentWeekId}
+                        highlightColor={currentWeekHighlightColor}
+                        highlightBorderColor={currentWeekBorderColor}
                       />
                     );
                   })}
