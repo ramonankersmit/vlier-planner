@@ -1,15 +1,25 @@
 import React from "react";
 import clsx from "clsx";
-import { Info, FileText, Trash2, XCircle } from "lucide-react";
+import { Info, FileText, Trash2, XCircle, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { DocRecord } from "../app/store";
 import { useAppStore, hydrateDocRowsFromApi } from "../app/store";
-import type { DocDiff, DocRow, ReviewDraft, StudyGuideVersion } from "../lib/api";
+import type {
+  DocDiff,
+  DocRow,
+  ReviewDraft,
+  StudyGuideVersion,
+  DiffSummary,
+  CommitResponse,
+  StudyGuide,
+} from "../lib/api";
 import {
   apiUploadDoc,
   apiDeleteDoc,
   apiGetStudyGuideVersions,
   apiGetStudyGuideDiff,
+  apiCommitReview,
+  apiDeleteReview,
 } from "../lib/api";
 import { parseIsoDate } from "../lib/calendar";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
@@ -24,6 +34,10 @@ type Filters = {
 };
 
 type WeekSegment = { start: number; end: number };
+
+type UploadListEntry =
+  | { kind: "pending"; doc: DocRecord; review: ReviewDraft }
+  | { kind: "active"; doc: DocRecord; guide?: StudyGuide | null };
 
 const reviewWarningLabels: Record<keyof ReviewDraft["warnings"], string> = {
   unknownSubject: "Vak onbekend",
@@ -146,6 +160,37 @@ function formatVersionLabel(version: StudyGuideVersion): string {
   return `Versie ${version.versionId} • ${parsed.toLocaleString("nl-NL")}`;
 }
 
+function reviewToDocRecord(review: ReviewDraft): DocRecord {
+  return {
+    ...(review.meta as DocRecord),
+    enabled: false,
+  };
+}
+
+function hasReviewWarnings(review: ReviewDraft): boolean {
+  return Object.values(review.warnings).some(Boolean);
+}
+
+function formatDiffSummaryLabel(summary?: DiffSummary | null): string {
+  if (!summary) {
+    return "Geen parse-informatie";
+  }
+  const parts: string[] = [];
+  if (summary.added) {
+    parts.push(`${summary.added} toegevoegd`);
+  }
+  if (summary.changed) {
+    parts.push(`${summary.changed} gewijzigd`);
+  }
+  if (summary.removed) {
+    parts.push(`${summary.removed} verwijderd`);
+  }
+  if (!parts.length) {
+    return "Geen wijzigingen gevonden";
+  }
+  return parts.join(" · ");
+}
+
 function useMetadata(docs: DocRecord[], docRows: Record<string, DocRow[]>) {
   const vakken = Array.from(new Set(docs.map((d) => d.vak))).sort();
   const niveaus = Array.from(new Set(docs.map((d) => d.niveau))).sort() as string[];
@@ -180,6 +225,8 @@ export default function Uploads() {
     setPendingReview,
     setActiveReview,
     pendingReviews,
+    applyCommitResult,
+    removePendingReview,
   } = useAppStore();
   const navigate = useNavigate();
   const { openPreview } = useDocumentPreview();
@@ -201,8 +248,6 @@ export default function Uploads() {
   const detailDialogRef = React.useRef<HTMLDivElement | null>(null);
   const pageSize = 10;
 
-  const meta = useMetadata(docs, docRows);
-
   const pendingReviewList = React.useMemo(() => {
     const entries = Object.values(pendingReviews);
     return entries.sort((a, b) => {
@@ -214,6 +259,42 @@ export default function Uploads() {
 
   const pendingReviewCount = pendingReviewList.length;
 
+  const pendingDocRecords = React.useMemo(() => pendingReviewList.map(reviewToDocRecord), [
+    pendingReviewList,
+  ]);
+
+  const docRowsForMetadata = React.useMemo(() => {
+    const base: Record<string, DocRow[]> = { ...docRows };
+    pendingReviewList.forEach((review) => {
+      const fileId = review.meta.fileId;
+      if (!fileId) {
+        return;
+      }
+      if (!base[fileId]) {
+        base[fileId] = review.rows;
+      }
+    });
+    return base;
+  }, [docRows, pendingReviewList]);
+
+  const meta = useMetadata([...docs, ...pendingDocRecords], docRowsForMetadata);
+
+  const uploadEntries = React.useMemo<UploadListEntry[]>(() => {
+    const guideMap = new Map(studyGuides.map((guide) => [guide.guideId, guide]));
+    const entries: UploadListEntry[] = [];
+    pendingReviewList.forEach((review) => {
+      entries.push({ kind: "pending", doc: reviewToDocRecord(review), review });
+    });
+    docs.forEach((doc) => {
+      entries.push({ kind: "active", doc, guide: guideMap.get(doc.fileId) ?? null });
+    });
+    return entries.sort((a, b) => {
+      const tsA = Date.parse(a.doc.uploadedAt ?? "");
+      const tsB = Date.parse(b.doc.uploadedAt ?? "");
+      return (Number.isNaN(tsB) ? 0 : tsB) - (Number.isNaN(tsA) ? 0 : tsA);
+    });
+  }, [pendingReviewList, docs, studyGuides]);
+
   const handleOpenReviewWizard = React.useCallback(
     (parseId?: string) => {
       if (parseId) {
@@ -222,6 +303,38 @@ export default function Uploads() {
       navigate("/review");
     },
     [navigate, setActiveReview]
+  );
+
+  const handleReviewEntry = React.useCallback(
+    (entry: UploadListEntry) => {
+      if (entry.kind === "pending") {
+        setActiveReview(entry.review.parseId);
+        navigate("/review");
+        return;
+      }
+      setDetailDoc(entry.doc);
+      selectGuideVersion(entry.doc.fileId, entry.doc.versionId ?? null);
+    },
+    [navigate, setActiveReview, setDetailDoc, selectGuideVersion]
+  );
+
+  const handleDeletePending = React.useCallback(
+    async (review: ReviewDraft) => {
+      const confirmed = window.confirm(
+        `Weet je zeker dat je de review voor "${review.meta.bestand}" wilt verwijderen?`
+      );
+      if (!confirmed) {
+        return;
+      }
+      try {
+        await apiDeleteReview(review.parseId);
+        removePendingReview(review.parseId);
+      } catch (err: any) {
+        console.warn(err);
+        setError(err?.message || "Review verwijderen mislukt");
+      }
+    },
+    [removePendingReview, setError]
   );
 
   const formatPendingMoment = React.useCallback((value?: string | null) => {
@@ -246,27 +359,17 @@ export default function Uploads() {
       periode: "",
     });
 
-  const filtered = React.useMemo(() => {
-    const matches = docs.filter((d) => {
+  const filteredEntries = React.useMemo(() => {
+    return uploadEntries.filter((entry) => {
+      const doc = entry.doc;
       const byVak =
-        !filters.vak || d.vak.toLowerCase().includes(filters.vak.trim().toLowerCase());
-      const byNiv = !filters.niveau || d.niveau === (filters.niveau as any);
-      const byLeer = !filters.leerjaar || d.leerjaar === filters.leerjaar;
-      const byPer = !filters.periode || String(d.periode) === filters.periode;
+        !filters.vak || doc.vak.toLowerCase().includes(filters.vak.trim().toLowerCase());
+      const byNiv = !filters.niveau || doc.niveau === (filters.niveau as any);
+      const byLeer = !filters.leerjaar || doc.leerjaar === filters.leerjaar;
+      const byPer = !filters.periode || String(doc.periode) === filters.periode;
       return byVak && byNiv && byLeer && byPer;
     });
-    const getTime = (doc: DocRecord) => {
-      if (!doc.uploadedAt) return 0;
-      const direct = Date.parse(doc.uploadedAt);
-      if (!Number.isNaN(direct)) {
-        return direct;
-      }
-      const normalized = doc.uploadedAt.trim().replace(/Z$/, "+00:00");
-      const fallback = Date.parse(normalized);
-      return Number.isNaN(fallback) ? 0 : fallback;
-    };
-    return matches.sort((a, b) => getTime(b) - getTime(a));
-  }, [docs, filters]);
+  }, [uploadEntries, filters]);
 
   React.useEffect(() => {
     setPage(1);
@@ -274,9 +377,9 @@ export default function Uploads() {
 
   React.useEffect(() => {
     setPage(1);
-  }, [docs.length]);
+  }, [uploadEntries.length]);
 
-  const totalPages = filtered.length ? Math.ceil(filtered.length / pageSize) : 1;
+  const totalPages = filteredEntries.length ? Math.ceil(filteredEntries.length / pageSize) : 1;
   const clampedPage = Math.min(page, totalPages);
 
   React.useEffect(() => {
@@ -286,8 +389,8 @@ export default function Uploads() {
   }, [clampedPage, page]);
   
   const startIdx = (clampedPage - 1) * pageSize;
-  const endIdx = Math.min(startIdx + pageSize, filtered.length);
-  const visibleDocs = filtered.slice(startIdx, endIdx);
+  const endIdx = Math.min(startIdx + pageSize, filteredEntries.length);
+  const visibleEntries = filteredEntries.slice(startIdx, endIdx);
 
   async function processFiles(fileList: FileList | File[] | null) {
     if (!fileList) {
@@ -304,7 +407,22 @@ export default function Uploads() {
     for (const file of files) {
       try {
         const responses = await apiUploadDoc(file);
-        pending.push(...responses);
+        for (const review of responses) {
+          if (hasReviewWarnings(review)) {
+            pending.push(review);
+            continue;
+          }
+          try {
+            const commit: CommitResponse = await apiCommitReview(review.parseId);
+            applyCommitResult(commit, review.rows, review);
+          } catch (commitErr: any) {
+            console.warn(`Automatisch committen mislukt voor ${file.name}:`, commitErr);
+            errors.push(
+              `${file.name}: automatisch opslaan mislukt (${commitErr?.message ?? "onbekende fout"})`
+            );
+            pending.push(review);
+          }
+        }
       } catch (e: any) {
         errors.push(`${file.name}: ${e?.message || "Upload mislukt"}`);
       }
@@ -687,7 +805,7 @@ export default function Uploads() {
                   : `Er staan ${pendingReviewCount} uploads klaar voor review`}
               </div>
               <p className="mt-1 text-xs text-amber-800">
-                Corrigeer de metadata en rijen in de reviewwizard voordat de planner wordt bijgewerkt.
+                Documenten met aandachtspunten staan gemarkeerd in de tabel. Start de review via de knop "Review" of open direct de wizard.
               </p>
             </div>
             <button
@@ -915,7 +1033,7 @@ export default function Uploads() {
 
       {/* Tabel */}
       <div className="rounded-2xl border theme-border theme-surface overflow-x-auto">
-        {filtered.length === 0 ? (
+        {filteredEntries.length === 0 ? (
           <div className="p-6 text-sm theme-muted">Geen documenten gevonden.</div>
         ) : (
           <>
@@ -926,6 +1044,7 @@ export default function Uploads() {
                   <th className="px-4 py-3 text-left font-medium">Acties</th>
                   <th className="px-4 py-3 text-left font-medium">Bestand</th>
                   <th className="px-4 py-3 text-left font-medium">Datum / Tijd</th>
+                  <th className="px-4 py-3 text-left font-medium">Parse</th>
                   <th className="px-4 py-3 text-left font-medium">Vak</th>
                   <th className="px-4 py-3 text-left font-medium">Niveau</th>
                   <th className="px-4 py-3 text-left font-medium">Jaar</th>
@@ -934,65 +1053,138 @@ export default function Uploads() {
                 </tr>
               </thead>
               <tbody>
-                {visibleDocs.map((d, i) => {
+                {visibleEntries.map((entry, i) => {
+                  const d = entry.doc;
                   const { date, time } = formatDateTime(d.uploadedAt ?? null);
-                  const info = computeDocWeekInfo(d, docRows[d.fileId]);
+                  const rowsForInfo =
+                    entry.kind === "pending" ? entry.review.rows : docRows[d.fileId];
+                  const info = computeDocWeekInfo(d, rowsForInfo);
                   const beginLabel = isValidWeek(d.beginWeek) ? `${d.beginWeek}` : "—";
                   const endLabel = isValidWeek(d.eindWeek) ? `${d.eindWeek}` : "—";
                   const fallbackWeekLabel =
                     beginLabel === "—" && endLabel === "—" ? "—" : `wk ${beginLabel}–${endLabel}`;
+                  const warnings =
+                    entry.kind === "pending"
+                      ? Object.entries(entry.review.warnings)
+                          .filter(([, value]) => value)
+                          .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]])
+                      : [];
+                  const parseSummary =
+                    entry.kind === "pending"
+                      ? entry.review.diffSummary
+                      : entry.guide?.latestVersion.diffSummary ?? null;
+                  const parseLabel = formatDiffSummaryLabel(parseSummary);
+                  const rowClassName = clsx(
+                    i > 0 ? "border-t theme-border" : "",
+                    entry.kind === "pending" && "bg-amber-50"
+                  );
+                  const reviewButtonTitle =
+                    entry.kind === "pending"
+                      ? "Start review"
+                      : "Bekijk versies & diff";
+                  const reviewButtonClass = clsx(
+                    "rounded-lg border p-1",
+                    entry.kind === "pending"
+                      ? "border-amber-500 bg-amber-100 text-amber-900 hover:bg-amber-200"
+                      : "theme-border theme-surface"
+                  );
                   return (
-                    <tr key={d.fileId} className={i > 0 ? "border-t theme-border" : ""}>
+                    <tr key={`${entry.kind}-${d.fileId}-${entry.kind === "pending" ? entry.review.parseId : d.versionId ?? "latest"}`} className={rowClassName}>
                       <td className="px-4 py-3 text-center align-middle">
                         <input
                           type="checkbox"
                           className="h-4 w-4"
-                          checked={d.enabled}
-                          onChange={() => toggleGebruik(d)}
+                          checked={entry.kind === "active" ? d.enabled : false}
+                          onChange={() => entry.kind === "active" && toggleGebruik(d)}
                           aria-label={
-                            d.enabled
-                              ? `Gebruik uitschakelen voor ${d.bestand}`
-                              : `Gebruik inschakelen voor ${d.bestand}`
+                            entry.kind === "active"
+                              ? d.enabled
+                                ? `Gebruik uitschakelen voor ${d.bestand}`
+                                : `Gebruik inschakelen voor ${d.bestand}`
+                              : `In review – niet in gebruik`
                           }
                           title={
-                            d.enabled
-                              ? `Gebruik uitschakelen voor ${d.bestand}`
-                              : `Gebruik inschakelen voor ${d.bestand}`
+                            entry.kind === "active"
+                              ? d.enabled
+                                ? `Gebruik uitschakelen voor ${d.bestand}`
+                                : `Gebruik inschakelen voor ${d.bestand}`
+                              : "Eerst review afronden"
                           }
+                          disabled={entry.kind !== "active"}
                         />
                       </td>
                       <td className="px-4 py-3 align-top">
                         <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
                           <button
-                            title={`Bron: ${d.bestand}`}
-                            className="rounded-lg border theme-border theme-surface p-1"
-                            onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
+                            onClick={() => handleReviewEntry(entry)}
+                            title={reviewButtonTitle}
+                            aria-label={reviewButtonTitle}
+                            className={reviewButtonClass}
                           >
-                            <FileText size={16} />
+                            <ClipboardList size={16} />
                           </button>
-                          <button
-                            onClick={() => setDetailDoc(d)}
-                            title="Meta-details"
-                            className="rounded-lg border theme-border theme-surface p-1"
-                          >
-                            <Info size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(d)}
-                            title="Verwijder"
-                            className="rounded-lg border theme-border theme-surface p-1 text-red-600"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {entry.kind === "active" ? (
+                            <>
+                              <button
+                                title={`Bron: ${d.bestand}`}
+                                className="rounded-lg border theme-border theme-surface p-1"
+                                onClick={() => openPreview({ fileId: d.fileId, filename: d.bestand })}
+                              >
+                                <FileText size={16} />
+                              </button>
+                              <button
+                                onClick={() => setDetailDoc(d)}
+                                title="Meta-details"
+                                className="rounded-lg border theme-border theme-surface p-1"
+                              >
+                                <Info size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(d)}
+                                title="Verwijder"
+                                className="rounded-lg border theme-border theme-surface p-1 text-red-600"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => handleDeletePending(entry.review)}
+                              title="Review verwijderen"
+                              aria-label="Review verwijderen"
+                              className="rounded-lg border border-red-200 bg-red-50 p-1 text-red-600"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 align-top break-words" title={d.bestand}>
-                        {d.bestand}
+                        <div className="font-medium">{d.bestand}</div>
+                        {entry.kind === "pending" && (
+                          <div className="text-xs text-amber-700">Review vereist</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 align-top">
                         <div className="leading-tight">
                           <div>{date}</div>
                           {time && <div className="text-xs theme-muted">{time}</div>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="leading-tight">
+                          <div>{parseLabel}</div>
+                          {entry.kind === "pending" ? (
+                            warnings.length ? (
+                              <div className="text-xs text-amber-700">
+                                {warnings.join(" · ")}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-amber-700">Controleer en commit</div>
+                            )
+                          ) : (
+                            <div className="text-xs theme-muted">In gebruik</div>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 align-top">{d.vak}</td>
@@ -1009,7 +1201,7 @@ export default function Uploads() {
             </table>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t theme-border px-4 py-3 text-xs theme-muted">
               <div>
-                Toont {startIdx + 1}–{endIdx} van {filtered.length} bestanden
+                Toont {startIdx + 1}–{endIdx} van {filteredEntries.length} bestanden
               </div>
               <div className="flex items-center gap-2">
                 <button

@@ -1,0 +1,175 @@
+import React from "react";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { render, screen, waitFor, act, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import Uploads from "../Uploads";
+import { useAppStore } from "../../app/store";
+import type { CommitResponse, DocMeta, DocRow, ReviewDraft } from "../../lib/api";
+
+vi.mock("../../lib/api", async () => {
+  const actual = await vi.importActual<typeof import("../../lib/api")>("../../lib/api");
+  return {
+    ...actual,
+    apiUploadDoc: vi.fn(),
+    apiCommitReview: vi.fn(),
+    apiDeleteReview: vi.fn(),
+  };
+});
+
+vi.mock("../../components/DocumentPreviewProvider", () => ({
+  useDocumentPreview: () => ({ openPreview: vi.fn(), closePreview: vi.fn() }),
+}));
+
+const mockedApi = vi.mocked(await import("../../lib/api"));
+
+const makeMeta = (overrides?: Partial<DocMeta>): DocMeta => ({
+  fileId: "guide-1",
+  guideId: "guide-1",
+  versionId: 1,
+  bestand: "demo.docx",
+  vak: "Wiskunde",
+  niveau: "VWO",
+  leerjaar: "5",
+  periode: 1,
+  beginWeek: 1,
+  eindWeek: 5,
+  schooljaar: "2024/2025",
+  uploadedAt: "2024-01-10T08:00:00.000Z",
+  ...overrides,
+});
+
+const makeRow = (overrides?: Partial<DocRow>): DocRow => ({
+  week: 1,
+  datum: "2024-01-10",
+  les: "Les 1",
+  onderwerp: "Intro",
+  huiswerk: null,
+  opdracht: null,
+  leerdoelen: null,
+  bronnen: null,
+  toets: null,
+  notities: null,
+  klas_of_groep: null,
+  locatie: null,
+  ...overrides,
+});
+
+const makeReview = (overrides?: Partial<ReviewDraft>): ReviewDraft => ({
+  parseId: "parse-1",
+  meta: makeMeta(),
+  rows: [makeRow()],
+  warnings: { unknownSubject: false, missingWeek: false, duplicateDate: false },
+  diffSummary: { added: 1, changed: 0, removed: 0, unchanged: 0 },
+  diff: [
+    {
+      index: 0,
+      status: "added",
+      fields: {
+        week: { status: "added", old: null, new: 1 },
+        datum: { status: "added", old: null, new: "2024-01-10" },
+      },
+    },
+  ],
+  ...overrides,
+});
+
+describe("Uploads page flow", () => {
+  beforeEach(() => {
+    useAppStore.getState().resetAppState();
+    if (typeof window !== "undefined") {
+      window.localStorage.clear();
+    }
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("commits automatisch wanneer er geen waarschuwingen zijn", async () => {
+    const review = makeReview();
+    const commitResponse: CommitResponse = {
+      guideId: review.meta.fileId,
+      version: {
+        versionId: 1,
+        createdAt: "2024-01-10T08:05:00.000Z",
+        meta: makeMeta({ uploadedAt: "2024-01-10T08:05:00.000Z" }),
+        diffSummary: review.diffSummary,
+      },
+    };
+
+    mockedApi.apiUploadDoc.mockResolvedValue([review]);
+    mockedApi.apiCommitReview.mockResolvedValue(commitResponse);
+
+    const user = userEvent.setup();
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/uploads"]}>
+        <Routes>
+          <Route path="/uploads" element={<Uploads />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["fake"], "demo.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+
+    await act(async () => {
+      await user.upload(fileInput, file);
+    });
+
+    await waitFor(() => expect(mockedApi.apiUploadDoc).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockedApi.apiCommitReview).toHaveBeenCalledWith(review.parseId));
+
+    await waitFor(() => {
+      const state = useAppStore.getState();
+      expect(Object.keys(state.pendingReviews)).toHaveLength(0);
+      expect(state.docs.some((doc) => doc.fileId === commitResponse.guideId)).toBe(true);
+    });
+
+    expect(screen.getByText(/demo\.docx/)).toBeInTheDocument();
+    expect(screen.getAllByText(/In gebruik/)[0]).toBeInTheDocument();
+  });
+
+  it("toont pending review met waarschuwingen en start de wizard via de reviewknop", async () => {
+    const pendingReview = makeReview({
+      parseId: "parse-2",
+      meta: makeMeta({ bestand: "nieuw.docx", vak: "" }),
+      warnings: { unknownSubject: true, missingWeek: true, duplicateDate: false },
+    });
+
+    await act(async () => {
+      const store = useAppStore.getState();
+      store.setPendingReview(pendingReview);
+      store.setActiveReview(null);
+    });
+
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={["/uploads"]}>
+        <Routes>
+          <Route path="/uploads" element={<Uploads />} />
+          <Route path="/review" element={<div>Review pagina</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const table = screen.getByRole("table");
+    const rows = within(table).getAllByRole("row");
+    const row = rows.find((candidate) => within(candidate).queryByText(/nieuw\.docx/));
+    expect(row).toBeTruthy();
+    const utils = within(row as HTMLElement);
+    expect(utils.getByText(/Review vereist/)).toBeInTheDocument();
+    expect(utils.getByText(/1 toegevoegd/)).toBeInTheDocument();
+    expect(utils.getByText(/Vak onbekend/)).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Start review"));
+
+    await waitFor(() => expect(useAppStore.getState().activeReviewId).toBe(pendingReview.parseId));
+    await waitFor(() => expect(screen.getByText(/Review pagina/)).toBeInTheDocument());
+  });
+});
