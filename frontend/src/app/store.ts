@@ -106,6 +106,8 @@ type State = {
   setEnableHomeworkEditing: (value: boolean) => void;
   enableCustomHomework: boolean;
   setEnableCustomHomework: (value: boolean) => void;
+  enableAutoUpdate: boolean;
+  setEnableAutoUpdate: (value: boolean) => void;
 
   // ==== afvinkstatus gedeeld ====
   doneMap: Record<string, boolean>;
@@ -402,6 +404,7 @@ const createInitialState = (): Pick<
   | "surfaceOpacity"
   | "enableHomeworkEditing"
   | "enableCustomHomework"
+  | "enableAutoUpdate"
   | "doneMap"
   | "weekIdxWO"
   | "niveauWO"
@@ -425,6 +428,7 @@ const createInitialState = (): Pick<
   surfaceOpacity: 100,
   enableHomeworkEditing: true,
   enableCustomHomework: true,
+  enableAutoUpdate: true,
   doneMap: {},
   weekIdxWO: 0,
   niveauWO: "ALLE",
@@ -724,6 +728,8 @@ export const useAppStore = create<State>()(
         set(() => ({ enableHomeworkEditing: !!value })),
       setEnableCustomHomework: (value) =>
         set(() => ({ enableCustomHomework: !!value })),
+      setEnableAutoUpdate: (value) =>
+        set(() => ({ enableAutoUpdate: !!value })),
 
       // ----------------------------
       // done-map
@@ -803,6 +809,7 @@ export const useAppStore = create<State>()(
         surfaceOpacity: state.surfaceOpacity,
         enableHomeworkEditing: state.enableHomeworkEditing,
         enableCustomHomework: state.enableCustomHomework,
+        enableAutoUpdate: state.enableAutoUpdate,
         doneMap: state.doneMap,
         weekIdxWO: state.weekIdxWO,
         niveauWO: state.niveauWO,

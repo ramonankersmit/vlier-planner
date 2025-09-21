@@ -20,6 +20,7 @@ lxml==6.0.1
 markdown-it-py==4.0.0
 MarkupSafe==3.0.2
 mdurl==0.1.2
+packaging==24.1
 orjson==3.11.3
 pdfminer.six==20250506
 pdfplumber==0.11.7

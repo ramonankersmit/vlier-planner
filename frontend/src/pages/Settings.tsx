@@ -21,6 +21,8 @@ export default function Settings() {
     setEnableHomeworkEditing,
     enableCustomHomework,
     setEnableCustomHomework,
+    enableAutoUpdate,
+    setEnableAutoUpdate,
     resetAppState,
   } = useAppStore();
   const docs = useAppStore((s) => s.docs) ?? [];
@@ -234,6 +236,20 @@ export default function Settings() {
               <div className="text-sm font-medium theme-text">Eigen taak toevoegen</div>
               <div className="text-xs leading-snug theme-muted">
                 Toon de knop om zelf extra taakregels toe te voegen aan een week.
+              </div>
+            </div>
+          </label>
+          <label className="flex items-start gap-3 rounded-md border theme-border theme-soft p-3">
+            <input
+              type="checkbox"
+              checked={enableAutoUpdate}
+              onChange={(event) => setEnableAutoUpdate(event.target.checked)}
+              className="mt-1"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-medium theme-text">Automatisch op updates controleren</div>
+              <div className="text-xs leading-snug theme-muted">
+                Vraag bij het opstarten om een nieuwe versie te installeren wanneer die beschikbaar is.
               </div>
             </div>
           </label>

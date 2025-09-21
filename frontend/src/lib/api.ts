@@ -109,3 +109,32 @@ export async function apiGetDocPreview(fileId: string): Promise<DocPreview> {
   }
   return r.json();
 }
+
+export type UpdateCheckResponse = {
+  updateAvailable: boolean;
+  currentVersion: string;
+  latestVersion?: string;
+  assetName?: string;
+  notes?: string | null;
+  checksum?: string | null;
+};
+
+export async function apiCheckForUpdate(): Promise<UpdateCheckResponse> {
+  const response = await fetch(`${BASE}/api/system/update`);
+  if (!response.ok) {
+    throw new Error(`update_check failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function apiInstallUpdate(version: string): Promise<void> {
+  const response = await fetch(`${BASE}/api/system/update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ version }),
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`update_install failed: ${response.status} – ${message}`);
+  }
+}
