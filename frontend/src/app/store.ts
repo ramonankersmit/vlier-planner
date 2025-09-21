@@ -525,36 +525,37 @@ const createInitialState = (): Pick<
   | "matrixNiveau"
   | "matrixLeerjaar"
   | "lastVisitedRoute"
-> => (
+> => {
   const { presets, activeThemeId, theme, backgroundImage, surfaceOpacity } =
     resolveActiveThemeState(createThemePresets(), "default");
   return {
-  docs: [],
-  docsInitialized: false,
-  docRows: {},
-  weekData: { weeks: [], byWeek: {} },
-  customHomework: {},
-  homeworkAdjustments: {},
-  mijnVakken: [],
-  huiswerkWeergave: "perOpdracht",
-  themePresets: presets,
-  activeThemeId,
-  theme,
-  backgroundImage,
-  surfaceOpacity,
-  enableHomeworkEditing: true,
-  enableCustomHomework: true,
-  enableAutoUpdate: true,
-  doneMap: {},
-  weekIdxWO: 0,
-  niveauWO: "ALLE",
-  leerjaarWO: "ALLE",
-  matrixStartIdx: -1,
-  matrixCount: 3,
-  matrixNiveau: "ALLE",
-  matrixLeerjaar: "ALLE",
-  lastVisitedRoute: "/",
-});
+    docs: [],
+    docsInitialized: false,
+    docRows: {},
+    weekData: { weeks: [], byWeek: {} },
+    customHomework: {},
+    homeworkAdjustments: {},
+    mijnVakken: [],
+    huiswerkWeergave: "perOpdracht",
+    themePresets: presets,
+    activeThemeId,
+    theme,
+    backgroundImage,
+    surfaceOpacity,
+    enableHomeworkEditing: true,
+    enableCustomHomework: true,
+    enableAutoUpdate: true,
+    doneMap: {},
+    weekIdxWO: 0,
+    niveauWO: "ALLE",
+    leerjaarWO: "ALLE",
+    matrixStartIdx: -1,
+    matrixCount: 3,
+    matrixNiveau: "ALLE",
+    matrixLeerjaar: "ALLE",
+    lastVisitedRoute: "/",
+  };
+};
 
 export const useAppStore = create<State>()(
   persist(
