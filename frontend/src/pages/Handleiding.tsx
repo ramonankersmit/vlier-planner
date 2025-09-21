@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import {
   Sparkles,
   CalendarClock,
@@ -6,6 +7,7 @@ import {
   Upload,
   Settings2,
   Wand2,
+  X,
 } from "lucide-react";
 import { PUBLIC_LOGO, PUBLIC_SCREENSHOTS } from "../assets/images";
 
@@ -102,6 +104,37 @@ const demoScreens = [
 ];
 
 export default function Handleiding() {
+  const [selectedScreen, setSelectedScreen] = React.useState<
+    (typeof demoScreens)[number] | null
+  >(null);
+  const closeButtonRef = React.useRef<HTMLButtonElement | null>(null);
+
+  const closeSelectedScreen = React.useCallback(() => {
+    setSelectedScreen(null);
+  }, []);
+
+  React.useEffect(() => {
+    if (!selectedScreen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeSelectedScreen();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeSelectedScreen, selectedScreen]);
+
+  React.useEffect(() => {
+    if (selectedScreen && closeButtonRef.current) {
+      closeButtonRef.current.focus({ preventScroll: true });
+    }
+  }, [selectedScreen]);
+
   return (
     <div className="space-y-10">
       <header
@@ -153,14 +186,23 @@ export default function Handleiding() {
               key={screen.title}
               className="flex h-full flex-col overflow-hidden rounded-xl border theme-border theme-surface shadow-sm"
             >
-              <div className="relative aspect-[16/10] border-b border-[var(--app-border)] bg-[var(--app-background)]">
+              <button
+                type="button"
+                onClick={() => setSelectedScreen(screen)}
+                className="group relative aspect-[16/10] border-b border-[var(--app-border)] bg-[var(--app-background)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]"
+              >
+                <span className="sr-only">Open {screen.title} in een groter venster</span>
                 <img
                   src={screen.image}
                   alt={screen.imageAlt}
-                  className="h-full w-full object-contain"
+                  className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
                   loading="lazy"
                 />
-              </div>
+                <span className="pointer-events-none absolute inset-0 hidden items-center justify-center gap-2 bg-black/40 text-sm font-medium text-white group-hover:flex">
+                  <Wand2 size={16} aria-hidden="true" />
+                  Vergroot voorbeeld
+                </span>
+              </button>
               <div className="space-y-3 p-4">
                 <div className="space-y-2">
                   <p className="text-sm font-medium theme-text">{screen.title}</p>
@@ -197,6 +239,50 @@ export default function Handleiding() {
           ))}
         </div>
       </section>
+
+      {selectedScreen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[999] flex items-center justify-center bg-black/70 p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Vergroot voorbeeld van ${selectedScreen.title}`}
+              onClick={closeSelectedScreen}
+            >
+              <div
+                className="relative flex w-full max-w-4xl flex-col gap-4 overflow-hidden rounded-2xl border theme-border theme-surface p-6 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={closeSelectedScreen}
+                  ref={closeButtonRef}
+                  className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-black/10 text-[var(--app-text)] transition hover:bg-black/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]"
+                  aria-label="Sluit vergroting"
+                >
+                  <X size={18} aria-hidden="true" />
+                </button>
+                <div className="flex flex-col gap-2 pr-10">
+                  <h3 className="text-lg font-semibold theme-text">{selectedScreen.title}</h3>
+                  <p className="text-sm leading-relaxed text-[var(--app-muted)]">
+                    {selectedScreen.description}
+                  </p>
+                </div>
+                <div className="flex max-h-[70vh] justify-center">
+                  <img
+                    src={selectedScreen.image}
+                    alt={selectedScreen.imageAlt}
+                    className="max-h-full w-full max-w-full rounded-lg border theme-border object-contain"
+                  />
+                </div>
+                <figcaption className="text-xs leading-relaxed text-[var(--app-muted)]">
+                  {selectedScreen.caption}
+                </figcaption>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <section className="space-y-3 rounded-2xl border border-dashed theme-border theme-surface p-6 shadow-sm">
         <h2 className="text-2xl font-semibold theme-text">Zo pak je je week slim aan</h2>

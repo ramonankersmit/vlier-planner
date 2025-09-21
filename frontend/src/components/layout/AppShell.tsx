@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { Coffee, Sparkles } from "lucide-react";
+import { Coffee, Sparkles, Info, UploadCloud, Settings as SettingsIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import packageJson from "../../../package.json";
 import { useAppStore } from "../../app/store";
 import { PUBLIC_LOGO } from "../../assets/images";
@@ -48,19 +49,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return withAlpha(theme.surface, headerAlpha);
   }, [theme.surface, surfaceOpacity]);
 
-  const navigationLinks = React.useMemo(
+  type NavigationLink = { to: string; label: string; icon?: LucideIcon };
+
+  const navigationLinks: NavigationLink[] = React.useMemo(
     () => [
       { to: "/", label: "Weekoverzicht" },
       { to: "/matrix", label: "Matrix overzicht" },
       { to: "/deadlines", label: "Belangrijke events" },
-      { to: "/uploads", label: "Uploads" },
-      { to: "/uitleg", label: "Uitleg" },
-      { to: "/settings", label: "Settings" },
+      { to: "/uploads", label: "Uploads", icon: UploadCloud },
+      { to: "/uitleg", label: "Uitleg", icon: Info },
+      { to: "/settings", label: "Settings", icon: SettingsIcon },
     ],
     [],
   );
 
-  const linkBase = "rounded-md border px-3 py-1 text-sm transition-colors theme-border";
+  const linkBase =
+    "inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm transition-colors theme-border";
   const resolveLinkClassName = React.useCallback(
     (isActive: boolean) =>
       `${linkBase} ${isActive ? "theme-accent" : "theme-surface theme-text"}`,
@@ -83,11 +87,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="text-xl font-semibold theme-text">Het Vlier Studiewijzer Planner</div>
           </div>
           <nav className="ml-auto flex gap-1">
-            {navigationLinks.map((link) => (
-              <NavLink key={link.to} to={link.to} className={({ isActive }) => resolveLinkClassName(isActive)}>
-                {link.label}
-              </NavLink>
-            ))}
+            {navigationLinks.map((link) => {
+              const Icon = link.icon;
+              return (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  className={({ isActive }) => resolveLinkClassName(isActive)}
+                >
+                  {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+                  <span>{link.label}</span>
+                </NavLink>
+              );
+            })}
             <button
               type="button"
               onClick={() => restartTour()}
