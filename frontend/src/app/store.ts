@@ -59,6 +59,8 @@ export type ThemePreset = {
   id: string;
   name: string;
   settings: ThemeSettings;
+  backgroundImage: string | null;
+  surfaceOpacity: number;
   builtIn?: boolean;
 };
 
@@ -83,13 +85,32 @@ const darkTheme: ThemeSettings = {
 };
 
 const builtinThemePresets: ThemePreset[] = [
-  { id: "default", name: "Standaard", settings: defaultTheme, builtIn: true },
-  { id: "dark", name: "Donker", settings: darkTheme, builtIn: true },
+  {
+    id: "default",
+    name: "Standaard",
+    settings: defaultTheme,
+    backgroundImage: null,
+    surfaceOpacity: 100,
+    builtIn: true,
+  },
+  {
+    id: "dark",
+    name: "Donker",
+    settings: darkTheme,
+    backgroundImage: null,
+    surfaceOpacity: 90,
+    builtIn: true,
+  },
 ];
 
 const builtinThemeIds = new Set(builtinThemePresets.map((preset) => preset.id));
 
 const cloneThemeSettings = (theme: ThemeSettings): ThemeSettings => ({ ...theme });
+
+const clampSurfaceOpacity = (value?: number): number => {
+  const numeric = Number.isFinite(value) ? Math.round(value as number) : 100;
+  return Math.min(100, Math.max(0, numeric));
+};
 
 const createThemePresets = (customPresets: ThemePreset[] = []): ThemePreset[] => {
   const custom = customPresets
@@ -99,6 +120,8 @@ const createThemePresets = (customPresets: ThemePreset[] = []): ThemePreset[] =>
       name: preset.name,
       builtIn: false,
       settings: cloneThemeSettings(preset.settings),
+      backgroundImage: preset.backgroundImage ?? null,
+      surfaceOpacity: clampSurfaceOpacity(preset.surfaceOpacity),
     }));
   return [
     ...builtinThemePresets.map((preset) => ({
@@ -106,9 +129,35 @@ const createThemePresets = (customPresets: ThemePreset[] = []): ThemePreset[] =>
       name: preset.name,
       builtIn: true,
       settings: cloneThemeSettings(preset.settings),
+      backgroundImage: preset.backgroundImage ?? null,
+      surfaceOpacity: clampSurfaceOpacity(preset.surfaceOpacity),
     })),
     ...custom,
   ];
+};
+
+const resolveActiveThemeState = (
+  presets: ThemePreset[],
+  activeThemeId?: string
+): {
+  presets: ThemePreset[];
+  activeThemeId: string;
+  theme: ThemeSettings;
+  backgroundImage: string | null;
+  surfaceOpacity: number;
+} => {
+  const fallbackPreset =
+    presets.find((preset) => preset.id === activeThemeId) ??
+    presets.find((preset) => preset.id === "default") ??
+    presets[0] ??
+    builtinThemePresets[0];
+  return {
+    presets,
+    activeThemeId: fallbackPreset?.id ?? "default",
+    theme: cloneThemeSettings(fallbackPreset?.settings ?? defaultTheme),
+    backgroundImage: fallbackPreset?.backgroundImage ?? null,
+    surfaceOpacity: fallbackPreset?.surfaceOpacity ?? 100,
+  };
 };
 
 type State = {
@@ -142,10 +191,15 @@ type State = {
   themePresets: ThemePreset[];
   activeThemeId: string;
   setActiveTheme: (id: string) => void;
-  addCustomTheme: (name: string, settings: ThemeSettings) => void;
+  addCustomTheme: (name: string) => void;
   updateCustomTheme: (
     id: string,
-    update: { name?: string; settings?: ThemeSettings }
+    update: {
+      name?: string;
+      settings?: ThemeSettings;
+      backgroundImage?: string | null;
+      surfaceOpacity?: number;
+    }
   ) => void;
   removeCustomTheme: (id: string) => void;
   theme: ThemeSettings;
@@ -468,32 +522,36 @@ const createInitialState = (): Pick<
   | "matrixNiveau"
   | "matrixLeerjaar"
   | "lastVisitedRoute"
-> => ({
-  docs: [],
-  docsInitialized: false,
-  docRows: {},
-  weekData: { weeks: [], byWeek: {} },
-  customHomework: {},
-  homeworkAdjustments: {},
-  mijnVakken: [],
-  huiswerkWeergave: "perOpdracht",
-  themePresets: createThemePresets(),
-  activeThemeId: "default",
-  theme: { ...defaultTheme },
-  backgroundImage: null,
-  surfaceOpacity: 100,
-  enableHomeworkEditing: true,
-  enableCustomHomework: true,
-  doneMap: {},
-  weekIdxWO: 0,
-  niveauWO: "ALLE",
-  leerjaarWO: "ALLE",
-  matrixStartIdx: -1,
-  matrixCount: 3,
-  matrixNiveau: "ALLE",
-  matrixLeerjaar: "ALLE",
-  lastVisitedRoute: "/",
-});
+> => {
+  const { presets, activeThemeId, theme, backgroundImage, surfaceOpacity } =
+    resolveActiveThemeState(createThemePresets(), "default");
+  return {
+    docs: [],
+    docsInitialized: false,
+    docRows: {},
+    weekData: { weeks: [], byWeek: {} },
+    customHomework: {},
+    homeworkAdjustments: {},
+    mijnVakken: [],
+    huiswerkWeergave: "perOpdracht",
+    themePresets: presets,
+    activeThemeId,
+    theme,
+    backgroundImage,
+    surfaceOpacity,
+    enableHomeworkEditing: true,
+    enableCustomHomework: true,
+    doneMap: {},
+    weekIdxWO: 0,
+    niveauWO: "ALLE",
+    leerjaarWO: "ALLE",
+    matrixStartIdx: -1,
+    matrixCount: 3,
+    matrixNiveau: "ALLE",
+    matrixLeerjaar: "ALLE",
+    lastVisitedRoute: "/",
+  };
+};
 
 export const useAppStore = create<State>()(
   persist(
@@ -776,26 +834,38 @@ export const useAppStore = create<State>()(
             return {
               activeThemeId: fallback.id,
               theme: cloneThemeSettings(fallback.settings),
+              backgroundImage: fallback.backgroundImage ?? null,
+              surfaceOpacity: fallback.surfaceOpacity ?? 100,
             };
           }
           return {
             activeThemeId: preset.id,
             theme: cloneThemeSettings(preset.settings),
+            backgroundImage: preset.backgroundImage ?? null,
+            surfaceOpacity: preset.surfaceOpacity ?? 100,
           };
         }),
-      addCustomTheme: (name, settings) => {
+      addCustomTheme: (name) => {
         const trimmed = name.trim();
         const id = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
         set((state) => {
+          const activePreset =
+            state.themePresets.find((preset) => preset.id === state.activeThemeId) ??
+            state.themePresets[0] ??
+            builtinThemePresets[0];
           const nextPreset: ThemePreset = {
             id,
             name: trimmed || "Mijn thema",
-            settings: cloneThemeSettings(settings),
+            settings: cloneThemeSettings(activePreset?.settings ?? defaultTheme),
+            backgroundImage: activePreset?.backgroundImage ?? null,
+            surfaceOpacity: activePreset?.surfaceOpacity ?? 100,
           };
           return {
             themePresets: [...state.themePresets, nextPreset],
             activeThemeId: id,
-            theme: cloneThemeSettings(settings),
+            theme: cloneThemeSettings(nextPreset.settings),
+            backgroundImage: nextPreset.backgroundImage ?? null,
+            surfaceOpacity: nextPreset.surfaceOpacity ?? 100,
           };
         });
       },
@@ -815,12 +885,26 @@ export const useAppStore = create<State>()(
             settings: update.settings
               ? cloneThemeSettings(update.settings)
               : cloneThemeSettings(current.settings),
+            backgroundImage:
+              update.backgroundImage !== undefined
+                ? update.backgroundImage
+                : current.backgroundImage ?? null,
+            surfaceOpacity:
+              update.surfaceOpacity !== undefined
+                ? clampSurfaceOpacity(update.surfaceOpacity)
+                : clampSurfaceOpacity(current.surfaceOpacity),
             builtIn: false,
           };
           nextPresets[idx] = nextPreset;
           const patch: Partial<State> = { themePresets: nextPresets };
           if (state.activeThemeId === id && update.settings) {
             patch.theme = cloneThemeSettings(nextPreset.settings);
+          }
+          if (state.activeThemeId === id && update.backgroundImage !== undefined) {
+            patch.backgroundImage = nextPreset.backgroundImage ?? null;
+          }
+          if (state.activeThemeId === id && update.surfaceOpacity !== undefined) {
+            patch.surfaceOpacity = nextPreset.surfaceOpacity ?? 100;
           }
           return patch;
         }),
@@ -838,6 +922,8 @@ export const useAppStore = create<State>()(
               themePresets: nextPresets,
               activeThemeId: fallback.id,
               theme: cloneThemeSettings(fallback.settings),
+              backgroundImage: fallback.backgroundImage ?? null,
+              surfaceOpacity: fallback.surfaceOpacity ?? 100,
             };
           }
           return {
@@ -868,17 +954,83 @@ export const useAppStore = create<State>()(
           return {
             activeThemeId: fallback.id,
             theme: cloneThemeSettings(fallback.settings),
+            backgroundImage: fallback.backgroundImage ?? null,
+            surfaceOpacity: fallback.surfaceOpacity ?? 100,
           };
         }),
-      setBackgroundImage: (value) => set({ backgroundImage: value }),
-      resetBackgroundImage: () => set({ backgroundImage: null }),
-      setSurfaceOpacity: (value) =>
-        set(() => {
-          const numeric = Number.isFinite(value) ? Math.round(value) : 100;
-          const clamped = Math.min(100, Math.max(0, numeric));
-          return { surfaceOpacity: clamped };
+      setBackgroundImage: (value) =>
+        set((state) => {
+          const patch: Partial<State> = { backgroundImage: value };
+          const activePresetIdx = state.themePresets.findIndex(
+            (preset) => preset.id === state.activeThemeId && !preset.builtIn
+          );
+          if (activePresetIdx === -1) {
+            return patch;
+          }
+          const nextPresets = [...state.themePresets];
+          const current = nextPresets[activePresetIdx];
+          nextPresets[activePresetIdx] = {
+            ...current,
+            backgroundImage: value ?? null,
+          };
+          patch.themePresets = nextPresets;
+          return patch;
         }),
-      resetSurfaceOpacity: () => set({ surfaceOpacity: 100 }),
+      resetBackgroundImage: () =>
+        set((state) => {
+          const patch: Partial<State> = { backgroundImage: null };
+          const activePresetIdx = state.themePresets.findIndex(
+            (preset) => preset.id === state.activeThemeId && !preset.builtIn
+          );
+          if (activePresetIdx === -1) {
+            return patch;
+          }
+          const nextPresets = [...state.themePresets];
+          const current = nextPresets[activePresetIdx];
+          nextPresets[activePresetIdx] = {
+            ...current,
+            backgroundImage: null,
+          };
+          patch.themePresets = nextPresets;
+          return patch;
+        }),
+      setSurfaceOpacity: (value) =>
+        set((state) => {
+          const clamped = clampSurfaceOpacity(value);
+          const patch: Partial<State> = { surfaceOpacity: clamped };
+          const activePresetIdx = state.themePresets.findIndex(
+            (preset) => preset.id === state.activeThemeId && !preset.builtIn
+          );
+          if (activePresetIdx === -1) {
+            return patch;
+          }
+          const nextPresets = [...state.themePresets];
+          const current = nextPresets[activePresetIdx];
+          nextPresets[activePresetIdx] = {
+            ...current,
+            surfaceOpacity: clamped,
+          };
+          patch.themePresets = nextPresets;
+          return patch;
+        }),
+      resetSurfaceOpacity: () =>
+        set((state) => {
+          const patch: Partial<State> = { surfaceOpacity: 100 };
+          const activePresetIdx = state.themePresets.findIndex(
+            (preset) => preset.id === state.activeThemeId && !preset.builtIn
+          );
+          if (activePresetIdx === -1) {
+            return patch;
+          }
+          const nextPresets = [...state.themePresets];
+          const current = nextPresets[activePresetIdx];
+          nextPresets[activePresetIdx] = {
+            ...current,
+            surfaceOpacity: 100,
+          };
+          patch.themePresets = nextPresets;
+          return patch;
+        }),
       setEnableHomeworkEditing: (value) =>
         set(() => ({ enableHomeworkEditing: !!value })),
       setEnableCustomHomework: (value) =>
@@ -948,7 +1100,7 @@ export const useAppStore = create<State>()(
     }),
     {
       name: "vlier-planner-state",
-      version: 3,
+      version: 4,
       partialize: (state) => ({
         docs: state.docs,
         docRows: state.docRows,
@@ -978,26 +1130,29 @@ export const useAppStore = create<State>()(
         if (!persistedState) {
           return createInitialState();
         }
-        if (version >= 3) {
+        if (version >= 4) {
           const state = persistedState as State;
           const presets = createThemePresets(state.themePresets);
-          const hasActive = presets.some((preset) => preset.id === state.activeThemeId);
-          const activePreset = hasActive
-            ? presets.find((preset) => preset.id === state.activeThemeId)
-            : presets[0];
+          const resolved = resolveActiveThemeState(presets, state.activeThemeId);
           return {
             ...state,
-            themePresets: presets,
-            activeThemeId: activePreset?.id ?? "default",
-            theme: cloneThemeSettings(activePreset?.settings ?? defaultTheme),
+            themePresets: resolved.presets,
+            activeThemeId: resolved.activeThemeId,
+            theme: resolved.theme,
+            backgroundImage: resolved.backgroundImage,
+            surfaceOpacity: resolved.surfaceOpacity,
           };
         }
         const legacy = persistedState as State & {
           themePresets?: ThemePreset[];
           activeThemeId?: string;
+          backgroundImage?: string | null;
+          surfaceOpacity?: number;
         };
         const presets = createThemePresets(legacy.themePresets);
         const storedTheme = legacy.theme ?? defaultTheme;
+        const storedBackgroundImage = legacy.backgroundImage ?? null;
+        const storedSurfaceOpacity = clampSurfaceOpacity(legacy.surfaceOpacity);
         const matchingPreset = presets.find((preset) => {
           const settings = preset.settings;
           return (
@@ -1010,26 +1165,52 @@ export const useAppStore = create<State>()(
             settings.accentText === storedTheme.accentText
           );
         });
-        let activeThemeId = matchingPreset?.id ?? legacy.activeThemeId ?? "default";
+        const resolvedActiveId = matchingPreset?.id ?? legacy.activeThemeId ?? "default";
+        const needsCustomPreset =
+          !matchingPreset ||
+          (matchingPreset?.builtIn &&
+            (storedBackgroundImage !== (matchingPreset.backgroundImage ?? null) ||
+              storedSurfaceOpacity !== clampSurfaceOpacity(matchingPreset.surfaceOpacity)));
         let nextPresets = presets;
-        if (!matchingPreset) {
-          const customId = "custom-migrated";
+        let activeThemeId = resolvedActiveId;
+        if (needsCustomPreset) {
+          let customId = "custom-migrated";
+          let suffix = 1;
+          while (nextPresets.some((preset) => preset.id === customId)) {
+            customId = `custom-migrated-${suffix++}`;
+          }
+          const basePreset =
+            matchingPreset ?? presets.find((preset) => preset.id === legacy.activeThemeId);
           nextPresets = [
             ...presets,
             {
               id: customId,
-              name: "Mijn thema",
+              name: basePreset?.name ? `${basePreset.name} (kopie)` : "Mijn thema",
               settings: cloneThemeSettings(storedTheme),
+              backgroundImage: storedBackgroundImage,
+              surfaceOpacity: storedSurfaceOpacity,
             },
           ];
           activeThemeId = customId;
+        } else {
+          nextPresets = presets.map((preset) =>
+            preset.id === resolvedActiveId && !preset.builtIn
+              ? {
+                  ...preset,
+                  backgroundImage: storedBackgroundImage,
+                  surfaceOpacity: storedSurfaceOpacity,
+                }
+              : preset
+          );
         }
-        const activePreset = nextPresets.find((preset) => preset.id === activeThemeId);
+        const resolved = resolveActiveThemeState(nextPresets, activeThemeId);
         return {
           ...legacy,
-          themePresets: nextPresets,
-          activeThemeId: activePreset?.id ?? "default",
-          theme: cloneThemeSettings(activePreset?.settings ?? defaultTheme),
+          themePresets: resolved.presets,
+          activeThemeId: resolved.activeThemeId,
+          theme: resolved.theme,
+          backgroundImage: resolved.backgroundImage,
+          surfaceOpacity: resolved.surfaceOpacity,
         };
       },
     }
