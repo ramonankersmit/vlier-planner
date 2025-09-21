@@ -171,8 +171,11 @@ describe("Review wizard", () => {
       screen.getByText(/Weeknummer ontbreekt in rij 1. Vul de weekkolom in of schakel de rij tijdelijk uit./i)
     ).toBeInTheDocument();
 
-    const commitButton = await screen.findByRole("button", { name: /Definitief opslaan/i });
+    const commitButton = await screen.findByRole("button", { name: /Review opslaan/i });
     expect(commitButton).toBeDisabled();
+
+    const saveButton = screen.getByRole("button", { name: /Wijzigingen opslaan/i });
+    expect(saveButton).toBeDisabled();
 
     await user.type(screen.getByLabelText(/Vak/i), "Wiskunde");
     const weekInput = screen.getByLabelText(/Week rij 1/i);
@@ -180,7 +183,9 @@ describe("Review wizard", () => {
     await user.type(weekInput, "1");
     await user.type(screen.getByLabelText(/Datum rij 1/i), "2024-01-10");
 
-    await user.click(screen.getByRole("button", { name: /Wijzigingen opslaan/i }));
+    await waitFor(() => expect(saveButton).toBeEnabled());
+
+    await user.click(saveButton);
     await waitFor(() => expect(mockedApi.apiUpdateReview).toHaveBeenCalledTimes(1));
 
     await waitFor(() => expect(commitButton).toBeEnabled());

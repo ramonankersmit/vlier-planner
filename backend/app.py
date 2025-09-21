@@ -290,9 +290,6 @@ def _load_pending() -> None:
         PENDING_PARSES[parse_id] = data
 
 
-_load_state()
-_load_pending()
-
 # -----------------------------
 # Endpoints
 # -----------------------------
@@ -855,6 +852,10 @@ def delete_review(parse_id: str):
     _pending_or_404(parse_id)
     _remove_pending(parse_id)
     return {"ok": True}
+
+
+_load_state()
+_load_pending()
 
 
 if serve_frontend:

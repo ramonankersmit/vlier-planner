@@ -131,6 +131,24 @@ const diffFieldHighlight: Record<DiffStatus, string> = {
   unchanged: "",
 };
 
+const stableStringify = (value: unknown): string => {
+  const normalized = JSON.stringify(
+    value,
+    (_key, val) => {
+      if (!val || typeof val !== "object" || Array.isArray(val)) {
+        return val;
+      }
+      return Object.keys(val as Record<string, unknown>)
+        .sort()
+        .reduce<Record<string, unknown>>((acc, key) => {
+          acc[key] = (val as Record<string, unknown>)[key];
+          return acc;
+        }, {});
+    }
+  );
+  return normalized ?? "undefined";
+};
+
 export default function Review() {
   const navigate = useNavigate();
   const { parseId } = useParams<{ parseId?: string }>();
@@ -146,8 +164,16 @@ export default function Review() {
 
   const activeReview = parseId ? pendingReviews[parseId] ?? null : null;
 
+  const [baselineMeta, setBaselineMeta] = React.useState<ReviewDraft["meta"] | null>(
+    activeReview ? { ...activeReview.meta } : null
+  );
+  const [baselineRows, setBaselineRows] = React.useState<DocRow[]>(
+    activeReview ? cloneRows(activeReview.rows) : []
+  );
   const [localMeta, setLocalMeta] = React.useState(activeReview ? { ...activeReview.meta } : null);
-  const [localRows, setLocalRows] = React.useState<DocRow[]>(activeReview ? cloneRows(activeReview.rows) : []);
+  const [localRows, setLocalRows] = React.useState<DocRow[]>(
+    activeReview ? cloneRows(activeReview.rows) : []
+  );
   const [isLoading, setLoading] = React.useState(false);
   const [isSaving, setSaving] = React.useState(false);
   const [isCommitting, setCommitting] = React.useState(false);
@@ -185,10 +211,16 @@ export default function Review() {
     if (!activeReview) {
       setLocalMeta(null);
       setLocalRows([]);
+      setBaselineMeta(null);
+      setBaselineRows([]);
       return;
     }
-    setLocalMeta({ ...activeReview.meta });
-    setLocalRows(cloneRows(activeReview.rows));
+    const metaCopy = { ...activeReview.meta };
+    const baseline = cloneRows(activeReview.rows);
+    setBaselineMeta(metaCopy);
+    setBaselineRows(baseline);
+    setLocalMeta({ ...metaCopy });
+    setLocalRows(cloneRows(baseline));
   }, [activeReview]);
 
   const duplicateGroups = React.useMemo(() => computeDuplicateGroups(localRows), [localRows]);
@@ -287,12 +319,6 @@ export default function Review() {
     if (hasWeekEnabled) {
       badges.push(warningLabels.duplicateWeek);
     }
-    if (!hasDateEnabled && duplicateGroupsWithDisabled.some((group) => group.kind === "date")) {
-      badges.push("Dubbele datum (rij uitgeschakeld)");
-    }
-    if (!hasWeekEnabled && duplicateGroupsWithDisabled.some((group) => group.kind === "week")) {
-      badges.push("Dubbele week (rij uitgeschakeld)");
-    }
     if (!hasEnabledRows) {
       badges.push("Geen actieve rijen");
     }
@@ -356,6 +382,22 @@ export default function Review() {
     duplicateGroupsWithDisabled,
     hasEnabledRows,
   ]);
+
+  const hasUnsavedChanges = React.useMemo(() => {
+    if (!baselineMeta || !localMeta) {
+      return false;
+    }
+    if (stableStringify(localMeta) !== stableStringify(baselineMeta)) {
+      return true;
+    }
+    return stableStringify(localRows) !== stableStringify(baselineRows);
+  }, [baselineMeta, baselineRows, localMeta, localRows]);
+
+  React.useEffect(() => {
+    if (hasUnsavedChanges) {
+      setSuccess(null);
+    }
+  }, [hasUnsavedChanges]);
 
   const hasBlockingWarnings = Boolean(
     !localMeta?.vak?.trim() ||
@@ -421,10 +463,14 @@ export default function Review() {
     };
     try {
       const updated = await apiUpdateReview(parseId, payload);
+      const metaCopy = { ...updated.meta };
+      const rowsCopy = cloneRows(updated.rows);
       setPendingReview(updated);
-      setLocalMeta({ ...updated.meta });
-      setLocalRows(cloneRows(updated.rows));
-      setSuccess("Review bijgewerkt");
+      setBaselineMeta(metaCopy);
+      setBaselineRows(rowsCopy);
+      setLocalMeta({ ...metaCopy });
+      setLocalRows(cloneRows(rowsCopy));
+      setSuccess("Review opgeslagen");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Opslaan mislukt";
       setError(message);
@@ -503,20 +549,13 @@ export default function Review() {
   return (
     <div className="px-4 py-6">
       <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <div>
             <h1 className="text-2xl font-semibold theme-text">Reviewwizard</h1>
             <p className="text-sm theme-muted">
               Controleer parserresultaten, corrigeer rijen en bevestig de nieuwe versie per document.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate("/uploads")}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Terug naar uploads
-          </button>
         </div>
 
         {error && (
@@ -693,9 +732,25 @@ export default function Review() {
                       const weekDuplicate = duplicateInfos.find((info) => info.kind === "week");
                       const isDisabled = row.enabled === false;
                       const rowDiff = diffByIndex.get(index);
-                      const rowStatus = (rowDiff?.status ?? "unchanged") as DiffStatus;
-                      const resolveFieldStatus = (field: string): DiffStatus => {
-                        const diffField = rowDiff?.fields?.[field];
+                      const baselineRow = baselineRows[index];
+                      const rowStatus = (() => {
+                        if (baselineRow && stableStringify(row) !== stableStringify(baselineRow)) {
+                          return "changed" as DiffStatus;
+                        }
+                        return (rowDiff?.status ?? "unchanged") as DiffStatus;
+                      })();
+                      const resolveFieldStatus = (field: keyof DocRow): DiffStatus => {
+                        if (baselineRow) {
+                          const baselineRecord =
+                            baselineRow as unknown as Record<string, unknown>;
+                          const rowRecord = row as unknown as Record<string, unknown>;
+                          const baselineValue = baselineRecord[field as string];
+                          const currentValue = rowRecord[field as string];
+                          if (stableStringify(currentValue) !== stableStringify(baselineValue)) {
+                            return "changed";
+                          }
+                        }
+                        const diffField = rowDiff?.fields?.[field as string];
                         const status = diffField?.status ?? rowStatus;
                         return status as DiffStatus;
                       };
@@ -796,12 +851,14 @@ export default function Review() {
                             <label className="sr-only" htmlFor={`row-les-${index}`}>
                               Les rij {index + 1}
                             </label>
-                            <input
+                            <textarea
                               id={`row-les-${index}`}
                               value={row.les ?? ""}
                               onChange={(event) => handleRowChange(index, "les", event.target.value)}
+                              rows={3}
                               className={clsx(
-                                "w-full rounded-md border px-2 py-1",
+                                "w-full min-h-[3.5rem] resize-y rounded-md border px-2 py-1 text-sm leading-relaxed",
+                                "whitespace-pre-wrap",
                                 diffFieldHighlight[resolveFieldStatus("les")]
                               )}
                               disabled={isDisabled}
@@ -811,12 +868,14 @@ export default function Review() {
                             <label className="sr-only" htmlFor={`row-onderwerp-${index}`}>
                               Onderwerp rij {index + 1}
                             </label>
-                            <input
+                            <textarea
                               id={`row-onderwerp-${index}`}
                               value={row.onderwerp ?? ""}
                               onChange={(event) => handleRowChange(index, "onderwerp", event.target.value)}
+                              rows={3}
                               className={clsx(
-                                "w-full rounded-md border px-2 py-1",
+                                "w-full min-h-[3.5rem] resize-y rounded-md border px-2 py-1 text-sm leading-relaxed",
+                                "whitespace-pre-wrap",
                                 diffFieldHighlight[resolveFieldStatus("onderwerp")]
                               )}
                               disabled={isDisabled}
@@ -826,12 +885,14 @@ export default function Review() {
                             <label className="sr-only" htmlFor={`row-huiswerk-${index}`}>
                               Huiswerk rij {index + 1}
                             </label>
-                            <input
+                            <textarea
                               id={`row-huiswerk-${index}`}
                               value={row.huiswerk ?? ""}
                               onChange={(event) => handleRowChange(index, "huiswerk", event.target.value)}
+                              rows={3}
                               className={clsx(
-                                "w-full rounded-md border px-2 py-1",
+                                "w-full min-h-[3.5rem] resize-y rounded-md border px-2 py-1 text-sm leading-relaxed",
+                                "whitespace-pre-wrap",
                                 diffFieldHighlight[resolveFieldStatus("huiswerk")]
                               )}
                               disabled={isDisabled}
@@ -927,7 +988,7 @@ export default function Review() {
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="submit"
-                  disabled={isSaving || isLoading}
+                  disabled={isSaving || isLoading || !hasUnsavedChanges}
                   className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSaving ? "Opslaan…" : "Wijzigingen opslaan"}
@@ -938,7 +999,7 @@ export default function Review() {
                   disabled={isCommitting || isSaving || isLoading || hasBlockingWarnings}
                   className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isCommitting ? "Committen…" : "Definitief opslaan"}
+                  {isCommitting ? "Review opslaan…" : "Review opslaan"}
                 </button>
               </div>
             </div>
@@ -949,6 +1010,16 @@ export default function Review() {
             )}
           </form>
         )}
+
+        <div className="flex justify-center pt-4">
+          <button
+            type="button"
+            onClick={() => navigate("/uploads")}
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Terug naar uploads
+          </button>
+        </div>
       </div>
     </div>
   );
