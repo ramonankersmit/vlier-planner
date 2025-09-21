@@ -35,7 +35,16 @@ TRAY_THREAD_NAME = "vlier-planner-tray"
 FILE_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 _FILE_HANDLER_SETTINGS: dict[str, Any] | None = None
 _ICON_FILENAMES = ("favicon.ico", "logo.png")
-_ICON_SEARCH_DIRECTORIES = ("", "frontend", "frontend/public", "public")
+_ICON_SEARCH_DIRECTORIES = (
+    "",
+    "frontend",
+    "frontend/public",
+    "public",
+    "dist",
+    "static/dist",
+    "backend/static",
+    "backend/static/dist",
+)
 
 def _get_configured_log_level(default: int = logging.WARNING) -> int:
     """Resolve the desired log level from the environment."""
