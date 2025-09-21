@@ -1,6 +1,15 @@
 import React from "react";
 import clsx from "clsx";
-import { Info, FileText, Trash2, XCircle, ClipboardList } from "lucide-react";
+import {
+  Info,
+  FileText,
+  Trash2,
+  XCircle,
+  ClipboardList,
+  CheckCircle2,
+  AlertTriangle,
+  XOctagon,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { DocRecord } from "../app/store";
 import { useAppStore, hydrateDocRowsFromApi } from "../app/store";
@@ -1100,11 +1109,12 @@ export default function Uploads() {
             <table className="table-auto min-w-max text-sm">
               <thead className="text-xs font-medium theme-muted border-b theme-border">
                 <tr>
-                  <th className="px-4 py-3 text-center font-medium">Gebruik</th>
+                  <th className="px-4 py-3 text-center font-medium">
+                    <span className="sr-only">Gebruik</span>
+                  </th>
                   <th className="px-4 py-3 text-left font-medium">Acties</th>
                   <th className="px-4 py-3 text-left font-medium">Bestand</th>
                   <th className="px-4 py-3 text-left font-medium">Datum / Tijd</th>
-                  <th className="px-4 py-3 text-left font-medium">Parse</th>
                   <th className="px-4 py-3 text-left font-medium">Vak</th>
                   <th className="px-4 py-3 text-left font-medium">Niveau</th>
                   <th className="px-4 py-3 text-left font-medium">Jaar</th>
@@ -1141,6 +1151,38 @@ export default function Uploads() {
                       ? entry.review.diffSummary
                       : entry.guide?.latestVersion.diffSummary ?? null;
                   const parseLabel = formatDiffSummaryLabel(parseSummary);
+                  const statusVariant: "success" | "warning" | "error" =
+                    entry.kind === "pending"
+                      ? warnings.length
+                        ? "warning"
+                        : "error"
+                      : "success";
+                  const statusColorClasses =
+                    statusVariant === "success"
+                      ? "text-emerald-600"
+                      : statusVariant === "warning"
+                      ? "text-amber-600"
+                      : "text-red-600";
+                  const StatusIcon =
+                    statusVariant === "success"
+                      ? CheckCircle2
+                      : statusVariant === "warning"
+                      ? AlertTriangle
+                      : XOctagon;
+                  const statusMessage =
+                    entry.kind === "pending"
+                      ? warnings.length
+                        ? warnings.join(" · ")
+                        : "Controleer en commit"
+                      : "In gebruik";
+                  const statusTextClass = clsx(
+                    "text-xs",
+                    entry.kind === "pending"
+                      ? warnings.length
+                        ? "text-amber-700"
+                        : "text-red-600"
+                      : "theme-muted"
+                  );
                   const rowClassName = clsx(
                     i > 0 ? "border-t theme-border" : "",
                     entry.kind === "pending" && "bg-amber-50"
@@ -1235,27 +1277,22 @@ export default function Uploads() {
                         {entry.kind === "pending" && (
                           <div className="text-xs text-amber-700">Review vereist</div>
                         )}
+                        <div className="mt-1 flex items-start gap-2 text-xs leading-tight">
+                          <StatusIcon
+                            size={14}
+                            aria-hidden="true"
+                            className={clsx("mt-0.5 flex-shrink-0", statusColorClasses)}
+                          />
+                          <div>
+                            <div>{parseLabel}</div>
+                            <div className={statusTextClass}>{statusMessage}</div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-4 py-3 align-top">
                         <div className="leading-tight">
                           <div>{date}</div>
                           {time && <div className="text-xs theme-muted">{time}</div>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <div className="leading-tight">
-                          <div>{parseLabel}</div>
-                          {entry.kind === "pending" ? (
-                            warnings.length ? (
-                              <div className="text-xs text-amber-700">
-                                {warnings.join(" · ")}
-                              </div>
-                            ) : (
-                              <div className="text-xs text-amber-700">Controleer en commit</div>
-                            )
-                          ) : (
-                            <div className="text-xs theme-muted">In gebruik</div>
-                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 align-top">{d.vak}</td>
