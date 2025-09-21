@@ -131,6 +131,52 @@ const diffFieldHighlight: Record<DiffStatus, string> = {
   unchanged: "",
 };
 
+type AutoResizeTextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
+
+const AutoResizeTextArea = React.forwardRef<HTMLTextAreaElement, AutoResizeTextAreaProps>(
+  function AutoResizeTextArea({ className, value, rows = 3, ...props }, forwardedRef) {
+    const innerRef = React.useRef<HTMLTextAreaElement | null>(null);
+    const setRefs = React.useCallback(
+      (node: HTMLTextAreaElement | null) => {
+        innerRef.current = node;
+        if (typeof forwardedRef === "function") {
+          forwardedRef(node);
+        } else if (forwardedRef) {
+          (forwardedRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
+        }
+      },
+      [forwardedRef]
+    );
+
+    const normalizedValue =
+      typeof value === "string" ? value : value == null ? "" : String(value);
+
+    React.useEffect(() => {
+      const element = innerRef.current;
+      if (!element) {
+        return;
+      }
+      element.style.height = "auto";
+      const nextHeight = element.scrollHeight;
+      element.style.height = `${nextHeight}px`;
+    }, [normalizedValue]);
+
+    return (
+      <textarea
+        {...props}
+        ref={setRefs}
+        value={normalizedValue}
+        rows={rows}
+        className={clsx(
+          "w-full min-h-[3.5rem] resize-y overflow-hidden rounded-md border px-2 py-1 text-sm leading-relaxed",
+          "whitespace-pre-wrap",
+          className
+        )}
+      />
+    );
+  }
+);
+
 const stableStringify = (value: unknown): string => {
   const normalized = JSON.stringify(
     value,
@@ -851,16 +897,11 @@ export default function Review() {
                             <label className="sr-only" htmlFor={`row-les-${index}`}>
                               Les rij {index + 1}
                             </label>
-                            <textarea
+                            <AutoResizeTextArea
                               id={`row-les-${index}`}
                               value={row.les ?? ""}
                               onChange={(event) => handleRowChange(index, "les", event.target.value)}
-                              rows={3}
-                              className={clsx(
-                                "w-full min-h-[3.5rem] resize-y rounded-md border px-2 py-1 text-sm leading-relaxed",
-                                "whitespace-pre-wrap",
-                                diffFieldHighlight[resolveFieldStatus("les")]
-                              )}
+                              className={clsx(diffFieldHighlight[resolveFieldStatus("les")])}
                               disabled={isDisabled}
                             />
                           </td>
@@ -868,16 +909,11 @@ export default function Review() {
                             <label className="sr-only" htmlFor={`row-onderwerp-${index}`}>
                               Onderwerp rij {index + 1}
                             </label>
-                            <textarea
+                            <AutoResizeTextArea
                               id={`row-onderwerp-${index}`}
                               value={row.onderwerp ?? ""}
                               onChange={(event) => handleRowChange(index, "onderwerp", event.target.value)}
-                              rows={3}
-                              className={clsx(
-                                "w-full min-h-[3.5rem] resize-y rounded-md border px-2 py-1 text-sm leading-relaxed",
-                                "whitespace-pre-wrap",
-                                diffFieldHighlight[resolveFieldStatus("onderwerp")]
-                              )}
+                              className={clsx(diffFieldHighlight[resolveFieldStatus("onderwerp")])}
                               disabled={isDisabled}
                             />
                           </td>
@@ -885,16 +921,11 @@ export default function Review() {
                             <label className="sr-only" htmlFor={`row-huiswerk-${index}`}>
                               Huiswerk rij {index + 1}
                             </label>
-                            <textarea
+                            <AutoResizeTextArea
                               id={`row-huiswerk-${index}`}
                               value={row.huiswerk ?? ""}
                               onChange={(event) => handleRowChange(index, "huiswerk", event.target.value)}
-                              rows={3}
-                              className={clsx(
-                                "w-full min-h-[3.5rem] resize-y rounded-md border px-2 py-1 text-sm leading-relaxed",
-                                "whitespace-pre-wrap",
-                                diffFieldHighlight[resolveFieldStatus("huiswerk")]
-                              )}
+                              className={clsx(diffFieldHighlight[resolveFieldStatus("huiswerk")])}
                               disabled={isDisabled}
                             />
                           </td>
@@ -977,7 +1008,7 @@ export default function Review() {
               )}
             </section>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="mt-6 flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={handleDelete}
@@ -985,7 +1016,7 @@ export default function Review() {
               >
                 Review verwijderen
               </button>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-3">
                 <button
                   type="submit"
                   disabled={isSaving || isLoading || !hasUnsavedChanges}
