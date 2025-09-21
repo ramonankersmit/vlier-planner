@@ -13,6 +13,31 @@ import uvicorn
 from uvicorn.config import LOGGING_CONFIG
 
 LOG_HANDLER_NAME = "vlier-planner-file"
+LOG_LEVEL_ENV_VAR = "VLIER_LOG_LEVEL"
+
+
+def _get_configured_log_level(default: int = logging.WARNING) -> int:
+    """Resolve the desired log level from the environment."""
+
+    value = os.getenv(LOG_LEVEL_ENV_VAR)
+    if not value:
+        return default
+
+    value = value.strip()
+    if not value:
+        return default
+
+    # Allow numeric levels ("10") as well as textual levels ("DEBUG").
+    try:
+        numeric_level = int(value)
+    except ValueError:
+        level_name = value.upper()
+        resolved = getattr(logging, level_name, None)
+        if isinstance(resolved, int):
+            return resolved
+        return default
+    else:
+        return numeric_level
 
 
 def _default_log_path() -> Path:
@@ -41,13 +66,15 @@ def _configure_logging() -> None:
         return
 
     file_handler.set_name(LOG_HANDLER_NAME)
-    file_handler.setLevel(logging.WARNING)
+    log_level = _get_configured_log_level()
+
+    file_handler.setLevel(log_level)
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     )
     root_logger.addHandler(file_handler)
-    if root_logger.level > logging.WARNING:
-        root_logger.setLevel(logging.WARNING)
+    if root_logger.level > log_level:
+        root_logger.setLevel(log_level)
 
     logging.getLogger(__name__).info("Logbestand: %s", log_path)
 
