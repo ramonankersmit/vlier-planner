@@ -1161,19 +1161,29 @@ export default function Uploads() {
                   const endLabel = isValidWeek(d.eindWeek) ? `${d.eindWeek}` : "—";
                   const fallbackWeekLabel =
                     beginLabel === "—" && endLabel === "—" ? "—" : `wk ${beginLabel}–${endLabel}`;
-                  const warnings =
-                    entry.kind === "pending"
-                      ? (() => {
-                          const duplicateDetected = hasDuplicateDates(entry.review.rows);
-                          const labels = Object.entries(entry.review.warnings)
-                            .filter(([, value]) => value)
-                            .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
-                          if (duplicateDetected && !entry.review.warnings.duplicateDate) {
-                            labels.push("Dubbele datum gevonden");
-                          }
-                          return labels;
-                        })()
-                      : [];
+                  const duplicateDetected = hasDuplicateDates(rowsForInfo ?? []);
+                  const warningMessages = (() => {
+                    if (entry.kind === "pending") {
+                      const labels = Object.entries(entry.review.warnings)
+                        .filter(([, value]) => value)
+                        .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
+                      if (duplicateDetected && !entry.review.warnings.duplicateDate) {
+                        labels.push("Dubbele datum gevonden");
+                      }
+                      return labels;
+                    }
+                    const versionWarnings = entry.guide?.latestVersion.warnings;
+                    if (!versionWarnings) {
+                      return [];
+                    }
+                    const labels = Object.entries(versionWarnings)
+                      .filter(([, value]) => value)
+                      .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
+                    if (duplicateDetected && !versionWarnings.duplicateDate) {
+                      labels.push("Dubbele datum gevonden");
+                    }
+                    return labels;
+                  })();
                   const parseSummary =
                     entry.kind === "pending"
                       ? entry.review.diffSummary
@@ -1189,18 +1199,22 @@ export default function Uploads() {
                   const StatusIcon = statusVariant === "success" ? CheckCircle2 : XOctagon;
                   const statusMessage =
                     entry.kind === "pending"
-                      ? warnings.length
-                        ? warnings.join(" · ")
+                      ? warningMessages.length
+                        ? warningMessages.join(" · ")
                         : "Controleer en commit"
+                      : warningMessages.length
+                      ? warningMessages.join(" · ")
                       : null;
                   const statusTextClass = clsx(
                     "mt-0.5 flex items-center gap-1 text-xs",
                     entry.kind === "pending"
                       ? hasBlockingWarnings
                         ? "text-red-600"
-                        : warnings.length
+                        : warningMessages.length
                         ? "text-amber-700"
                         : "theme-muted"
+                      : warningMessages.length
+                      ? "text-amber-700"
                       : "theme-muted"
                   );
                   const statusIconTestId =
@@ -1211,9 +1225,11 @@ export default function Uploads() {
                     entry.kind === "pending"
                       ? hasBlockingWarnings
                         ? XOctagon
-                        : warnings.length
+                        : warningMessages.length
                         ? AlertTriangle
                         : Info
+                      : warningMessages.length
+                      ? AlertTriangle
                       : null;
                   const rowClassName = clsx(
                     i > 0 ? "border-t theme-border" : "",

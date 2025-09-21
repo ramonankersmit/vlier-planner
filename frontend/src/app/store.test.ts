@@ -97,6 +97,12 @@ describe("useAppStore", () => {
         createdAt: "2024-01-12T09:00:00.000Z",
         meta: makeMeta({ versionId: 2, uploadedAt: "2024-01-12T09:00:00.000Z" }),
         diffSummary: diff.diffSummary,
+        warnings: {
+          unknownSubject: false,
+          missingWeek: false,
+          duplicateDate: false,
+          duplicateWeek: false,
+        },
       },
     };
 
@@ -119,6 +125,12 @@ describe("useAppStore", () => {
       createdAt: "2024-01-10T08:00:00.000Z",
       meta: makeMeta(),
       diffSummary: { added: 0, changed: 0, removed: 0, unchanged: 1 },
+      warnings: {
+        unknownSubject: false,
+        missingWeek: false,
+        duplicateDate: false,
+        duplicateWeek: false,
+      },
     };
     const guide: StudyGuide = {
       guideId: "guide-1",

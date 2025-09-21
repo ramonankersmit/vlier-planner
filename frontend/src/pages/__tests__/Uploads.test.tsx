@@ -102,6 +102,12 @@ describe("Uploads page flow", () => {
         createdAt: "2024-01-10T08:05:00.000Z",
         meta: makeMeta({ uploadedAt: "2024-01-10T08:05:00.000Z" }),
         diffSummary: review.diffSummary,
+        warnings: {
+          unknownSubject: false,
+          missingWeek: false,
+          duplicateDate: false,
+          duplicateWeek: false,
+        },
       },
     };
 
@@ -161,6 +167,12 @@ describe("Uploads page flow", () => {
         createdAt: "2024-02-01T09:00:00.000Z",
         meta: makeMeta({ uploadedAt: "2024-02-01T09:00:00.000Z" }),
         diffSummary: review.diffSummary,
+        warnings: {
+          unknownSubject: false,
+          missingWeek: false,
+          duplicateDate: false,
+          duplicateWeek: true,
+        },
       },
     };
 
@@ -194,6 +206,8 @@ describe("Uploads page flow", () => {
       expect(Object.keys(state.pendingReviews)).toHaveLength(0);
       expect(state.docs.some((doc) => doc.fileId === commitResponse.guideId)).toBe(true);
     });
+
+    expect(await screen.findByText(/Dubbele week/)).toBeInTheDocument();
   });
 
   it("toont pending review met waarschuwingen en start de wizard via de reviewknop", async () => {
@@ -304,6 +318,12 @@ describe("Uploads page flow", () => {
             createdAt: meta.uploadedAt ?? "2024-01-10T08:00:00.000Z",
             meta,
             diffSummary: { added: 0, changed: 0, removed: 0, unchanged: 1 },
+            warnings: {
+              unknownSubject: false,
+              missingWeek: false,
+              duplicateDate: false,
+              duplicateWeek: false,
+            },
           },
           versionCount: 1,
         },

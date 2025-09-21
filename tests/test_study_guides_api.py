@@ -168,13 +168,31 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
     guide_id = commit_data["guideId"]
     assert commit_data["version"]["versionId"] == 1
     assert commit_data["version"]["diffSummary"]["added"] == 2
+    assert commit_data["version"]["warnings"] == {
+        "unknownSubject": False,
+        "missingWeek": False,
+        "duplicateDate": False,
+        "duplicateWeek": False,
+    }
 
     guides = api_client.get("/api/study-guides").json()
     assert guides[0]["guideId"] == guide_id
     assert guides[0]["versionCount"] == 1
+    assert guides[0]["latestVersion"]["warnings"] == {
+        "unknownSubject": False,
+        "missingWeek": False,
+        "duplicateDate": False,
+        "duplicateWeek": False,
+    }
 
     versions = api_client.get(f"/api/study-guides/{guide_id}/versions").json()
     assert len(versions) == 1
+    assert versions[0]["warnings"] == {
+        "unknownSubject": False,
+        "missingWeek": False,
+        "duplicateDate": False,
+        "duplicateWeek": False,
+    }
     diff_first = api_client.get(f"/api/study-guides/{guide_id}/diff/1").json()
     assert diff_first["diffSummary"]["added"] == 2
 
@@ -198,9 +216,24 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
     commit_second = api_client.post(f"/api/reviews/{parse_id_second}/commit").json()
     assert commit_second["guideId"] == guide_id
     assert commit_second["version"]["versionId"] == 2
+    assert commit_second["version"]["warnings"] == {
+        "unknownSubject": False,
+        "missingWeek": False,
+        "duplicateDate": False,
+        "duplicateWeek": False,
+    }
 
     versions_after = api_client.get(f"/api/study-guides/{guide_id}/versions").json()
     assert [v["versionId"] for v in versions_after] == [2, 1]
+    assert all(
+        version["warnings"] == {
+            "unknownSubject": False,
+            "missingWeek": False,
+            "duplicateDate": False,
+            "duplicateWeek": False,
+        }
+        for version in versions_after
+    )
 
     diff_second = api_client.get(f"/api/study-guides/{guide_id}/diff/2").json()
     assert diff_second["diffSummary"] == {

@@ -89,6 +89,7 @@ export type StudyGuideVersion = {
   createdAt: string;
   meta: DocMeta;
   diffSummary: DiffSummary;
+  warnings: UploadWarnings;
 };
 
 export type StudyGuide = {

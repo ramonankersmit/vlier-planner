@@ -230,6 +230,8 @@ def _load_state() -> None:
             for version in guide.versions:
                 if not getattr(version.meta, "uploadedAt", None):
                     version.meta.uploadedAt = datetime.now(timezone.utc).isoformat()
+                if not version.warnings:
+                    version.warnings = _compute_warnings(version.meta, version.rows)
                 _ensure_file_location(guide.guide_id, version)
             GUIDES[guide.guide_id] = guide
         _refresh_docs_index()
@@ -261,6 +263,7 @@ def _load_state() -> None:
             rows=rows,
             diff_summary={"added": 0, "removed": 0, "changed": 0, "unchanged": len(rows)},
             diff=[],
+            warnings=_compute_warnings(meta, rows),
         )
         _ensure_file_location(guide_id, version, legacy_file_id=file_id)
         guide = GUIDES.setdefault(guide_id, StudyGuide(guide_id=guide_id, versions=[]))
@@ -427,6 +430,7 @@ def _version_payload(version: StudyGuideVersion) -> Dict[str, Any]:
         "createdAt": version.created_at,
         "meta": version.meta.dict(),
         "diffSummary": version.diff_summary,
+        "warnings": version.warnings,
     }
 
 
@@ -810,6 +814,7 @@ def commit_review(parse_id: str):
     now = datetime.now(timezone.utc).isoformat()
     meta.uploadedAt = now
     diff_summary, diff_detail = _diff_for_meta(meta, rows)
+    warnings = _compute_warnings(meta, rows)
 
     version = StudyGuideVersion(
         version_id=version_id,
@@ -819,6 +824,7 @@ def commit_review(parse_id: str):
         rows=rows,
         diff_summary=diff_summary,
         diff=diff_detail,
+        warnings=warnings,
     )
 
     dest_path = _version_file_path(guide_id, version_id, version.file_name)

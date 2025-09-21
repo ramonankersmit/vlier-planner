@@ -138,6 +138,7 @@ class StudyGuideVersion:
     rows: List[DocRow]
     diff_summary: Dict[str, int] = field(default_factory=dict)
     diff: List[Dict[str, Any]] = field(default_factory=list)
+    warnings: Dict[str, bool] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.meta.versionId = self.version_id
@@ -154,6 +155,7 @@ class StudyGuideVersion:
             "rows": [row.dict() for row in self.rows],
             "diffSummary": self.diff_summary,
             "diff": self.diff,
+            "warnings": self.warnings,
         }
 
     @classmethod
@@ -171,6 +173,7 @@ class StudyGuideVersion:
             rows=rows,
             diff_summary=data.get("diffSummary", {}),
             diff=data.get("diff", []),
+            warnings=data.get("warnings", {}),
         )
 
 

@@ -131,6 +131,12 @@ describe("Review wizard", () => {
         createdAt: "2024-01-11T09:00:00.000Z",
         meta: makeMeta({ vak: "Wiskunde", uploadedAt: "2024-01-11T09:00:00.000Z", versionId: 2 }),
         diffSummary: updatedReview.diffSummary,
+        warnings: {
+          unknownSubject: false,
+          missingWeek: false,
+          duplicateDate: false,
+          duplicateWeek: false,
+        },
       },
     };
 
