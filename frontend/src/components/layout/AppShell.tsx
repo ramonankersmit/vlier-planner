@@ -49,7 +49,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return withAlpha(theme.surface, headerAlpha);
   }, [theme.surface, surfaceOpacity]);
 
-  type NavigationLink = { to: string; label: string; icon?: LucideIcon };
+  type NavigationLink = {
+    to: string;
+    label: string;
+    icon?: LucideIcon;
+    hideLabel?: boolean;
+  };
 
   const navigationLinks: NavigationLink[] = React.useMemo(
     () => [
@@ -57,8 +62,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       { to: "/matrix", label: "Matrix overzicht" },
       { to: "/deadlines", label: "Belangrijke events" },
       { to: "/uploads", label: "Uploads", icon: UploadCloud },
-      { to: "/uitleg", label: "Uitleg", icon: Info },
-      { to: "/settings", label: "Settings", icon: SettingsIcon },
+      { to: "/uitleg", label: "Uitleg", icon: Info, hideLabel: true },
+      { to: "/settings", label: "Settings", icon: SettingsIcon, hideLabel: true },
     ],
     [],
   );
@@ -94,9 +99,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   key={link.to}
                   to={link.to}
                   className={({ isActive }) => resolveLinkClassName(isActive)}
+                  aria-label={link.hideLabel ? link.label : undefined}
                 >
                   {Icon ? <Icon size={16} aria-hidden="true" /> : null}
-                  <span>{link.label}</span>
+                  <span className={link.hideLabel ? "sr-only" : undefined}>{link.label}</span>
                 </NavLink>
               );
             })}
