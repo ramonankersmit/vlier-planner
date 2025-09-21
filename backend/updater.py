@@ -19,7 +19,10 @@ from urllib.request import Request, urlopen
 
 from packaging import version as packaging_version
 
-from .version import APP_VERSION
+try:  # pragma: no cover - allow running as module or package
+    from .version import APP_VERSION
+except ImportError:  # pragma: no cover - fallback when executed as a script
+    from version import APP_VERSION  # type: ignore
 
 LOGGER = logging.getLogger(__name__)
 
