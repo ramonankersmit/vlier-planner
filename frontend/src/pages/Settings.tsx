@@ -25,9 +25,17 @@ export default function Settings() {
     setEnableHomeworkEditing,
     enableCustomHomework,
     setEnableCustomHomework,
+    enableAutoUpdate,
+    setEnableAutoUpdate,
     resetAppState,
   } = useAppStore();
+  
   const docs = useAppStore((s) => s.docs) ?? [];
+  
+  const [isCheckingUpdate, setIsCheckingUpdate] = React.useState(false);
+  const [updateCheckStatus, setUpdateCheckStatus] = React.useState<
+    { type: "info" | "success" | "error"; message: string } | null
+  >(null);
 
   const activeTheme = React.useMemo(
     () => themePresets.find((preset) => preset.id === activeThemeId),
@@ -203,6 +211,51 @@ export default function Settings() {
     }
   };
 
+  const handleManualUpdateCheck = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateCheckStatus(null);
+    try {
+      const [api, prompt] = await Promise.all([
+        import("../lib/api"),
+        import("../lib/updatePrompt"),
+      ]);
+      const result = await api.apiCheckForUpdate();
+      if (!result.updateAvailable || !result.latestVersion) {
+        setUpdateCheckStatus({
+          type: "info",
+          message: `Je gebruikt de nieuwste versie (v${result.currentVersion}).`,
+        });
+        return;
+      }
+
+      const updateStarted = await prompt.promptUpdateInstallation(result, {
+        suppressSuccessAlert: true,
+      });
+
+      if (updateStarted) {
+        setUpdateCheckStatus({
+          type: "success",
+          message:
+            "De update is gestart. Sluit Vlier Planner af wanneer de installer daarom vraagt om te voltooien.",
+        });
+      } else {
+        setUpdateCheckStatus({
+          type: "info",
+          message: `Er is een update beschikbaar (v${result.latestVersion}). Je kunt deze later opnieuw starten.`,
+        });
+      }
+    } catch (error) {
+      console.error("Handmatige update-check mislukt:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      setUpdateCheckStatus({
+        type: "error",
+        message: `Controle mislukt: ${message}`,
+      });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="text-lg font-semibold theme-text">Instellingen</div>
@@ -306,6 +359,43 @@ export default function Settings() {
               <div className="text-sm font-medium theme-text">Eigen taak toevoegen</div>
               <div className="text-xs leading-snug theme-muted">
                 Toon de knop om zelf extra taakregels toe te voegen aan een week.
+              </div>
+            </div>
+          </label>
+          <label className="flex items-start gap-3 rounded-md border theme-border theme-soft p-3">
+            <input
+              type="checkbox"
+              checked={enableAutoUpdate}
+              onChange={(event) => setEnableAutoUpdate(event.target.checked)}
+              className="mt-1"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-medium theme-text">Automatisch op updates controleren</div>
+              <div className="text-xs leading-snug theme-muted">
+                Vraag bij het opstarten om een nieuwe versie te installeren wanneer die beschikbaar is.
+              </div>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <button
+                  type="button"
+                  onClick={handleManualUpdateCheck}
+                  className="w-full sm:w-auto rounded-md border theme-border theme-surface px-3 py-1 text-sm disabled:opacity-60"
+                  disabled={isCheckingUpdate}
+                >
+                  {isCheckingUpdate ? "Controleren..." : "Controleer nu op updates"}
+                </button>
+                {updateCheckStatus ? (
+                  <span
+                    className={`text-xs sm:text-sm ${
+                      updateCheckStatus.type === "error"
+                        ? "text-red-600"
+                        : updateCheckStatus.type === "success"
+                        ? "text-green-600"
+                        : "theme-muted"
+                    }`}
+                  >
+                    {updateCheckStatus.message}
+                  </span>
+                ) : null}
               </div>
             </div>
           </label>

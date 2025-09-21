@@ -215,6 +215,8 @@ type State = {
   setEnableHomeworkEditing: (value: boolean) => void;
   enableCustomHomework: boolean;
   setEnableCustomHomework: (value: boolean) => void;
+  enableAutoUpdate: boolean;
+  setEnableAutoUpdate: (value: boolean) => void;
 
   // ==== afvinkstatus gedeeld ====
   doneMap: Record<string, boolean>;
@@ -513,6 +515,7 @@ const createInitialState = (): Pick<
   | "surfaceOpacity"
   | "enableHomeworkEditing"
   | "enableCustomHomework"
+  | "enableAutoUpdate"
   | "doneMap"
   | "weekIdxWO"
   | "niveauWO"
@@ -522,36 +525,36 @@ const createInitialState = (): Pick<
   | "matrixNiveau"
   | "matrixLeerjaar"
   | "lastVisitedRoute"
-> => {
+> => (
   const { presets, activeThemeId, theme, backgroundImage, surfaceOpacity } =
     resolveActiveThemeState(createThemePresets(), "default");
   return {
-    docs: [],
-    docsInitialized: false,
-    docRows: {},
-    weekData: { weeks: [], byWeek: {} },
-    customHomework: {},
-    homeworkAdjustments: {},
-    mijnVakken: [],
-    huiswerkWeergave: "perOpdracht",
-    themePresets: presets,
-    activeThemeId,
-    theme,
-    backgroundImage,
-    surfaceOpacity,
-    enableHomeworkEditing: true,
-    enableCustomHomework: true,
-    doneMap: {},
-    weekIdxWO: 0,
-    niveauWO: "ALLE",
-    leerjaarWO: "ALLE",
-    matrixStartIdx: -1,
-    matrixCount: 3,
-    matrixNiveau: "ALLE",
-    matrixLeerjaar: "ALLE",
-    lastVisitedRoute: "/",
-  };
-};
+  docs: [],
+  docsInitialized: false,
+  docRows: {},
+  weekData: { weeks: [], byWeek: {} },
+  customHomework: {},
+  homeworkAdjustments: {},
+  mijnVakken: [],
+  huiswerkWeergave: "perOpdracht",
+  themePresets: presets,
+  activeThemeId,
+  theme,
+  backgroundImage,
+  surfaceOpacity,
+  enableHomeworkEditing: true,
+  enableCustomHomework: true,
+  enableAutoUpdate: true,
+  doneMap: {},
+  weekIdxWO: 0,
+  niveauWO: "ALLE",
+  leerjaarWO: "ALLE",
+  matrixStartIdx: -1,
+  matrixCount: 3,
+  matrixNiveau: "ALLE",
+  matrixLeerjaar: "ALLE",
+  lastVisitedRoute: "/",
+});
 
 export const useAppStore = create<State>()(
   persist(
@@ -1035,6 +1038,8 @@ export const useAppStore = create<State>()(
         set(() => ({ enableHomeworkEditing: !!value })),
       setEnableCustomHomework: (value) =>
         set(() => ({ enableCustomHomework: !!value })),
+      setEnableAutoUpdate: (value) =>
+        set(() => ({ enableAutoUpdate: !!value })),
 
       // ----------------------------
       // done-map
@@ -1116,6 +1121,7 @@ export const useAppStore = create<State>()(
         surfaceOpacity: state.surfaceOpacity,
         enableHomeworkEditing: state.enableHomeworkEditing,
         enableCustomHomework: state.enableCustomHomework,
+        enableAutoUpdate: state.enableAutoUpdate,
         doneMap: state.doneMap,
         weekIdxWO: state.weekIdxWO,
         niveauWO: state.niveauWO,
