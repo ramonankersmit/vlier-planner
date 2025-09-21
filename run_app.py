@@ -14,7 +14,8 @@ from uvicorn.config import LOGGING_CONFIG
 
 LOG_HANDLER_NAME = "vlier-planner-file"
 LOG_LEVEL_ENV_VAR = "VLIER_LOG_LEVEL"
-
+FILE_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+_FILE_HANDLER_SETTINGS: dict[str, Any] | None = None
 
 def _get_configured_log_level(default: int = logging.WARNING) -> int:
     """Resolve the desired log level from the environment."""
@@ -52,10 +53,18 @@ def _default_log_path() -> Path:
     return Path(__file__).resolve().parent / "vlier-planner.log"
 
 
+def _store_file_handler_settings(path: Path, level: int) -> None:
+    global _FILE_HANDLER_SETTINGS
+    _FILE_HANDLER_SETTINGS = {"path": path, "level": level}
+
+
 def _configure_logging() -> None:
     root_logger = logging.getLogger()
-    if any(getattr(handler, "name", "") == LOG_HANDLER_NAME for handler in root_logger.handlers):
-        return
+    for handler in root_logger.handlers:
+        if getattr(handler, "name", "") == LOG_HANDLER_NAME:
+            if isinstance(handler, logging.FileHandler):
+                _store_file_handler_settings(Path(handler.baseFilename), handler.level)
+            return
 
     log_path = _default_log_path()
     try:
@@ -69,13 +78,12 @@ def _configure_logging() -> None:
     log_level = _get_configured_log_level()
 
     file_handler.setLevel(log_level)
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    )
+    file_handler.setFormatter(logging.Formatter(FILE_FORMAT))
     root_logger.addHandler(file_handler)
     if root_logger.level > log_level:
         root_logger.setLevel(log_level)
 
+    _store_file_handler_settings(log_path, log_level)
     logging.getLogger(__name__).info("Logbestand: %s", log_path)
 
 
@@ -91,6 +99,34 @@ def get_uvicorn_log_config() -> dict[str, Any]:
             # Ensure Uvicorn does not call isatty() on replaced stdio streams.
             formatter = {**formatter, "use_colors": False}
             formatters[formatter_name] = formatter
+
+    if _FILE_HANDLER_SETTINGS is not None:
+        formatters.setdefault(
+            "vlier-planner-file",
+            {"()": "logging.Formatter", "fmt": FILE_FORMAT},
+        )
+
+        handlers = log_config.setdefault("handlers", {})
+        handlers[LOG_HANDLER_NAME] = {
+            "class": "logging.FileHandler",
+            "formatter": "vlier-planner-file",
+            "filename": str(_FILE_HANDLER_SETTINGS["path"]),
+            "encoding": "utf-8",
+            "level": logging.getLevelName(_FILE_HANDLER_SETTINGS["level"]),
+        }
+
+        loggers_config = log_config.setdefault("loggers", {})
+        for logger_name in ("uvicorn", "uvicorn.access"):
+            logger_cfg = loggers_config.get(logger_name)
+            if isinstance(logger_cfg, dict):
+                logger_handlers = logger_cfg.setdefault("handlers", [])
+                if LOG_HANDLER_NAME not in logger_handlers:
+                    logger_handlers.append(LOG_HANDLER_NAME)
+
+        uvicorn_error_logger = loggers_config.setdefault("uvicorn.error", {"level": "INFO"})
+        error_handlers = uvicorn_error_logger.setdefault("handlers", ["default"])
+        if LOG_HANDLER_NAME not in error_handlers:
+            error_handlers.append(LOG_HANDLER_NAME)
 
     return log_config
 
