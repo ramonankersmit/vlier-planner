@@ -290,6 +290,73 @@ describe("Uploads page flow", () => {
     expect(utils.getByText(/Dubbele week/)).toBeInTheDocument();
   });
 
+  it("verbergt waarschuwingen na het opslaan van een opgeloste review", async () => {
+    const initialReview = makeReview({
+      parseId: "parse-resolve",
+      warnings: {
+        unknownSubject: false,
+        missingWeek: false,
+        duplicateDate: false,
+        duplicateWeek: true,
+      },
+      rows: [
+        makeRow({ week: 44, datum: "2024-10-28", enabled: true }),
+        makeRow({ week: 44, datum: "2024-10-28", enabled: true }),
+      ],
+    });
+
+    await act(async () => {
+      const store = useAppStore.getState();
+      store.setPendingReview(initialReview);
+      store.setActiveReview(null);
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/uploads"]}>
+        <Routes>
+          <Route path="/uploads" element={<Uploads />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const table = screen.getByRole("table");
+    const rows = within(table).getAllByRole("row");
+    const row = rows.find((candidate) => within(candidate).queryByText(/demo\.docx/));
+    expect(row).toBeTruthy();
+    let utils = within(row as HTMLElement);
+    expect(utils.getByTestId("status-icon-warning")).toBeInTheDocument();
+    expect(utils.getByText(/Dubbele week/)).toBeInTheDocument();
+
+    const resolvedReview = makeReview({
+      parseId: "parse-resolve",
+      warnings: {
+        unknownSubject: false,
+        missingWeek: false,
+        duplicateDate: false,
+        duplicateWeek: false,
+      },
+      rows: [
+        makeRow({ week: 44, datum: "2024-10-28", enabled: false }),
+        makeRow({ week: 44, datum: "2024-11-04", enabled: true }),
+      ],
+    });
+
+    await act(async () => {
+      const store = useAppStore.getState();
+      store.setPendingReview(resolvedReview);
+    });
+
+    const refreshedTable = screen.getByRole("table");
+    const refreshedRows = within(refreshedTable).getAllByRole("row");
+    const refreshedRow = refreshedRows.find((candidate) =>
+      within(candidate).queryByText(/demo\.docx/)
+    );
+    expect(refreshedRow).toBeTruthy();
+    utils = within(refreshedRow as HTMLElement);
+    expect(utils.queryByTestId("status-icon-warning")).not.toBeInTheDocument();
+    expect(utils.queryByText(/Dubbele week/)).not.toBeInTheDocument();
+  });
+
   it("start nieuwe review voor actieve studiewijzer via de actieknop", async () => {
     const meta = makeMeta();
     const rows = [makeRow()];

@@ -887,13 +887,9 @@ export default function Uploads() {
           </div>
           <div className="mt-3 space-y-2">
             {pendingReviewList.slice(0, 3).map((review) => {
-              const duplicateDetected = hasDuplicateDates(review.rows);
               const warningLabels = Object.entries(review.warnings)
                 .filter(([, value]) => value)
                 .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
-              if (duplicateDetected && !review.warnings.duplicateDate) {
-                warningLabels.push("Dubbele datum gevonden");
-              }
               return (
                 <button
                   key={review.parseId}
@@ -1139,15 +1135,11 @@ export default function Uploads() {
                   const endLabel = isValidWeek(d.eindWeek) ? `${d.eindWeek}` : "—";
                   const fallbackWeekLabel =
                     beginLabel === "—" && endLabel === "—" ? "—" : `wk ${beginLabel}–${endLabel}`;
-                  const duplicateDetected = hasDuplicateDates(rowsForInfo ?? []);
                   const warningMessages = (() => {
                     if (entry.kind === "pending") {
                       const labels = Object.entries(entry.review.warnings)
                         .filter(([, value]) => value)
                         .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
-                      if (duplicateDetected && !entry.review.warnings.duplicateDate) {
-                        labels.push("Dubbele datum gevonden");
-                      }
                       return labels;
                     }
                     const versionWarnings = entry.guide?.latestVersion.warnings;
@@ -1157,9 +1149,6 @@ export default function Uploads() {
                     const labels = Object.entries(versionWarnings)
                       .filter(([, value]) => value)
                       .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
-                    if (duplicateDetected && !versionWarnings.duplicateDate) {
-                      labels.push("Dubbele datum gevonden");
-                    }
                     return labels;
                   })();
                   const hasBlockingWarnings =
