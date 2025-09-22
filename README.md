@@ -8,6 +8,28 @@ Een planner voor studiewijzers van het voortgezet onderwijs. Upload een studiewi
 - **Belangrijke events** – filterbare lijst met toetsen en andere deadlines.
 - **Uploads & instellingen** – beheer geüploade studiewijzers, zichtbare vakken en thema.
 
+### Voorbeeldschermen
+
+De onderstaande voorbeelden zijn direct afkomstig uit de `frontend/public` map en geven een indruk van de belangrijkste
+flows in de applicatie.
+
+**Studiewijzer uploaden** – Upload een PDF of DOCX, bekijk een voorbeeld van de herkende secties en kies het leerjaar en de
+klas waarvoor het materiaal bedoeld is.
+
+![Studiewijzer uploaden](frontend/public/voorbeeld_studiewijzer.png)
+
+**Weekoverzicht** – Bekijk per week wat er gepland staat, voeg eigen taken toe en vink afgeronde taken af.
+
+![Weekoverzicht](frontend/public/voorbeeld_weekoverzicht.png)
+
+**Matrix overzicht** – Combineer meerdere weken in één grid zodat je trends per vak ziet en eenvoudig vooruit kunt plannen.
+
+![Matrix overzicht](frontend/public/voorbeeld_matrix.png)
+
+**Belangrijke events** – Filter toetsen, presentaties en andere deadlines en sorteer ze op datum of vak.
+
+![Belangrijke events](frontend/public/voorbeeld_events.png)
+
 ## Huiswerk beheren
 - Voeg eigen taken toe via de knop _“Eigen taak toevoegen”_ onder elke vaksectie.
 - Bewerk bestaande items (zowel automatisch geïmporteerd als eigen notities) of verwijder ze.

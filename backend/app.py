@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote
 
 from fastapi import Body, FastAPI, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -44,7 +45,7 @@ except ImportError:  # pragma: no cover
         extract_rows_from_pdf,
     )
 
-try:  # pragma: no cover - fallback for legacy execution styles
+try:  
     from .study_guides import (
         StudyGuide,
         StudyGuideVersion,
@@ -66,6 +67,13 @@ except ImportError:  # pragma: no cover
         read_pending_parse,
         write_pending_parse,
     )
+
+try:  
+    from .version import APP_VERSION
+    from . import updater
+except ImportError:  # pragma: no cover
+    from version import APP_VERSION  # type: ignore
+    import updater  # type: ignore
 
 app = FastAPI(title="Vlier Planner API")
 
@@ -291,6 +299,73 @@ def _load_pending() -> None:
         data["rows"] = [row.dict() for row in normalized_rows]
         PENDING_PARSES[parse_id] = data
 
+
+
+class UpdateRequest(BaseModel):
+    version: str | None = None
+    silent: bool | None = None
+
+
+def _truncate_notes(text: str | None, limit: int = 2000) -> str | None:
+    if not text:
+        return None
+    trimmed = text.strip()
+    if len(trimmed) <= limit:
+        return trimmed
+    return trimmed[: limit - 3] + "..."
+
+
+@app.get("/api/system/version")
+def api_get_version() -> dict[str, str]:
+    return {"version": APP_VERSION}
+
+
+@app.get("/api/system/update")
+def api_check_update() -> dict[str, Any]:
+    try:
+        info = updater.check_for_update()
+    except updater.UpdateError as exc:
+        logger.warning("Update-check mislukt: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    if info is None:
+        return {"updateAvailable": False, "currentVersion": APP_VERSION}
+
+    notes = _truncate_notes(info.release_notes)
+    return {
+        "updateAvailable": True,
+        "currentVersion": APP_VERSION,
+        "latestVersion": info.latest_version,
+        "assetName": info.asset_name,
+        "notes": notes,
+        "checksum": info.sha256,
+    }
+
+
+@app.post("/api/system/update")
+def api_install_update(payload: UpdateRequest) -> dict[str, Any]:
+    try:
+        info = updater.check_for_update()
+    except updater.UpdateError as exc:
+        logger.warning("Update-check mislukt tijdens installatie: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    if info is None:
+        raise HTTPException(status_code=409, detail="Geen update beschikbaar")
+
+    if payload.version and payload.version != info.latest_version:
+        raise HTTPException(
+            status_code=409,
+            detail="De aangevraagde versie is niet meer beschikbaar",
+        )
+
+    try:
+        installer_path = updater.install_update(info, silent=payload.silent)
+    except updater.UpdateError as exc:
+        logger.warning("Installatie van update mislukt: %s", exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "started", "installerPath": str(installer_path)}
 
 # -----------------------------
 # Endpoints
