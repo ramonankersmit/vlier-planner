@@ -489,6 +489,66 @@ export default function Review() {
     return stableStringify(localRows) !== stableStringify(baselineRows);
   }, [baselineMeta, baselineRows, localMeta, localRows]);
 
+  type PersistOptions = {
+    force?: boolean;
+    showSuccess?: boolean;
+    errorMessage?: string;
+  };
+
+  const persistReview = React.useCallback(
+    async (options: PersistOptions = {}) => {
+      const { force = false, showSuccess = true, errorMessage = "Opslaan mislukt" } = options;
+      if (!parseId || !localMeta) {
+        return null;
+      }
+      if (!force && !hasUnsavedChanges) {
+        return activeReview ?? null;
+      }
+
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+
+      const payload: ReviewUpdatePayload = {
+        meta: localMeta,
+        rows: localRows,
+      };
+
+      try {
+        const updated = await apiUpdateReview(parseId, payload);
+        const metaCopy = { ...updated.meta };
+        const rowsCopy = cloneRows(updated.rows);
+        setPendingReview(updated);
+        setBaselineMeta(metaCopy);
+        setBaselineRows(rowsCopy);
+        setLocalMeta({ ...metaCopy });
+        setLocalRows(cloneRows(rowsCopy));
+        if (showSuccess) {
+          setSuccess("Review opgeslagen");
+        }
+        return updated;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : errorMessage;
+        setError(message);
+        return null;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [
+      activeReview,
+      hasUnsavedChanges,
+      localMeta,
+      localRows,
+      parseId,
+      setBaselineMeta,
+      setBaselineRows,
+      setLocalMeta,
+      setLocalRows,
+      setPendingReview,
+    ]
+  );
+
   const hasUnresolvedAttention = React.useMemo(
     () => attentionItems.some((item) => !item.resolved),
     [attentionItems]
@@ -552,50 +612,33 @@ export default function Review() {
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!parseId || !localMeta) {
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-    const payload: ReviewUpdatePayload = {
-      meta: localMeta,
-      rows: localRows,
-    };
-    try {
-      const updated = await apiUpdateReview(parseId, payload);
-      const metaCopy = { ...updated.meta };
-      const rowsCopy = cloneRows(updated.rows);
-      setPendingReview(updated);
-      setBaselineMeta(metaCopy);
-      setBaselineRows(rowsCopy);
-      setLocalMeta({ ...metaCopy });
-      setLocalRows(cloneRows(rowsCopy));
-      setSuccess("Review opgeslagen");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Opslaan mislukt";
-      setError(message);
-    } finally {
-      setSaving(false);
-    }
+    await persistReview({ force: true, showSuccess: true });
   };
 
   const handleCommit = async () => {
-    if (!parseId || !activeReview) {
+    if (!parseId) {
       return;
     }
     setCommitting(true);
     setError(null);
     setSuccess(null);
     try {
+      const syncedReview = await persistReview({ force: true, showSuccess: false });
+      if (!syncedReview) {
+        return;
+      }
       const commit: CommitResponse = await apiCommitReview(parseId);
       let diff: DocDiff | undefined;
       try {
         diff = await apiGetStudyGuideDiff(commit.guideId, commit.version.versionId);
       } catch (err) {
-        diff = { diffSummary: activeReview.diffSummary, diff: activeReview.diff };
+        const fallback = syncedReview ?? activeReview;
+        diff = {
+          diffSummary: fallback?.diffSummary ?? { added: 0, changed: 0, removed: 0, unchanged: 0 },
+          diff: fallback?.diff ?? [],
+        };
       }
-      applyCommitResult(commit, activeReview.rows, diff);
+      applyCommitResult(commit, (syncedReview ?? activeReview)?.rows ?? [], diff);
       removePendingReview(parseId);
       navigate("/uploads");
     } catch (err) {

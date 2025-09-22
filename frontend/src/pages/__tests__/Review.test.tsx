@@ -214,4 +214,87 @@ describe("Review wizard", () => {
 
     await waitFor(() => expect(screen.getByText(/Uploads Page/i)).toBeInTheDocument());
   });
+
+  it("synchroniseert de review voordat de commit wordt verstuurd", async () => {
+    const review: ReviewDraft = {
+      parseId: "parse-sync",
+      meta: makeMeta({ vak: "Aardrijkskunde" }),
+      rows: [makeRow({ week: 44, datum: "2024-10-28" })],
+      warnings: {
+        unknownSubject: false,
+        missingWeek: false,
+        duplicateDate: false,
+        duplicateWeek: false,
+      },
+      diffSummary: { added: 1, changed: 0, removed: 0, unchanged: 0 },
+      diff: [
+        {
+          index: 0,
+          status: "added",
+          fields: {
+            week: { status: "added", old: null, new: 44 },
+            datum: { status: "added", old: null, new: "2024-10-28" },
+          },
+        },
+      ],
+    };
+
+    const store = useAppStore.getState();
+    await act(async () => {
+      store.setPendingReview(review);
+      store.setActiveReview(review.parseId);
+    });
+
+    mockedApi.apiGetReview.mockResolvedValue(review);
+    mockedApi.apiUpdateReview.mockResolvedValue(review);
+
+    const commitResponse: CommitResponse = {
+      guideId: "guide-1",
+      version: {
+        versionId: 2,
+        createdAt: "2024-01-11T09:00:00.000Z",
+        meta: makeMeta({ vak: "Aardrijkskunde", uploadedAt: "2024-01-11T09:00:00.000Z", versionId: 2 }),
+        diffSummary: review.diffSummary,
+        warnings: review.warnings,
+      },
+    };
+
+    mockedApi.apiCommitReview.mockResolvedValue(commitResponse);
+    mockedApi.apiGetStudyGuideDiff.mockResolvedValue({ diffSummary: review.diffSummary, diff: review.diff });
+
+    const user = userEvent.setup();
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={["/review/parse-sync"]}>
+          <Routes>
+            <Route path="/review/:parseId" element={<Review />} />
+            <Route path="/uploads" element={<div>Uploads</div>} />
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => expect(mockedApi.apiGetReview).toHaveBeenCalledTimes(1));
+
+    const commitButton = await screen.findByRole("button", { name: /Review opslaan/i });
+    await waitFor(() => expect(commitButton).toBeEnabled());
+
+    await user.click(commitButton);
+
+    await waitFor(() => expect(mockedApi.apiUpdateReview).toHaveBeenCalledTimes(1));
+    expect(mockedApi.apiUpdateReview).toHaveBeenCalledWith("parse-sync", {
+      meta: review.meta,
+      rows: review.rows,
+    });
+
+    await waitFor(() => expect(mockedApi.apiCommitReview).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => {
+      const state = useAppStore.getState();
+      expect(Object.keys(state.pendingReviews)).toHaveLength(0);
+    });
+
+    await waitFor(() => expect(screen.getByText(/Uploads/i)).toBeInTheDocument());
+  });
 });
