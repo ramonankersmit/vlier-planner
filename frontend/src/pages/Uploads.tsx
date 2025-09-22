@@ -282,6 +282,17 @@ export default function Uploads() {
     });
   }, [pendingReviews]);
 
+  const pendingReviewByFileId = React.useMemo(() => {
+    const map = new Map<string, ReviewDraft>();
+    for (const review of pendingReviewList) {
+      const fileId = review.meta.fileId;
+      if (fileId) {
+        map.set(fileId, review);
+      }
+    }
+    return map;
+  }, [pendingReviewList]);
+
   const pendingReviewCount = pendingReviewList.length;
 
   const pendingDocRecords = React.useMemo(() => pendingReviewList.map(reviewToDocRecord), [
@@ -1135,9 +1146,17 @@ export default function Uploads() {
                   const endLabel = isValidWeek(d.eindWeek) ? `${d.eindWeek}` : "—";
                   const fallbackWeekLabel =
                     beginLabel === "—" && endLabel === "—" ? "—" : `wk ${beginLabel}–${endLabel}`;
+                  const linkedReview =
+                    entry.kind === "active" ? pendingReviewByFileId.get(d.fileId) ?? null : null;
                   const warningMessages = (() => {
                     if (entry.kind === "pending") {
                       const labels = Object.entries(entry.review.warnings)
+                        .filter(([, value]) => value)
+                        .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
+                      return labels;
+                    }
+                    if (linkedReview) {
+                      const labels = Object.entries(linkedReview.warnings)
                         .filter(([, value]) => value)
                         .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
                       return labels;
@@ -1151,9 +1170,17 @@ export default function Uploads() {
                       .map(([key]) => reviewWarningLabels[key as keyof ReviewDraft["warnings"]]);
                     return labels;
                   })();
-                  const hasBlockingWarnings =
-                    entry.kind === "pending" &&
-                    (entry.review.warnings.unknownSubject || entry.review.warnings.missingWeek);
+                  const hasBlockingWarnings = (() => {
+                    if (entry.kind === "pending") {
+                      return (
+                        entry.review.warnings.unknownSubject || entry.review.warnings.missingWeek
+                      );
+                    }
+                    if (linkedReview) {
+                      return linkedReview.warnings.unknownSubject || linkedReview.warnings.missingWeek;
+                    }
+                    return false;
+                  })();
                   const hasActiveWarnings = warningMessages.length > 0;
                   const StatusIcon = hasBlockingWarnings
                     ? XOctagon

@@ -357,6 +357,104 @@ describe("Uploads page flow", () => {
     expect(utils.queryByText(/Dubbele week/)).not.toBeInTheDocument();
   });
 
+  it("laat actieve documenten de pending reviewstatus volgen", async () => {
+    const meta = makeMeta({
+      fileId: "guide-sync",
+      guideId: "guide-sync",
+      bestand: "sync.docx",
+      uploadedAt: "2024-03-01T09:00:00.000Z",
+      versionId: 2,
+    });
+    const versionWarnings = {
+      unknownSubject: false,
+      missingWeek: false,
+      duplicateDate: false,
+      duplicateWeek: true,
+    } as const;
+    const pendingReview = makeReview({
+      parseId: "parse-sync",
+      meta: makeMeta({
+        fileId: meta.fileId,
+        guideId: meta.guideId,
+        bestand: meta.bestand,
+        uploadedAt: "2024-03-02T09:30:00.000Z",
+        versionId: meta.versionId ?? 2,
+      }),
+      warnings: { ...versionWarnings },
+    });
+
+    await act(async () => {
+      const store = useAppStore.getState();
+      store.setDocs([meta]);
+      store.setStudyGuides([
+        {
+          guideId: meta.fileId,
+          latestVersion: {
+            versionId: meta.versionId ?? 1,
+            createdAt: meta.uploadedAt ?? "2024-03-01T09:00:00.000Z",
+            meta,
+            diffSummary: pendingReview.diffSummary,
+            warnings: { ...versionWarnings },
+          },
+          versionCount: 2,
+        },
+      ]);
+      store.setPendingReview(pendingReview);
+      store.setActiveReview(null);
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/uploads"]}>
+        <Routes>
+          <Route path="/uploads" element={<Uploads />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const table = screen.getByRole("table");
+    const rows = within(table).getAllByRole("row");
+    const activeRow = rows.find((candidate) => {
+      const utils = within(candidate);
+      return (
+        utils.queryByText(/sync\.docx/) &&
+        !utils.queryByText(/Review vereist/)
+      );
+    });
+    expect(activeRow).toBeTruthy();
+    let utils = within(activeRow as HTMLElement);
+    expect(utils.getByTestId("status-icon-warning")).toBeInTheDocument();
+    expect(utils.getByText(/Dubbele week/)).toBeInTheDocument();
+
+    const resolvedReview = makeReview({
+      parseId: "parse-sync",
+      meta: pendingReview.meta,
+      warnings: {
+        unknownSubject: false,
+        missingWeek: false,
+        duplicateDate: false,
+        duplicateWeek: false,
+      },
+    });
+
+    await act(async () => {
+      useAppStore.getState().setPendingReview(resolvedReview);
+    });
+
+    const refreshedTable = screen.getByRole("table");
+    const refreshedRows = within(refreshedTable).getAllByRole("row");
+    const refreshedActiveRow = refreshedRows.find((candidate) => {
+      const scoped = within(candidate);
+      return (
+        scoped.queryByText(/sync\.docx/) &&
+        !scoped.queryByText(/Review vereist/)
+      );
+    });
+    expect(refreshedActiveRow).toBeTruthy();
+    utils = within(refreshedActiveRow as HTMLElement);
+    expect(utils.queryByTestId("status-icon-warning")).not.toBeInTheDocument();
+    expect(utils.queryByText(/Dubbele week/)).not.toBeInTheDocument();
+  });
+
   it("start nieuwe review voor actieve studiewijzer via de actieknop", async () => {
     const meta = makeMeta();
     const rows = [makeRow()];
