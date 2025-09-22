@@ -1,7 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('backend/static/dist', 'backend/static/dist')]
+datas = [
+    ('backend/static/dist', 'backend/static/dist'),
+    ('VERSION', '.'),
+]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('vlier_parser')

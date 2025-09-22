@@ -100,8 +100,10 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
    pyinstaller run_app.py \
      --name VlierPlanner \
      --onefile \
+     --noconsole \
      --noconfirm \
      --add-data "backend/static/dist;backend/static/dist" \
+     --add-data "VERSION;." \
      --collect-all vlier_parser \
      --collect-all backend.parsers
    ```
