@@ -709,7 +709,7 @@ export default function Matrix() {
     setStartIdx(Math.min(maxStart, clampedStart + 1));
   };
   const goThisWeek = React.useCallback(
-    (align: "center" | "start" = "center") => {
+    (align: "center" | "start" = "start") => {
       if (disableWeekControls) return;
       const targetWeekId = allWeeks[currentWeekIdx]?.id;
       const start = computeWindowStartForWeek(allWeeks, count, targetWeekId, {
