@@ -3,37 +3,55 @@
 from __future__ import annotations
 
 import os
+import sys
 from configparser import ConfigParser, Error as ConfigParserError
 from pathlib import Path
+from typing import Iterable
 
 
 DEFAULT_VERSION = "0.0.0-dev"
 
 
-def _version_file() -> Path:
-    """Return the path to the repository-wide version file."""
+def _candidate_version_paths() -> Iterable[Path]:
+    """Yield potential locations of ``VERSION.ini`` in priority order."""
 
-    return Path(__file__).resolve().parent.parent / "VERSION.ini"
+    repo_root = Path(__file__).resolve().parent.parent
+    yield repo_root / "VERSION.ini"
+
+    env_override = os.getenv("VLIER_VERSION_FILE")
+    if env_override:
+        yield Path(env_override)
+
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            yield Path(meipass) / "VERSION.ini"
+        try:
+            yield Path(sys.executable).resolve().parent / "VERSION.ini"
+        except (OSError, RuntimeError):
+            pass
 
 
 def _load_version_from_file() -> str | None:
     """Load the application version from the shared version INI file if possible."""
 
-    path = _version_file()
-    parser = ConfigParser()
+    for path in _candidate_version_paths():
+        parser = ConfigParser()
+        try:
+            with path.open(encoding="utf8") as handle:
+                parser.read_file(handle)
+        except (OSError, ConfigParserError):
+            continue
 
-    try:
-        with path.open(encoding="utf8") as handle:
-            parser.read_file(handle)
-    except (OSError, ConfigParserError):
-        return None
+        try:
+            value = parser.get("app", "version", fallback="").strip()
+        except (ConfigParserError, ValueError):
+            continue
 
-    try:
-        value = parser.get("app", "version", fallback="").strip()
-    except (ConfigParserError, ValueError):
-        return None
+        if value:
+            return value
 
-    return value or None
+    return None
 
 
 def _resolve_version() -> str:
