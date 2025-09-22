@@ -61,7 +61,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       { to: "/", label: "Weekoverzicht" },
       { to: "/matrix", label: "Matrix overzicht" },
       { to: "/deadlines", label: "Belangrijke events" },
-      { to: "/uploads", label: "Uploads", icon: UploadCloud },
+      { to: "/uploads", label: "Uploads", icon: UploadCloud, hideLabel: true },
       { to: "/uitleg", label: "Uitleg", icon: Info, hideLabel: true },
       { to: "/settings", label: "Settings", icon: SettingsIcon, hideLabel: true },
     ],
