@@ -4,7 +4,7 @@
 #define MyAppId        "{{0B6482E5-DC3B-4761-9A9C-1234567890AB}"  ; kies 1 GUID en verander nooit meer
 #define MyAppName      "VlierPlanner"
 #define MyAppExeName   "VlierPlanner.exe"
-#define MyAppVersion   Trim(LoadStringFromFile("VERSION")) ; versie komt uit gedeelde VERSION-bestand
+#define MyAppVersion   Trim(ReadIni(AddBackslash(SourcePath) + "VERSION.ini", "app", "version", "0.0.0"))
 #define MyPublisher    "Ramon Ankersmit"
 #define MyURL          "https://github.com/ramonankersmit/vlier-planner"
 #define MyOutputDir    "build\installer"

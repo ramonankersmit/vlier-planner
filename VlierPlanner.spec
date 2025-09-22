@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [
     ('backend/static/dist', 'backend/static/dist'),
-    ('VERSION', '.'),
+    ('VERSION.ini', '.'),
 ]
 binaries = []
 hiddenimports = []

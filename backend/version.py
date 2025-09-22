@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from configparser import ConfigParser, Error as ConfigParserError
 from pathlib import Path
 
 
@@ -12,20 +13,27 @@ DEFAULT_VERSION = "0.0.0-dev"
 def _version_file() -> Path:
     """Return the path to the repository-wide version file."""
 
-    return Path(__file__).resolve().parent.parent / "VERSION"
+    return Path(__file__).resolve().parent.parent / "VERSION.ini"
 
 
 def _load_version_from_file() -> str | None:
-    """Load the application version from the shared VERSION file if possible."""
+    """Load the application version from the shared version INI file if possible."""
 
     path = _version_file()
+    parser = ConfigParser()
+
     try:
-        contents = path.read_text(encoding="utf8")
-    except OSError:
+        with path.open(encoding="utf8") as handle:
+            parser.read_file(handle)
+    except (OSError, ConfigParserError):
         return None
 
-    cleaned = contents.strip()
-    return cleaned or None
+    try:
+        value = parser.get("app", "version", fallback="").strip()
+    except (ConfigParserError, ValueError):
+        return None
+
+    return value or None
 
 
 def _resolve_version() -> str:

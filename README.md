@@ -50,6 +50,16 @@ vlier-planner/
   tools/        Hulpscripts
 ```
 
+## Versiebeheer
+De applicatieversie staat één keer vastgelegd in `VERSION.ini` onder de sectie `[app]`. Dit bestand wordt tijdens builds gedeeld met:
+
+- de backend (FastAPI) voor de API-responses,
+- de frontend via Vite (`__APP_VERSION__`),
+- de PyInstaller bundel en
+- het Inno Setup-installatiescript.
+
+Gebruik `npm run sync-version` (of een ander script dat `tools/sync-version.mjs` aanroept) om `package.json` en `package-lock.json` automatisch bij te werken op basis van de waarde uit `VERSION.ini`.
+
 ## Installatie & development
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -103,7 +113,7 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
      --noconsole \
      --noconfirm \
      --add-data "backend/static/dist;backend/static/dist" \
-     --add-data "VERSION;." \
+     --add-data "VERSION.ini;." \
      --collect-all vlier_parser \
      --collect-all backend.parsers
    ```

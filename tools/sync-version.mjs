@@ -6,12 +6,14 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, "..");
-const versionPath = resolve(rootDir, "VERSION");
+const versionPath = resolve(rootDir, "VERSION.ini");
 const frontendDir = resolve(rootDir, "frontend");
 
-const version = (await readFile(versionPath, "utf8")).trim();
+const iniContents = await readFile(versionPath, "utf8");
+const versionMatch = iniContents.match(/^\s*version\s*=\s*(.+)$/im);
+const version = versionMatch?.[1]?.trim() ?? "";
 if (!version) {
-  console.error(`VERSION-bestand (${versionPath}) is leeg.`);
+  console.error(`VERSION.ini (${versionPath}) bevat geen geldige versie.`);
   process.exit(1);
 }
 
