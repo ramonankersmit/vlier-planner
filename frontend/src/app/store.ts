@@ -1,6 +1,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { DocMeta as ApiDocMeta, DocRow } from "../lib/api";
+import type {
+  CommitResponse,
+  DocDiff,
+  DocMeta as ApiDocMeta,
+  DocRow,
+  ReviewDraft,
+  StudyGuide,
+  StudyGuideVersion,
+} from "../lib/api";
 import {
   deriveIsoYearForWeek,
   formatIsoDate,
@@ -77,6 +85,24 @@ type State = {
   docRows: Record<string, DocRow[]>;
   setDocRows: (fileId: string, rows: DocRow[]) => void;
   setDocRowsBulk: (entries: Record<string, DocRow[]>) => void;
+  studyGuides: StudyGuide[];
+  guideVersions: Record<string, StudyGuideVersion[]>;
+  guideDiffs: Record<string, Record<number, DocDiff>>;
+  versionRows: Record<string, Record<number, DocRow[]>>;
+  selectedGuideId: string | null;
+  selectedVersionId: number | null;
+  setStudyGuides: (guides: StudyGuide[]) => void;
+  setGuideVersions: (guideId: string, versions: StudyGuideVersion[]) => void;
+  setGuideDiff: (guideId: string, versionId: number, diff: DocDiff) => void;
+  setVersionRows: (guideId: string, versionId: number, rows: DocRow[]) => void;
+  selectGuideVersion: (guideId: string, versionId: number | null) => void;
+  clearGuideSelection: () => void;
+  pendingReviews: Record<string, ReviewDraft>;
+  setPendingReview: (review: ReviewDraft) => void;
+  removePendingReview: (parseId: string) => void;
+  activeReviewId: string | null;
+  setActiveReview: (parseId: string | null) => void;
+  applyCommitResult: (commit: CommitResponse, rows: DocRow[], diff?: DocDiff) => void;
   weekData: WeekAggregation;
   customHomework: Record<string, Record<string, CustomHomeworkEntry[]>>;
   addCustomHomework: (weekId: string, vak: string, text: string) => void;
@@ -255,6 +281,9 @@ const computeWeekAggregation = (
     }
 
     for (const row of rows) {
+      if (row && row.enabled === false) {
+        continue;
+      }
       const wk = typeof row.week === "number" ? row.week : undefined;
       if (!wk || wk < 1 || wk > 53) {
         continue;
@@ -387,12 +416,19 @@ const computeWeekAggregation = (
   return { weeks, byWeek: resultByWeek };
 };
 
-const createInitialState = (): Pick<
-  State,
+type InitialStateKeys =
   | "docs"
   | "docsInitialized"
   | "docRows"
   | "weekData"
+  | "studyGuides"
+  | "guideVersions"
+  | "guideDiffs"
+  | "versionRows"
+  | "selectedGuideId"
+  | "selectedVersionId"
+  | "pendingReviews"
+  | "activeReviewId"
   | "customHomework"
   | "homeworkAdjustments"
   | "mijnVakken"
@@ -410,12 +446,21 @@ const createInitialState = (): Pick<
   | "matrixCount"
   | "matrixNiveau"
   | "matrixLeerjaar"
-  | "lastVisitedRoute"
-> => ({
+  | "lastVisitedRoute";
+
+export const createInitialState = (): Pick<State, InitialStateKeys> => ({
   docs: [],
   docsInitialized: false,
   docRows: {},
   weekData: { weeks: [], byWeek: {} },
+  studyGuides: [],
+  guideVersions: {},
+  guideDiffs: {},
+  versionRows: {},
+  selectedGuideId: null,
+  selectedVersionId: null,
+  pendingReviews: {},
+  activeReviewId: null,
   customHomework: {},
   homeworkAdjustments: {},
   mijnVakken: [],
@@ -470,18 +515,58 @@ export const useAppStore = create<State>()(
             filteredRows[fileId] = rows;
           }
         }
+        const nextVersionRows = { ...get().versionRows };
+        for (const key of Object.keys(nextVersionRows)) {
+          if (!nextDocIds.has(key)) {
+            delete nextVersionRows[key];
+          }
+        }
         const weekData = computeWeekAggregation(nextDocs, filteredRows);
-        set({ docs: nextDocs, mijnVakken, docRows: filteredRows, weekData });
+        set({
+          docs: nextDocs,
+          mijnVakken,
+          docRows: filteredRows,
+          weekData,
+          versionRows: nextVersionRows,
+        });
       },
       removeDoc: (fileId) => {
-        const next = get()
-          .docs
-          .filter((x) => x.fileId !== fileId);
-        const mijnVakken = computeMijnVakken(next, get().mijnVakken);
-        const nextRows = { ...get().docRows };
+        const state = get();
+        const next = state.docs.filter((x) => x.fileId !== fileId);
+        const mijnVakken = computeMijnVakken(next, state.mijnVakken);
+        const nextRows = { ...state.docRows };
         delete nextRows[fileId];
         const weekData = computeWeekAggregation(next, nextRows);
-        set({ docs: next, mijnVakken, docRows: nextRows, weekData });
+        const nextGuideVersions = { ...state.guideVersions };
+        delete nextGuideVersions[fileId];
+        const nextGuideDiffs = { ...state.guideDiffs };
+        delete nextGuideDiffs[fileId];
+        const nextVersionRows = { ...state.versionRows };
+        delete nextVersionRows[fileId];
+        const nextStudyGuides = state.studyGuides.filter((guide) => guide.guideId !== fileId);
+        let selectedGuideId = state.selectedGuideId;
+        let selectedVersionId = state.selectedVersionId;
+        if (selectedGuideId === fileId) {
+          selectedGuideId = nextStudyGuides[0]?.guideId ?? null;
+          if (selectedGuideId) {
+            const versions = nextGuideVersions[selectedGuideId] ?? [];
+            selectedVersionId = versions[0]?.versionId ?? null;
+          } else {
+            selectedVersionId = null;
+          }
+        }
+        set({
+          docs: next,
+          mijnVakken,
+          docRows: nextRows,
+          weekData,
+          guideVersions: nextGuideVersions,
+          guideDiffs: nextGuideDiffs,
+          versionRows: nextVersionRows,
+          studyGuides: nextStudyGuides,
+          selectedGuideId,
+          selectedVersionId,
+        });
       },
       addDoc: (doc) => {
         const prevDocs = get().docs;
@@ -537,17 +622,233 @@ export const useAppStore = create<State>()(
         set({ docs: next, mijnVakken, weekData });
       },
       setDocRows: (fileId, rows) => {
-        const nextRows = { ...get().docRows, [fileId]: rows };
-        const weekData = computeWeekAggregation(get().docs, nextRows);
-        set({ docRows: nextRows, weekData });
+        const state = get();
+        const nextRows = { ...state.docRows, [fileId]: rows };
+        const nextVersionRows = { ...state.versionRows };
+        const doc = state.docs.find((d) => d.fileId === fileId);
+        const versionId = doc?.versionId ?? null;
+        if (versionId != null) {
+          const entry = { ...(nextVersionRows[fileId] ?? {}) };
+          entry[versionId] = rows;
+          nextVersionRows[fileId] = entry;
+        }
+        const weekData = computeWeekAggregation(state.docs, nextRows);
+        set({ docRows: nextRows, weekData, versionRows: nextVersionRows });
       },
       setDocRowsBulk: (entries) => {
         const nextRows = { ...get().docRows };
         for (const [fileId, rows] of Object.entries(entries)) {
           nextRows[fileId] = rows;
         }
-        const weekData = computeWeekAggregation(get().docs, nextRows);
-        set({ docRows: nextRows, weekData });
+        const state = get();
+        const nextVersionRows = { ...state.versionRows };
+        for (const [fileId, rows] of Object.entries(entries)) {
+          const doc = state.docs.find((d) => d.fileId === fileId);
+          const versionId = doc?.versionId ?? null;
+          if (versionId != null) {
+            const map = { ...(nextVersionRows[fileId] ?? {}) };
+            map[versionId] = rows;
+            nextVersionRows[fileId] = map;
+          }
+        }
+        const weekData = computeWeekAggregation(state.docs, nextRows);
+        set({ docRows: nextRows, weekData, versionRows: nextVersionRows });
+      },
+      setStudyGuides: (guides) => {
+        set((state) => {
+          const allowed = new Set(guides.map((guide) => guide.guideId));
+          const nextGuideVersions: Record<string, StudyGuideVersion[]> = {};
+          for (const guide of guides) {
+            const current = state.guideVersions[guide.guideId] ?? [];
+            const withoutLatest = current.filter(
+              (version) => version.versionId !== guide.latestVersion.versionId
+            );
+            nextGuideVersions[guide.guideId] = [guide.latestVersion, ...withoutLatest];
+          }
+          const nextGuideDiffs: Record<string, Record<number, DocDiff>> = {};
+          for (const [guideId, diffMap] of Object.entries(state.guideDiffs)) {
+            if (allowed.has(guideId)) {
+              nextGuideDiffs[guideId] = diffMap;
+            }
+          }
+          const nextVersionRows: Record<string, Record<number, DocRow[]>> = {};
+          for (const [guideId, rowsMap] of Object.entries(state.versionRows)) {
+            if (allowed.has(guideId)) {
+              nextVersionRows[guideId] = rowsMap;
+            }
+          }
+          let selectedGuideId = state.selectedGuideId;
+          if (!selectedGuideId || !allowed.has(selectedGuideId)) {
+            selectedGuideId = guides[0]?.guideId ?? null;
+          }
+          let selectedVersionId = state.selectedVersionId;
+          if (selectedGuideId) {
+            const versions = nextGuideVersions[selectedGuideId] ?? [];
+            if (!versions.some((version) => version.versionId === selectedVersionId)) {
+              selectedVersionId = versions[0]?.versionId ?? null;
+            }
+          } else {
+            selectedVersionId = null;
+          }
+          return {
+            studyGuides: guides,
+            guideVersions: nextGuideVersions,
+            guideDiffs: nextGuideDiffs,
+            versionRows: nextVersionRows,
+            selectedGuideId,
+            selectedVersionId,
+          };
+        });
+      },
+      setGuideVersions: (guideId, versions) => {
+        set((state) => {
+          const next = { ...state.guideVersions, [guideId]: versions };
+          let selectedVersionId = state.selectedVersionId;
+          if (state.selectedGuideId === guideId) {
+            if (!versions.some((version) => version.versionId === selectedVersionId)) {
+              selectedVersionId = versions[0]?.versionId ?? null;
+            }
+          }
+          return { guideVersions: next, selectedVersionId };
+        });
+      },
+      setGuideDiff: (guideId, versionId, diff) => {
+        set((state) => {
+          const next = { ...state.guideDiffs };
+          const entry = { ...(next[guideId] ?? {}) };
+          entry[versionId] = diff;
+          next[guideId] = entry;
+          return { guideDiffs: next };
+        });
+      },
+      setVersionRows: (guideId, versionId, rows) => {
+        set((state) => {
+          const entry = { ...(state.versionRows[guideId] ?? {}) };
+          entry[versionId] = rows;
+          const nextVersionRows = { ...state.versionRows, [guideId]: entry };
+          const doc = state.docs.find((d) => d.fileId === guideId);
+          if (doc?.versionId === versionId) {
+            const nextDocRows = { ...state.docRows, [guideId]: rows };
+            const weekData = computeWeekAggregation(state.docs, nextDocRows);
+            return { versionRows: nextVersionRows, docRows: nextDocRows, weekData };
+          }
+          return { versionRows: nextVersionRows };
+        });
+      },
+      selectGuideVersion: (guideId, versionId) =>
+        set({ selectedGuideId: guideId, selectedVersionId: versionId }),
+      clearGuideSelection: () => set({ selectedGuideId: null, selectedVersionId: null }),
+      setPendingReview: (review) => {
+        set((state) => {
+          const next = { ...state.pendingReviews, [review.parseId]: review };
+          const activeReviewId = state.activeReviewId ?? review.parseId;
+          return { pendingReviews: next, activeReviewId };
+        });
+      },
+      removePendingReview: (parseId) => {
+        set((state) => {
+          if (!(parseId in state.pendingReviews)) {
+            return {};
+          }
+          const next = { ...state.pendingReviews };
+          delete next[parseId];
+          let activeReviewId = state.activeReviewId;
+          if (state.activeReviewId === parseId) {
+            const remaining = Object.keys(next);
+            activeReviewId = remaining.length ? remaining[0] : null;
+          }
+          return { pendingReviews: next, activeReviewId };
+        });
+      },
+      setActiveReview: (parseId) => set({ activeReviewId: parseId }),
+      applyCommitResult: (commit, rows, diff) => {
+        const { guideId, version } = commit;
+        set((state) => {
+          const nextDocs = (() => {
+            const normalizedVak = formatVakName(version.meta.vak);
+            const updatedMeta: DocMeta = {
+              ...version.meta,
+              vak: normalizedVak,
+              uploadedAt: version.meta.uploadedAt ?? new Date().toISOString(),
+            };
+            const existing = state.docs.find((doc) => doc.fileId === guideId);
+            if (existing) {
+              return sortDocsByUploadedAt(
+                state.docs.map((doc) =>
+                  doc.fileId === guideId
+                    ? {
+                        ...updatedMeta,
+                        enabled: doc.enabled,
+                      }
+                    : doc
+                )
+              );
+            }
+            return sortDocsByUploadedAt([
+              ...state.docs,
+              { ...updatedMeta, enabled: true } as DocRecord,
+            ]);
+          })();
+          const mijnVakken = computeMijnVakken(nextDocs, state.mijnVakken, {
+            ensure: [formatVakName(version.meta.vak)],
+          });
+          const nextGuideVersions = { ...state.guideVersions };
+          const versions = nextGuideVersions[guideId] ?? [];
+          const filtered = versions.filter((item) => item.versionId !== version.versionId);
+          nextGuideVersions[guideId] = [version, ...filtered];
+          const versionCountForGuide = nextGuideVersions[guideId].length;
+          const nextGuideDiffs = { ...state.guideDiffs };
+          if (diff) {
+            const entry = { ...(nextGuideDiffs[guideId] ?? {}) };
+            entry[version.versionId] = diff;
+            nextGuideDiffs[guideId] = entry;
+          }
+          const nextVersionRows = { ...state.versionRows };
+          const versionEntry = { ...(nextVersionRows[guideId] ?? {}) };
+          versionEntry[version.versionId] = rows;
+          nextVersionRows[guideId] = versionEntry;
+          const nextDocRows = { ...state.docRows, [guideId]: rows };
+          const weekData = computeWeekAggregation(nextDocs, nextDocRows);
+          const nextStudyGuides = (() => {
+            const existing = state.studyGuides.find((g) => g.guideId === guideId);
+            if (existing) {
+              const versionCount = Math.max(
+                existing.versionCount,
+                versionCountForGuide,
+                version.versionId
+              );
+              return state.studyGuides.map((guide) =>
+                guide.guideId === guideId
+                  ? {
+                      guideId,
+                      latestVersion: version,
+                      versionCount,
+                    }
+                  : guide
+              );
+            }
+            return [
+              ...state.studyGuides,
+              {
+                guideId,
+                latestVersion: version,
+                versionCount: Math.max(version.versionId, versionCountForGuide),
+              },
+            ];
+          })();
+          return {
+            docs: nextDocs,
+            docRows: nextDocRows,
+            weekData,
+            mijnVakken,
+            guideVersions: nextGuideVersions,
+            guideDiffs: nextGuideDiffs,
+            versionRows: nextVersionRows,
+            studyGuides: nextStudyGuides,
+            selectedGuideId: guideId,
+            selectedVersionId: version.versionId,
+          };
+        });
       },
 
       addCustomHomework: (weekId, vak, text) => {
@@ -824,21 +1125,23 @@ export const useAppStore = create<State>()(
 export async function hydrateDocsFromApi() {
   const store = useAppStore.getState();
   try {
-    const { apiListDocs, apiGetDocRows } = await import("../lib/api");
-    const docs = await apiListDocs();
-    store.setDocs(docs as DocMeta[]);
+    const { apiGetStudyGuides, apiGetDocRows } = await import("../lib/api");
+    const guides = await apiGetStudyGuides();
+    store.setStudyGuides(guides);
+    const docs = guides.map((guide) => ({ ...guide.latestVersion.meta } as DocMeta));
+    store.setDocs(docs);
     if (!docs.length) {
       store.setDocRowsBulk({});
       return;
     }
     const rowsEntries = await Promise.all(
-      docs.map(async (doc) => {
+      guides.map(async (guide) => {
         try {
-          const rows = await apiGetDocRows(doc.fileId);
-          return [doc.fileId, rows] as [string, DocRow[]];
+          const rows = await apiGetDocRows(guide.guideId, guide.latestVersion.versionId);
+          return [guide.guideId, rows] as [string, DocRow[]];
         } catch (err) {
-          console.warn(`Kon rijen niet hydrateren voor ${doc.fileId}:`, err);
-          return [doc.fileId, [] as DocRow[]];
+          console.warn(`Kon rijen niet hydrateren voor ${guide.guideId}:`, err);
+          return [guide.guideId, [] as DocRow[]];
         }
       })
     );
@@ -851,11 +1154,16 @@ export async function hydrateDocsFromApi() {
   }
 }
 
-export async function hydrateDocRowsFromApi(fileId: string) {
+export async function hydrateDocRowsFromApi(fileId: string, versionId?: number) {
   try {
     const { apiGetDocRows } = await import("../lib/api");
-    const rows = await apiGetDocRows(fileId);
-    useAppStore.getState().setDocRows(fileId, rows);
+    const rows = await apiGetDocRows(fileId, versionId);
+    const store = useAppStore.getState();
+    if (versionId != null) {
+      store.setVersionRows(fileId, versionId, rows);
+    } else {
+      store.setDocRows(fileId, rows);
+    }
   } catch (e) {
     console.warn(`Kon rijen niet ophalen voor ${fileId}:`, e);
   }
