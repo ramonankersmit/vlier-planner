@@ -2,7 +2,6 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 import { Coffee, Sparkles, Info, UploadCloud, Settings as SettingsIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import packageJson from "../../../package.json";
 import { useAppStore } from "../../app/store";
 import { PUBLIC_LOGO } from "../../assets/images";
 import { clamp01, withAlpha } from "../../lib/color";
@@ -12,7 +11,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useAppStore((state) => state.theme);
   const backgroundImage = useAppStore((state) => state.backgroundImage);
   const surfaceOpacity = useAppStore((state) => state.surfaceOpacity);
-  const appVersion = packageJson.version ?? "0.0.0";
+  const appVersion = __APP_VERSION__ ?? "0.0.0";
   const { restart: restartTour } = useOnboardingTour();
 
   const themeStyle = React.useMemo(() => {

@@ -4,6 +4,10 @@
   "version": "1.3.0",
   "type": "module",
   "scripts": {
+    "sync-version": "node ../tools/sync-version.mjs",
+    "predev": "npm run sync-version --silent",
+    "prebuild": "npm run sync-version --silent",
+    "pretest": "npm run sync-version --silent",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
