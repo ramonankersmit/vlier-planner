@@ -73,6 +73,7 @@ VSVersionInfo(
         StringStruct('FileDescription', 'Vlier Studiewijzer Planner'),
         StringStruct('FileVersion', '{file_version_string}'),
         StringStruct('InternalName', 'VlierPlanner'),
+        StringStruct('LegalCopyright', '© 2025 Ramon Ankersmit'),
         StringStruct('OriginalFilename', 'VlierPlanner.exe'),
         StringStruct('ProductName', 'Vlier Planner'),
         StringStruct('ProductVersion', '{file_version_string}')
