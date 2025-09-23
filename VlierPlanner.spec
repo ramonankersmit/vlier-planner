@@ -8,7 +8,7 @@ from pathlib import Path
 
 def _load_version() -> str:
     config = configparser.ConfigParser()
-    version_path = Path(__file__).resolve().parent / "VERSION.ini"
+    version_path = Path(__name__).resolve().parent / "VERSION.ini"
     if not config.read(version_path):
         raise FileNotFoundError(f"VERSION.ini niet gevonden op {version_path}.")
 
@@ -50,6 +50,7 @@ def _write_version_file(version: str) -> Path:
     version_file = build_dir / "file_version_info.txt"
 
     file_version_tuple = _version_tuple(version)
+    file_version_string = ".".join(str(part) for part in file_version_tuple)
     version_file.write_text(
         """
 VSVersionInfo(
@@ -70,11 +71,11 @@ VSVersionInfo(
         [
         StringStruct('CompanyName', 'Vlier Planner'),
         StringStruct('FileDescription', 'Vlier Studiewijzer Planner'),
-        StringStruct('FileVersion', '{version}'),
+        StringStruct('FileVersion', '{file_version_string}'),
         StringStruct('InternalName', 'VlierPlanner'),
         StringStruct('OriginalFilename', 'VlierPlanner.exe'),
         StringStruct('ProductName', 'Vlier Planner'),
-        StringStruct('ProductVersion', '{version}')
+        StringStruct('ProductVersion', '{file_version_string}')
         ])
       ]),
     VarFileInfo([
@@ -82,7 +83,11 @@ VSVersionInfo(
     ])
   ]
 )
-""".format(filevers=file_version_tuple, prodvers=file_version_tuple, version=version),
+""".format(
+        filevers=file_version_tuple,
+        prodvers=file_version_tuple,
+        file_version_string=file_version_string,
+    ),
         encoding="utf-8",
     )
     return version_file
