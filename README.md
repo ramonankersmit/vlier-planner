@@ -95,7 +95,9 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
    ```bash
    pip install pyinstaller
    ```
-3. Bouw de executable vanuit de projectroot:
+3. Controleer of `VERSION.ini` de juiste versie bevat. De `VlierPlanner.spec` leest deze waarde en genereert automatisch een
+   `build/file_version_info.txt` die als Windows version resource aan de executable wordt meegegeven.
+4. Bouw de executable vanuit de projectroot:
    ```bash
    pyinstaller run_app.py \
      --name VlierPlanner \
@@ -105,8 +107,11 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
      --collect-all vlier_parser \
      --collect-all backend.parsers
    ```
-   Pas opties als `--add-data` of `--collect-all` aan wanneer extra pakketten of assets nodig zijn.
-4. Het resultaat vind je in `dist/VlierPlanner.exe`. Kopieer dit bestand naar de Windows-machine en start het met een dubbelklik; het programma opent automatisch een browser op `http://127.0.0.1:8000`.
+   Pas opties als `--add-data` of `--collect-all` aan wanneer extra pakketten of assets nodig zijn. Wil je PyInstaller direct de
+   spec laten gebruiken, run dan `pyinstaller VlierPlanner.spec`; dezelfde versie-resource wordt dan automatisch toegevoegd. In
+   een eigen command-line configuratie kun je `--version-file build/file_version_info.txt` meegeven om de metadata te
+   hergebruiken.
+5. Het resultaat vind je in `dist/VlierPlanner.exe`. Kopieer dit bestand naar de Windows-machine en start het met een dubbelklik; het programma opent automatisch een browser op `http://127.0.0.1:8000`.
 
 ## Gebruik
 1. Start de backend op poort 8000.
