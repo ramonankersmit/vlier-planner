@@ -24,6 +24,9 @@ AppPublisherURL={#MyURL}
 AppSupportURL={#MyURL}
 AppUpdatesURL={#MyURL}
 
+; Gebruik de eerste taal uit [Languages] (dus Nederlands) als default
+LanguageDetectionMethod=none
+
 ; ---- USER INSTALL (geen admin) ----
 PrivilegesRequired=lowest
 DefaultDirName={localappdata}\{#MyAppName}
