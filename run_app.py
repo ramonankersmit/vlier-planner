@@ -5,6 +5,7 @@ import os
 import sys
 import threading
 import webbrowser
+from configparser import ConfigParser, Error as ConfigParserError
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
@@ -162,6 +163,58 @@ def get_uvicorn_log_config() -> dict[str, Any]:
 
 # Ensure the backend knows it should serve the built frontend before it is imported
 os.environ.setdefault("SERVE_FRONTEND", "1")
+
+
+def _candidate_version_paths() -> list[Path]:
+    root_dir = Path(__file__).resolve().parent
+    candidates = [root_dir / "VERSION.ini"]
+
+    repo_root = root_dir.parent
+    if repo_root != root_dir:
+        candidates.append(repo_root / "VERSION.ini")
+
+    if getattr(sys, "frozen", False):  # pragma: no cover - afhankelijk van platform
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(Path(meipass) / "VERSION.ini")
+        try:
+            candidates.append(Path(sys.executable).resolve().parent / "VERSION.ini")
+        except (OSError, RuntimeError):  # pragma: no cover - afhankelijk van platform
+            pass
+
+    return candidates
+
+
+def _load_version_from_ini() -> str | None:
+    for path in _candidate_version_paths():
+        try:
+            with path.open(encoding="utf-8") as handle:
+                parser = ConfigParser()
+                parser.read_file(handle)
+        except (OSError, ConfigParserError):
+            continue
+
+        try:
+            value = parser.get("app", "version", fallback="").strip()
+        except (ConfigParserError, ValueError):
+            continue
+
+        if value:
+            return value
+
+    return None
+
+
+def _ensure_version_env() -> None:
+    if os.getenv("VLIER_APP_VERSION"):
+        return
+
+    version = _load_version_from_ini()
+    if version:
+        os.environ["VLIER_APP_VERSION"] = version
+
+
+_ensure_version_env()
 _configure_logging()
 
 from backend import app as backend_app
