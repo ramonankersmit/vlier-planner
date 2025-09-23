@@ -8,7 +8,7 @@ from pathlib import Path
 
 def _load_version() -> str:
     config = configparser.ConfigParser()
-    version_path = Path(__file__).resolve().parent / "VERSION.ini"
+    version_path = Path(__name__).resolve().parent / "VERSION.ini"
     if not config.read(version_path):
         raise FileNotFoundError(f"VERSION.ini niet gevonden op {version_path}.")
 
