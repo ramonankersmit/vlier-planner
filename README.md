@@ -39,6 +39,18 @@ klas waarvoor het materiaal bedoeld is.
 - API levert genormaliseerde data voor weekoverzichten, matrix, agenda en events.
 - React + Vite + Tailwind frontend met filters voor niveau, leerjaar en eigen vakselecties.
 - Upload, lijst en verwijder studiewijzers via de API; bestanden worden tijdelijk op schijf bewaard.
+- Diff-overzichten en waarschuwingen markeren veranderingen en mogelijke problemen tijdens reviews.
+- Automatische update-check met optionele installer-start om nieuwe versies binnen de app te downloaden.
+
+## Normalisatie-API versus studiewijzer-workflow
+- **Snelle normalisatie (`backend/main.py`)** – eenvoudige FastAPI-app voor het testen van de parser. Nieuwe uploads landen in `uploads/` en elke parse wordt als JSON in `data/parsed/` opgeslagen. De API biedt alleen het noodzakelijke minimum: uploaden, basisstatus opvragen en eenvoudige weergave van weken, matrix, agenda en assessments.【F:backend/main.py†L1-L118】【F:vlier_parser/normalize.py†L33-L94】
+- **Volledige studiewijzer-workflow (`backend/app.py`)** – complete backend voor versiebeheer, reviewflows, diff-berekeningen, waarschuwingen en bestandsbeheer. Ruwe uploads worden in `storage/uploads/` geplaatst; goedgekeurde versies krijgen een eigen map onder `storage/<guideId>/<versionId>/`. Lopende reviews en hun metadata staan tijdelijk in `storage/pending/`.【F:backend/app.py†L52-L377】【F:backend/app.py†L723-L918】
+- Beide backends delen dezelfde `vlier_parser.normalize` helpers en kunnen dus naar `data/parsed/` schrijven wanneer de snelle workflow gebruikt wordt. Gebruik de minimalistische API om snel parserresultaten te testen, en de volledige app wanneer je de reviewwizard, versiehistorie of diff/warning-logica wilt uitproberen.【F:backend/main.py†L27-L118】【F:backend/app.py†L713-L918】
+
+## Reviewwizard, versiebeheer en updates
+- **Reviewwizard** – `/api/reviews` en `/api/reviews/{parseId}` leveren pending reviews met meta, regels, diff en waarschuwingen. `frontend/src/pages/Review.tsx` vormt hier de meerstapsreview rond, terwijl `frontend/src/pages/Uploads.tsx` pending reviews en hun waarschuwingen toont en naar de wizard linkt.【F:backend/app.py†L802-L918】【F:frontend/src/pages/Review.tsx†L518-L1160】【F:frontend/src/pages/Uploads.tsx†L20-L1298】
+- **Versiebeheer & diffing** – commits naar `/api/reviews/{parseId}/commit` slaan een nieuwe versie van een studiewijzer weg en updaten de diff-geschiedenis. Bestanden en metadata blijven per versie beschikbaar via `/api/docs/...`-endpoints (rows, preview, download) zodat je oudere versies kunt vergelijken.【F:backend/app.py†L723-L918】
+- **Automatische updates** – `/api/system/update` controleert op nieuwe releases, terwijl een POST naar hetzelfde endpoint een download/installer kan starten. De frontend start automatisch een check via `frontend/src/App.tsx` en biedt handmatige bediening op de instellingenpagina (`frontend/src/pages/Settings.tsx`).【F:backend/app.py†L323-L366】【F:frontend/src/App.tsx†L172-L188】【F:frontend/src/pages/Settings.tsx†L36-L396】
 
 ## Projectstructuur
 ```
@@ -70,6 +82,13 @@ cd frontend
 npm install
 npm run dev
 ```
+
+### Tests en kwaliteitscontroles
+- Backend-tests: `pytest`
+- Frontend-tests: `npm test`
+
+### Normalisatietests draaien
+De huidige `vlier_parser.normalize` bevat een dummy-implementatie. Zodra de echte parserlogica is toegevoegd kun je specifieke normalisatietests opnemen (bijv. `tests/test_normalize.py`) en uitvoeren met `pytest -k normalize`. Gebruik de minimalistische API (`backend/main.py`) voor snelle feedback op parse-resultaten voordat je de volledige reviewflow (`backend/app.py`) doorloopt.【F:backend/main.py†L27-L118】【F:backend/app.py†L723-L918】【F:vlier_parser/normalize.py†L33-L94】
 
 ## Frontend build koppelen aan de backend
 Gebruik het hulpscript om de Vite-build in `backend/static/dist` te plaatsen wanneer je een distributieversie wilt maken:
