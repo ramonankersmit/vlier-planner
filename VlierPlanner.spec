@@ -96,7 +96,10 @@ VSVersionInfo(
 APP_VERSION = _load_version()
 VERSION_FILE = _write_version_file(APP_VERSION)
 
-datas = [('backend/static/dist', 'backend/static/dist')]
+datas = [
+    ('VERSION.ini', '.'),
+    ('backend/static/dist', 'backend/static/dist'),
+]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('vlier_parser')
