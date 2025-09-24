@@ -8,6 +8,8 @@ import {
   ClipboardList,
   AlertTriangle,
   XOctagon,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { DocRecord } from "../app/store";
@@ -1125,7 +1127,7 @@ export default function Uploads() {
             <table className="table-auto min-w-max text-sm">
               <thead className="text-xs font-medium theme-muted border-b theme-border">
                 <tr>
-                  <th className="px-4 py-3 text-center font-medium">
+                  <th className="px-4 py-3 text-center font-medium w-16">
                     <span className="sr-only">Gebruik</span>
                   </th>
                   <th className="px-4 py-3 text-left font-medium">Acties</th>
@@ -1225,11 +1227,14 @@ export default function Uploads() {
                   return (
                     <tr key={`${entry.kind}-${d.fileId}-${entry.kind === "pending" ? entry.review.parseId : d.versionId ?? "latest"}`} className={rowClassName}>
                       <td className="px-4 py-3 text-center align-middle">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={entry.kind === "active" ? d.enabled : false}
-                          onChange={() => entry.kind === "active" && toggleGebruik(d)}
+                        <button
+                          type="button"
+                          onClick={() => entry.kind === "active" && toggleGebruik(d)}
+                          disabled={entry.kind !== "active"}
+                          className={clsx(
+                            "inline-flex items-center justify-center",
+                            entry.kind !== "active" && "cursor-not-allowed opacity-40"
+                          )}
                           aria-label={
                             entry.kind === "active"
                               ? d.enabled
@@ -1240,12 +1245,29 @@ export default function Uploads() {
                           title={
                             entry.kind === "active"
                               ? d.enabled
-                                ? `Gebruik uitschakelen voor ${d.bestand}`
-                                : `Gebruik inschakelen voor ${d.bestand}`
-                              : "Eerst review afronden"
+                                ? `${d.bestand} is actief – klik om te deactiveren`
+                                : `${d.bestand} is inactief – klik om te activeren`
+                              : "Document staat in review – activeren niet mogelijk"
                           }
-                          disabled={entry.kind !== "active"}
-                        />
+                        >
+                          {entry.kind === "active" ? (
+                            d.enabled ? (
+                              <ToggleRight size={18} className="text-emerald-600" />
+                            ) : (
+                              <ToggleLeft size={18} className="theme-muted" />
+                            )
+                          ) : (
+                            <ToggleLeft size={18} className="theme-muted" />
+                          )}
+                          <span className="sr-only">
+                            {entry.kind === "active"
+                              ? d.enabled
+                                ? "Actief"
+                                : "Inactief"
+                              : "Niet beschikbaar"
+                            }
+                          </span>
+                        </button>
                       </td>
                       <td className="px-4 py-3 align-top">
                         <div className="flex flex-wrap gap-2 justify-center sm:justify-start">

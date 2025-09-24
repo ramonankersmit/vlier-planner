@@ -40,6 +40,25 @@ const computeDefaultSchoolYear = () => {
   return `${startYear}-${startYear + 1}`;
 };
 
+const computeSchoolYearOptions = () => {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const startYear = month >= 8 ? currentYear : currentYear - 1;
+  const currentLabel = `${startYear}-${startYear + 1}`;
+  const nextLabel = `${startYear + 1}-${startYear + 2}`;
+  return [
+    {
+      value: currentLabel,
+      label: `Huidig jaar – volgend jaar (${currentLabel})`,
+    },
+    {
+      value: nextLabel,
+      label: `Volgend jaar – jaar daarop (${nextLabel})`,
+    },
+  ];
+};
+
 type DownloadState =
   | { status: "idle" }
   | { status: "loading" }
@@ -81,7 +100,10 @@ export default function SchoolVacationManager() {
   const removeSchoolVacation = useAppStore((s) => s.removeSchoolVacation);
   const setSchoolVacationActive = useAppStore((s) => s.setSchoolVacationActive);
 
-  const [schoolYear, setSchoolYear] = React.useState<string>(computeDefaultSchoolYear());
+  const schoolYearOptions = React.useMemo(() => computeSchoolYearOptions(), []);
+  const [schoolYear, setSchoolYear] = React.useState<string>(
+    () => schoolYearOptions[0]?.value ?? computeDefaultSchoolYear()
+  );
   const [downloadState, setDownloadState] = React.useState<DownloadState>({ status: "idle" });
   const [isImportOpen, setImportOpen] = React.useState(false);
   const [selection, setSelection] = React.useState<Record<string, boolean>>({});
@@ -250,14 +272,18 @@ export default function SchoolVacationManager() {
           <label className="text-sm theme-muted" htmlFor="schoolyear-input">
             Schooljaar
           </label>
-          <input
+          <select
             id="schoolyear-input"
-            type="text"
             value={schoolYear}
             onChange={(event) => setSchoolYear(event.target.value)}
-            className="w-28 rounded-md border theme-border theme-surface px-2 py-1 text-sm"
-            placeholder="2025-2026"
-          />
+            className="w-56 rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+          >
+            {schoolYearOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             onClick={openImportDialog}
@@ -278,7 +304,9 @@ export default function SchoolVacationManager() {
           <table className="min-w-full text-sm">
             <thead className="theme-soft">
               <tr>
-                <th className="px-3 py-2 text-left">Actief</th>
+                <th className="px-3 py-2 text-left w-16">
+                  <span className="sr-only">Actief</span>
+                </th>
                 <th className="px-3 py-2 text-left">Vakantie</th>
                 <th className="px-3 py-2 text-left">Periode</th>
                 <th className="px-3 py-2 text-left">Bron</th>
@@ -295,7 +323,11 @@ export default function SchoolVacationManager() {
                         type="button"
                         onClick={() => setSchoolVacationActive(vacation.id, !vacation.active)}
                         className="flex items-center gap-1 text-sm"
-                        title={vacation.active ? "Deactiveren" : "Activeren"}
+                        title={
+                          vacation.active
+                            ? "Vakantie is actief – klik om te deactiveren"
+                            : "Vakantie is inactief – klik om te activeren"
+                        }
                       >
                         {vacation.active ? (
                           <ToggleRight size={18} className="text-emerald-600" />
