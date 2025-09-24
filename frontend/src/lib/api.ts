@@ -113,6 +113,27 @@ export type CommitResponse = {
   version: StudyGuideVersion;
 };
 
+export type SchoolVacationImport = {
+  id: string;
+  name: string;
+  region: string;
+  startDate: string;
+  endDate: string;
+  schoolYear: string;
+  source: string;
+  label: string;
+  rawText?: string | null;
+  notes?: string | null;
+};
+
+export type SchoolVacationDownload = {
+  schoolYear: string;
+  source: string;
+  retrievedAt: string;
+  title?: string | null;
+  vacations: SchoolVacationImport[];
+};
+
 function resolveApiBase(): string {
   const envBase = (import.meta.env.VITE_API_BASE ?? "").trim();
   if (envBase) {
@@ -200,6 +221,17 @@ export async function apiGetStudyGuideVersions(guideId: string): Promise<StudyGu
     throw new Error(`guide_versions failed: ${r.status}`);
   }
   return (await r.json()) as StudyGuideVersion[];
+}
+
+export async function apiFetchSchoolVacations(
+  schoolYear: string
+): Promise<SchoolVacationDownload> {
+  const params = new URLSearchParams({ schoolYear });
+  const r = await fetch(`${BASE}/api/school-vacations?${params.toString()}`);
+  if (!r.ok) {
+    throw new Error(`school_vacations failed: ${r.status}`);
+  }
+  return (await r.json()) as SchoolVacationDownload;
 }
 
 export async function apiGetStudyGuideDiff(

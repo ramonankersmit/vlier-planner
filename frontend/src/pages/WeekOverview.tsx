@@ -10,6 +10,7 @@ import {
   Trash2,
   Pencil,
   Undo2,
+  Sun,
 } from "lucide-react";
 import {
   useAppStore,
@@ -17,11 +18,12 @@ import {
   type WeekInfo,
   type WeekData,
   type CustomHomeworkEntry,
+  type VacationWeekInfo,
 } from "../app/store";
 import { formatRange, calcCurrentWeekIdx } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
-import { deriveIsoYearForWeek } from "../lib/calendar";
+import { deriveIsoYearForWeek, parseIsoDate } from "../lib/calendar";
 import { hasMeaningfulContent } from "../lib/contentUtils";
 
 type HomeworkItem = {
@@ -621,6 +623,7 @@ export default function WeekOverview() {
   const hasActiveDocs = activeDocs.length > 0;
   const weeks = weekData.weeks ?? [];
   const byWeek = weekData.byWeek ?? {};
+  const vacationsByWeek = weekData.vacationsByWeek ?? {};
   const hasWeekData = weeks.length > 0;
 
   const niveauOptions = React.useMemo(
@@ -707,10 +710,30 @@ export default function WeekOverview() {
   const weekNumber = week?.nr ?? 0;
   const weekKey = week?.id ?? `wk-${weekNumber}`;
   const dataForActiveWeek = week ? byWeek[week.id] || {} : {};
+  const vacationsForWeek: VacationWeekInfo[] = week ? vacationsByWeek[week.id] ?? [] : [];
   const goThisWeek = React.useCallback(() => {
     if (!weeks.length) return;
     setWeekIdxWO(calcCurrentWeekIdx(weeks));
   }, [weeks, setWeekIdxWO]);
+
+  const dateFormatter = React.useMemo(
+    () => new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "short", year: "numeric" }),
+    []
+  );
+
+  const formatVacationPeriod = React.useCallback(
+    (vac: VacationWeekInfo): string => {
+      const start = parseIsoDate(vac.startDate);
+      const end = parseIsoDate(vac.endDate);
+      const startLabel = start ? dateFormatter.format(start) : vac.startDate;
+      const endLabel = end ? dateFormatter.format(end) : vac.endDate;
+      if (startLabel && endLabel && startLabel !== endLabel) {
+        return `${startLabel} – ${endLabel}`;
+      }
+      return startLabel || endLabel || vac.label;
+    },
+    [dateFormatter]
+  );
 
   const findDocForWeek = React.useCallback(
     (docsForVak: DocRecord[], info?: WeekInfo) => {
@@ -735,6 +758,21 @@ export default function WeekOverview() {
           Week {week?.nr ?? "—"} · {week ? formatRange(week) : "Geen data"}
         </div>
       </div>
+
+      {vacationsForWeek.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+          <div className="flex items-center gap-2 font-semibold text-amber-900">
+            <Sun size={16} /> Schoolvakantie
+          </div>
+          <ul className="mt-2 space-y-1 text-amber-800">
+            {vacationsForWeek.map((vac) => (
+              <li key={`${vac.id}-${week?.id ?? "wk"}`}>
+                <span className="font-medium">{vac.name}</span> ({vac.region}) · {formatVacationPeriod(vac)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
