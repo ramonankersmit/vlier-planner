@@ -33,6 +33,7 @@ import {
 } from "../lib/api";
 import { parseIsoDate } from "../lib/calendar";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
+import SchoolVacationManager from "../components/SchoolVacationManager";
 import { useFocusTrap } from "../lib/useFocusTrap";
 import {
   DiffRowsList,
@@ -1045,6 +1046,8 @@ export default function Uploads() {
           </div>
         </div>
       </div>
+
+      <SchoolVacationManager />
 
       {/* Filters */}
       <div

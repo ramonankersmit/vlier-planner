@@ -49,8 +49,11 @@ export default function Deadlines() {
   const hasActiveDocs = activeDocs.length > 0;
   const allWeeks = weekData.weeks ?? [];
   const hasWeekData = allWeeks.length > 0;
-  const disableWeekControls = !hasActiveDocs || !hasWeekData;
+  const disableWeekControls = !hasWeekData;
+  const vacationsByWeek = weekData.vacationsByWeek ?? {};
+  const hasVacationData = Object.keys(vacationsByWeek).length > 0;
   const hasUploads = hasActiveDocs && hasWeekData;
+  const hasAnyData = hasUploads || hasVacationData;
 
   const maxStartIdx = Math.max(0, allWeeks.length - 1);
   const clampedFrom = Math.min(fromIdx, maxStartIdx);
@@ -97,38 +100,52 @@ export default function Deadlines() {
     [docsByVak]
   );
 
-  const items: Item[] = !hasUploads
+  const items: Item[] = !hasAnyData
     ? []
     : weeks.flatMap((w) => {
         const perVak = weekData.byWeek?.[w.id] || {};
-        return Object.entries(perVak).flatMap(([vakNaam, d]: any) => {
-          if (mijnVakken.length && !mijnVakken.includes(vakNaam)) return [];
-          if (vak !== "ALLE" && vakNaam !== vak) return [];
-          if (!d?.deadlines || d.deadlines === "—") return [];
-          const deadlineLabel = String(d.deadlines);
-          const lowered = deadlineLabel.toLowerCase();
-          const type: Item["type"] = lowered.includes("vakantie")
-            ? "Vakantie"
-            : lowered.includes("toets")
-              ? "Toets"
-              : "Deadline";
-          const doc = findDocForWeek(vakNaam, w);
-          const weekRange = formatWeekDateRange(w) ?? undefined;
-          return [
-            {
-              id: `${vakNaam}-${w.id}`,
-              week: w.nr,
-              isoYear: w.isoYear,
-              weekRange,
-              type,
-              vak: vakNaam,
-              title: d.deadlines,
-              date: d.date,
-              src: doc?.bestand,
-              fileId: doc?.fileId,
-            } as Item,
-          ];
-        });
+        const weekRange = formatWeekDateRange(w) ?? undefined;
+        const docItems = hasUploads
+          ? Object.entries(perVak).flatMap(([vakNaam, d]: any) => {
+              if (mijnVakken.length && !mijnVakken.includes(vakNaam)) return [];
+              if (vak !== "ALLE" && vakNaam !== vak) return [];
+              if (!d?.deadlines || d.deadlines === "—") return [];
+              const deadlineLabel = String(d.deadlines);
+              const lowered = deadlineLabel.toLowerCase();
+              const type: Item["type"] = lowered.includes("vakantie")
+                ? "Vakantie"
+                : lowered.includes("toets")
+                  ? "Toets"
+                  : "Deadline";
+              const doc = findDocForWeek(vakNaam, w);
+              return [
+                {
+                  id: `${vakNaam}-${w.id}`,
+                  week: w.nr,
+                  isoYear: w.isoYear,
+                  weekRange,
+                  type,
+                  vak: vakNaam,
+                  title: d.deadlines,
+                  date: d.date,
+                  src: doc?.bestand,
+                  fileId: doc?.fileId,
+                } as Item,
+              ];
+            })
+          : [];
+        const vacationItems: Item[] = (vacationsByWeek[w.id] ?? []).map((vac) => ({
+          id: `vac-${vac.id}-${w.id}`,
+          week: w.nr,
+          isoYear: w.isoYear,
+          weekRange,
+          type: "Vakantie",
+          vak: "Schoolvakantie",
+          title: `${vac.name} (${vac.region})`,
+          date: vac.startDate,
+          src: vac.label || vac.schoolYear,
+        }));
+        return [...docItems, ...vacationItems];
       });
 
   return (
@@ -203,7 +220,7 @@ export default function Deadlines() {
         aria-label="Overzicht van belangrijke events"
         className="overflow-auto rounded-2xl border theme-border theme-surface"
       >
-        {!hasUploads ? (
+        {!hasAnyData ? (
           <div className="p-6 text-sm theme-muted">
             {hasActiveDocs
               ? "Nog geen weekgegevens beschikbaar. Controleer of de documenten studiewijzerdata bevatten."

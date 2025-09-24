@@ -9,6 +9,7 @@ import {
   Trash2,
   Pencil,
   Undo2,
+  Sun,
 } from "lucide-react";
 import {
   useAppStore,
@@ -16,6 +17,7 @@ import {
   type WeekInfo,
   type WeekData,
   type CustomHomeworkEntry,
+  type VacationWeekInfo,
 } from "../app/store";
 import {
   formatRange,
@@ -584,6 +586,7 @@ export default function Matrix() {
   const huiswerkWeergave = useAppStore((s) => s.huiswerkWeergave);
   const docs = useAppStore((s) => s.docs) ?? [];
   const weekData = useAppStore((s) => s.weekData);
+  const vacationsByWeek = weekData.vacationsByWeek ?? {};
   const customHomework = useAppStore((s) => s.customHomework);
   const addCustomHomework = useAppStore((s) => s.addCustomHomework);
   const removeCustomHomework = useAppStore((s) => s.removeCustomHomework);
@@ -864,6 +867,10 @@ export default function Matrix() {
                 <th className="px-4 py-2 text-left whitespace-nowrap">Vak</th>
                 {weeks.map((w) => {
                   const isCurrent = w.id === currentWeekId;
+                  const vacationEntries: VacationWeekInfo[] = vacationsByWeek[w.id] ?? [];
+                  const vacationLabel = vacationEntries
+                    .map((vac) => `${vac.name} (${vac.region})`)
+                    .join(" • ");
                   const headerStyle: React.CSSProperties | undefined = isCurrent
                     ? {
                         backgroundColor: currentWeekHighlightColor,
@@ -881,6 +888,12 @@ export default function Matrix() {
                     >
                       <div className="font-medium">Week {w.nr}</div>
                       <div className="text-xs theme-muted">{formatRange(w)}</div>
+                      {vacationLabel && (
+                        <div className="mt-1 flex items-center gap-1 text-xs text-amber-700">
+                          <Sun size={12} />
+                          <span>{vacationLabel}</span>
+                        </div>
+                      )}
                     </th>
                   );
                 })}
