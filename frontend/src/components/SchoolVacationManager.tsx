@@ -1,5 +1,14 @@
 import React from "react";
-import { Download, RefreshCw, Trash2, Pencil, Check, ToggleLeft, ToggleRight } from "lucide-react";
+import {
+  Download,
+  RefreshCw,
+  Trash,
+  Trash2,
+  Pencil,
+  Check,
+  ToggleLeft,
+  ToggleRight,
+} from "lucide-react";
 import {
   useAppStore,
   type SchoolVacation,
@@ -44,19 +53,12 @@ const computeSchoolYearOptions = () => {
   const now = new Date();
   const month = now.getMonth() + 1;
   const currentYear = now.getFullYear();
-  const startYear = month >= 8 ? currentYear : currentYear - 1;
-  const currentLabel = `${startYear}-${startYear + 1}`;
-  const nextLabel = `${startYear + 1}-${startYear + 2}`;
-  return [
-    {
-      value: currentLabel,
-      label: `Huidig jaar – volgend jaar (${currentLabel})`,
-    },
-    {
-      value: nextLabel,
-      label: `Volgend jaar – jaar daarop (${nextLabel})`,
-    },
-  ];
+  const currentStartYear = month >= 8 ? currentYear : currentYear - 1;
+  return [0, 1, 2].map((offset) => {
+    const startYear = currentStartYear + offset;
+    const value = `${startYear}-${startYear + 1}`;
+    return { value, label: value };
+  });
 };
 
 type DownloadState =
@@ -98,6 +100,7 @@ export default function SchoolVacationManager() {
   const addSchoolVacations = useAppStore((s) => s.addSchoolVacations);
   const updateSchoolVacation = useAppStore((s) => s.updateSchoolVacation);
   const removeSchoolVacation = useAppStore((s) => s.removeSchoolVacation);
+  const clearSchoolVacations = useAppStore((s) => s.clearSchoolVacations);
   const setSchoolVacationActive = useAppStore((s) => s.setSchoolVacationActive);
 
   const schoolYearOptions = React.useMemo(() => computeSchoolYearOptions(), []);
@@ -127,9 +130,19 @@ export default function SchoolVacationManager() {
         return;
       }
       const defaultSelection: Record<string, boolean> = {};
+      let hasNorthSelection = false;
       payload.vacations.forEach((vac) => {
-        defaultSelection[vac.id] = true;
+        const isNorth = vac.region?.toLowerCase().includes("noord");
+        defaultSelection[vac.id] = !!isNorth;
+        if (isNorth) {
+          hasNorthSelection = true;
+        }
       });
+      if (!hasNorthSelection) {
+        payload.vacations.forEach((vac) => {
+          defaultSelection[vac.id] = true;
+        });
+      }
       setSelection(defaultSelection);
       setDownloadState({ status: "ready", payload });
     } catch (err: any) {
@@ -259,6 +272,17 @@ export default function SchoolVacationManager() {
     removeSchoolVacation(vacation.id);
   };
 
+  const removeAllVacations = () => {
+    if (!schoolVacations.length) {
+      return;
+    }
+    const confirmed = window.confirm(
+      "Weet je zeker dat je alle schoolvakanties wilt verwijderen?"
+    );
+    if (!confirmed) return;
+    clearSchoolVacations();
+  };
+
   return (
     <section className="rounded-2xl border theme-border theme-surface p-4 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -292,6 +316,16 @@ export default function SchoolVacationManager() {
           >
             <Download size={16} /> Downloaden
           </button>
+          {schoolVacations.length > 0 && (
+            <button
+              type="button"
+              onClick={removeAllVacations}
+              className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1 text-sm text-red-600"
+              title="Alle schoolvakanties verwijderen"
+            >
+              <Trash size={16} /> Alles verwijderen
+            </button>
+          )}
         </div>
       </div>
 

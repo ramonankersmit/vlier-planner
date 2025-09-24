@@ -235,6 +235,7 @@ type State = {
   addSchoolVacations: (entries: SchoolVacation[]) => void;
   updateSchoolVacation: (id: string, update: Partial<SchoolVacation>) => void;
   removeSchoolVacation: (id: string) => void;
+  clearSchoolVacations: () => void;
   setSchoolVacationActive: (id: string, active: boolean) => void;
   customHomework: Record<string, Record<string, CustomHomeworkEntry[]>>;
   addCustomHomework: (weekId: string, vak: string, text: string) => void;
@@ -1167,6 +1168,15 @@ export const useAppStore = create<State>()(
           }
           const weekData = computeWeekAggregation(state.docs, state.docRows, next);
           return { schoolVacations: next, weekData };
+        });
+      },
+      clearSchoolVacations: () => {
+        set((state) => {
+          if (state.schoolVacations.length === 0) {
+            return {};
+          }
+          const weekData = computeWeekAggregation(state.docs, state.docRows, []);
+          return { schoolVacations: [], weekData };
         });
       },
       setSchoolVacationActive: (id, active) => {
