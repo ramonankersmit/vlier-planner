@@ -269,6 +269,7 @@ export default function Uploads() {
   const [isUploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [page, setPage] = React.useState(1);
+  const [activeTab, setActiveTab] = React.useState<"documents" | "vacations">("documents");
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const dragCounterRef = React.useRef(0);
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -874,11 +875,57 @@ export default function Uploads() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [detailDoc]);
 
+  React.useEffect(() => {
+    if (activeTab === "documents" || !detailDoc) {
+      return;
+    }
+    setDetailDoc(null);
+  }, [activeTab, detailDoc]);
+
+  const tabButtonClass = (tab: "documents" | "vacations") =>
+    clsx(
+      "rounded-full px-3 py-1 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)]",
+      activeTab === tab
+        ? "bg-[var(--app-accent)] text-white shadow"
+        : "theme-surface theme-muted hover:bg-slate-100/80"
+    );
+
+  const headingLabel =
+    activeTab === "documents" ? "Uploads & Documentbeheer" : "Schoolvakanties";
+
   return (
     <div className="space-y-4">
-      <div className="text-lg font-semibold theme-text">Uploads &amp; Documentbeheer</div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-lg font-semibold theme-text">{headingLabel}</div>
+        <div
+          role="tablist"
+          aria-label="Beheer"
+          className="inline-flex items-center gap-1 rounded-full border theme-border theme-surface p-1 shadow-sm"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "documents"}
+            className={tabButtonClass("documents")}
+            onClick={() => setActiveTab("documents")}
+          >
+            Documenten
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "vacations"}
+            className={tabButtonClass("vacations")}
+            onClick={() => setActiveTab("vacations")}
+          >
+            Schoolvakanties
+          </button>
+        </div>
+      </div>
 
-      {pendingReviewCount > 0 && (
+      {activeTab === "documents" ? (
+        <>
+          {pendingReviewCount > 0 && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -953,10 +1000,10 @@ export default function Uploads() {
             )}
           </div>
         </div>
-      )}
+          )}
 
-      {/* Uploadblok */}
-      <div className="rounded-2xl border theme-border theme-surface p-4">
+          {/* Uploadblok */}
+          <div className="rounded-2xl border theme-border theme-surface p-4">
         <div className="mb-1 font-medium theme-text">Bestanden uploaden</div>
         <div className="text-sm theme-muted">
           Kies een <strong>PDF</strong> of <strong>DOCX</strong>. Metadata wordt automatisch herkend.
@@ -1048,8 +1095,6 @@ export default function Uploads() {
           </div>
         </div>
       </div>
-
-      <SchoolVacationManager />
 
       {/* Filters */}
       <div
@@ -1388,8 +1433,13 @@ export default function Uploads() {
         )}
       </div>
 
+        </>
+      ) : (
+        <SchoolVacationManager />
+      )}
+
       {/* Detail modal */}
-      {detailDoc && (
+      {activeTab === "documents" && detailDoc && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
           role="presentation"

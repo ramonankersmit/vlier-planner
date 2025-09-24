@@ -54,7 +54,7 @@ const computeSchoolYearOptions = () => {
   const month = now.getMonth() + 1;
   const currentYear = now.getFullYear();
   const currentStartYear = month >= 8 ? currentYear : currentYear - 1;
-  return [0, 1, 2].map((offset) => {
+  return [0, 1].map((offset) => {
     const startYear = currentStartYear + offset;
     const value = `${startYear}-${startYear + 1}`;
     return { value, label: value };

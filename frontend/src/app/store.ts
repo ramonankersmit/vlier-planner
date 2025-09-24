@@ -436,6 +436,95 @@ const computeWeekAggregation = (
   };
   const today = new Date();
 
+  const vacationWeekRegistrations: {
+    weekId: string;
+    isoYear: number;
+    week: number;
+    info: VacationWeekInfo;
+  }[] = [];
+  const vacationWeekSet = new Set<string>();
+
+  const registerVacationWeek = (isoYear: number, week: number, vacation: SchoolVacation) => {
+    const weekId = makeWeekId(isoYear, week);
+    vacationWeekRegistrations.push({
+      weekId,
+      isoYear,
+      week,
+      info: {
+        id: vacation.id,
+        name: vacation.name,
+        region: vacation.region,
+        startDate: vacation.startDate,
+        endDate: vacation.endDate,
+        schoolYear: vacation.schoolYear,
+        label: vacation.label,
+      },
+    });
+    vacationWeekSet.add(weekId);
+  };
+
+  const shiftStartToSchoolWeek = (startDate: Date, endDate: Date) => {
+    const aligned = new Date(startDate);
+    const day = aligned.getUTCDay();
+    if (day === 6) {
+      aligned.setUTCDate(aligned.getUTCDate() + 2);
+    } else if (day === 0) {
+      aligned.setUTCDate(aligned.getUTCDate() + 1);
+    }
+    if (aligned.getTime() > endDate.getTime()) {
+      return new Date(startDate);
+    }
+    return aligned;
+  };
+
+  for (const vacation of activeVacations) {
+    const start = parseIsoDate(vacation.startDate);
+    const end = parseIsoDate(vacation.endDate);
+    if (!start || !end) {
+      continue;
+    }
+    let startDate = start;
+    let endDate = end;
+    if (endDate.getTime() < startDate.getTime()) {
+      [startDate, endDate] = [endDate, startDate];
+    }
+    const adjustedStart = shiftStartToSchoolWeek(startDate, endDate);
+    let cursor = getIsoWeekStart(getIsoWeekYear(adjustedStart), getIsoWeek(adjustedStart));
+    const limit = getIsoWeekStart(getIsoWeekYear(endDate), getIsoWeek(endDate));
+    while (cursor.getTime() <= limit.getTime()) {
+      const isoYear = getIsoWeekYear(cursor);
+      const wk = getIsoWeek(cursor);
+      registerVacationWeek(isoYear, wk, vacation);
+      cursor = new Date(cursor);
+      cursor.setUTCDate(cursor.getUTCDate() + 7);
+    }
+  }
+
+  const hasVakantieText = (value?: string | null, options?: NormalizeOptions) => {
+    const normalized = normalizeText(value, options);
+    return normalized ? normalized.toLocaleLowerCase("nl-NL").includes("vakantie") : false;
+  };
+
+  const rowContainsVakantie = (row: DocRow) => {
+    if (!row) return false;
+    if (hasVakantieText(row.onderwerp) || hasVakantieText(row.les)) {
+      return true;
+    }
+    if (Array.isArray(row.leerdoelen) && row.leerdoelen.some((item) => hasVakantieText(item))) {
+      return true;
+    }
+    if (
+      hasVakantieText(row.huiswerk, { preserveLineBreaks: true }) ||
+      hasVakantieText(row.opdracht, { preserveLineBreaks: true })
+    ) {
+      return true;
+    }
+    if (row.toets?.type && hasVakantieText(row.toets.type)) {
+      return true;
+    }
+    return false;
+  };
+
   for (const doc of docs) {
     if (!doc.enabled) {
       continue;
@@ -466,7 +555,14 @@ const computeWeekAggregation = (
         candidateDates: [row.datum, row.inleverdatum],
         today,
       });
-      const { vakMap } = ensureWeek(wk, isoYear);
+      const { weekId, vakMap } = ensureWeek(wk, isoYear);
+      if (
+        vacationWeekSet.size > 0 &&
+        vacationWeekSet.has(weekId) &&
+        rowContainsVakantie(row)
+      ) {
+        continue;
+      }
       const accum =
         vakMap[doc.vak] ??
         (vakMap[doc.vak] = {
@@ -560,6 +656,14 @@ const computeWeekAggregation = (
   }
 
   const vacationWeeks: Record<string, VacationWeekInfo[]> = {};
+  for (const { weekId, isoYear, week, info } of vacationWeekRegistrations) {
+    ensureWeek(week, isoYear);
+    const list = (vacationWeeks[weekId] ??= []);
+    if (!list.some((entry) => entry.id === info.id)) {
+      list.push(info);
+    }
+  }
+
   const resultByWeek: Record<string, Record<string, WeekData>> = {};
   for (const [weekId, vakMap] of byWeek.entries()) {
     const entries: Record<string, WeekData> = {};
@@ -586,44 +690,6 @@ const computeWeekAggregation = (
     if (a.nr !== b.nr) return a.nr - b.nr;
     return a.id.localeCompare(b.id);
   });
-
-  const addVacationToWeek = (weekId: string, info: VacationWeekInfo) => {
-    const list = (vacationWeeks[weekId] ??= []);
-    if (!list.some((entry) => entry.id === info.id)) {
-      list.push(info);
-    }
-  };
-
-  for (const vacation of activeVacations) {
-    const start = parseIsoDate(vacation.startDate);
-    const end = parseIsoDate(vacation.endDate);
-    if (!start || !end) {
-      continue;
-    }
-    let startDate = start;
-    let endDate = end;
-    if (endDate.getTime() < startDate.getTime()) {
-      [startDate, endDate] = [endDate, startDate];
-    }
-    let cursor = getIsoWeekStart(getIsoWeekYear(startDate), getIsoWeek(startDate));
-    const limit = getIsoWeekStart(getIsoWeekYear(endDate), getIsoWeek(endDate));
-    while (cursor.getTime() <= limit.getTime()) {
-      const isoYear = getIsoWeekYear(cursor);
-      const wk = getIsoWeek(cursor);
-      const { weekId } = ensureWeek(wk, isoYear);
-      addVacationToWeek(weekId, {
-        id: vacation.id,
-        name: vacation.name,
-        region: vacation.region,
-        startDate: vacation.startDate,
-        endDate: vacation.endDate,
-        schoolYear: vacation.schoolYear,
-        label: vacation.label,
-      });
-      cursor = new Date(cursor);
-      cursor.setUTCDate(cursor.getUTCDate() + 7);
-    }
-  }
 
   Object.values(vacationWeeks).forEach((list) => {
     list.sort((a, b) => {
