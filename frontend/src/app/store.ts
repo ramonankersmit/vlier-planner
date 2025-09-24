@@ -685,12 +685,6 @@ const computeWeekAggregation = (
     resultByWeek[weekId] = entries;
   }
 
-  const weeks = Array.from(weekInfoMap.values()).sort((a, b) => {
-    if (a.isoYear !== b.isoYear) return a.isoYear - b.isoYear;
-    if (a.nr !== b.nr) return a.nr - b.nr;
-    return a.id.localeCompare(b.id);
-  });
-
   Object.values(vacationWeeks).forEach((list) => {
     list.sort((a, b) => {
       if (a.startDate !== b.startDate) return a.startDate.localeCompare(b.startDate);
@@ -699,6 +693,12 @@ const computeWeekAggregation = (
     });
   });
 
+  const weeks = Array.from(weekInfoMap.values()).sort((a, b) => {
+    if (a.isoYear !== b.isoYear) return a.isoYear - b.isoYear;
+    if (a.nr !== b.nr) return a.nr - b.nr;
+    return a.id.localeCompare(b.id);
+  });
+  
   return { weeks, byWeek: resultByWeek, vacationsByWeek: vacationWeeks };
 };
 
