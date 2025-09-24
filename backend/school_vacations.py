@@ -110,7 +110,12 @@ def _parse_single_date(text: str, start_year: int, end_year: int) -> date:
     if year_str:
         year = int(year_str)
     else:
-        year = start_year if month >= 7 else end_year
+        # Vakanties zonder jaartal vallen in de regel in het lopende schooljaar.
+        # Maanden september t/m december horen bij het startjaar; alle eerdere
+        # maanden (januari t/m augustus) bij het eindjaar. Hierdoor komen
+        # zomervakanties in juli/augustus automatisch in het juiste kalenderjaar
+        # terecht.
+        year = start_year if month >= 9 else end_year
     return date(year, month, day)
 
 

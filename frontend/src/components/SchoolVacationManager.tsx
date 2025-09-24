@@ -87,6 +87,7 @@ export default function SchoolVacationManager() {
   const [selection, setSelection] = React.useState<Record<string, boolean>>({});
   const [editing, setEditing] = React.useState<EditState | null>(null);
   const requestIdRef = React.useRef(0);
+  const regionCheckboxRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
 
   const selectedCount = React.useMemo(
     () => Object.values(selection).filter(Boolean).length,
@@ -151,6 +152,43 @@ export default function SchoolVacationManager() {
   };
 
   const clearSelection = () => setSelection({});
+
+  const regionGroups = React.useMemo(() => {
+    if (downloadState.status !== "ready") {
+      return [] as { region: string; ids: string[] }[];
+    }
+    const map = new Map<string, string[]>();
+    downloadState.payload.vacations.forEach((vac) => {
+      const key = vac.region?.trim() || "Onbekend";
+      if (!map.has(key)) {
+        map.set(key, []);
+      }
+      map.get(key)!.push(vac.id);
+    });
+    return Array.from(map.entries())
+      .map(([region, ids]) => ({ region, ids }))
+      .sort((a, b) => a.region.localeCompare(b.region, "nl", { sensitivity: "base" }));
+  }, [downloadState]);
+
+  React.useEffect(() => {
+    regionGroups.forEach(({ region, ids }) => {
+      const ref = regionCheckboxRefs.current[region];
+      if (!ref) return;
+      const selectedCount = ids.reduce((count, id) => (selection[id] ? count + 1 : count), 0);
+      ref.indeterminate = selectedCount > 0 && selectedCount < ids.length;
+    });
+  }, [regionGroups, selection]);
+
+  const toggleRegionSelection = React.useCallback((ids: string[]) => {
+    setSelection((prev) => {
+      const areAllSelected = ids.every((id) => prev[id]);
+      const next = { ...prev };
+      ids.forEach((id) => {
+        next[id] = !areAllSelected;
+      });
+      return next;
+    });
+  }, []);
 
   const handleImport = () => {
     if (downloadState.status !== "ready") return;
@@ -376,6 +414,37 @@ export default function SchoolVacationManager() {
                     </button>
                     <span className="theme-muted">{selectedCount} geselecteerd</span>
                   </div>
+                  {regionGroups.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-3 text-xs">
+                      <span className="theme-muted">Regio's:</span>
+                      {regionGroups.map(({ region, ids }) => {
+                        const selectedCount = ids.reduce(
+                          (count, id) => (selection[id] ? count + 1 : count),
+                          0
+                        );
+                        const allSelected = selectedCount === ids.length && ids.length > 0;
+                        return (
+                          <label key={region} className="inline-flex items-center gap-1 rounded-md border theme-border px-2 py-1">
+                            <input
+                              ref={(element) => {
+                                if (element) {
+                                  regionCheckboxRefs.current[region] = element;
+                                } else {
+                                  delete regionCheckboxRefs.current[region];
+                                }
+                              }}
+                              type="checkbox"
+                              checked={allSelected}
+                              onChange={() => toggleRegionSelection(ids)}
+                            />
+                            <span>
+                              {region} ({selectedCount}/{ids.length})
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="overflow-x-auto rounded-md border theme-border">
                     <table className="min-w-full text-sm">
                       <thead className="theme-soft">

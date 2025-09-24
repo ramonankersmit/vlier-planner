@@ -23,6 +23,14 @@ def test_parse_school_vacations_sample():
     assert "18 oktober" in first.label
     assert "advies" not in first.label.lower()
 
+    summer_north = next(
+        vac
+        for vac in vacations
+        if vac.name == "Zomervakantie" and vac.region.lower() == "noord"
+    )
+    assert summer_north.start_date == "2026-07-04"
+    assert summer_north.end_date == "2026-08-16"
+
 
 @pytest.mark.asyncio
 async def test_fetch_school_vacations_with_stub():
