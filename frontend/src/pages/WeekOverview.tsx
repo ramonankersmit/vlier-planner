@@ -23,7 +23,7 @@ import {
 import { formatRange, calcCurrentWeekIdx } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
-import { deriveIsoYearForWeek, parseIsoDate } from "../lib/calendar";
+import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
 import { hasMeaningfulContent } from "../lib/contentUtils";
 
 type HomeworkItem = {
@@ -611,6 +611,8 @@ export default function WeekOverview() {
     setNiveauWO,
     leerjaarWO,
     setLeerjaarWO,
+    weekPeriode,
+    setWeekPeriode,
     weekData,
     customHomework,
     addCustomHomework,
@@ -621,10 +623,10 @@ export default function WeekOverview() {
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
   const hasActiveDocs = activeDocs.length > 0;
-  const weeks = weekData.weeks ?? [];
+  const allWeeks = weekData.weeks ?? [];
   const byWeek = weekData.byWeek ?? {};
   const vacationsByWeek = weekData.vacationsByWeek ?? {};
-  const hasWeekData = weeks.length > 0;
+  const hasWeekData = allWeeks.length > 0;
 
   const niveauOptions = React.useMemo(
     () => Array.from(new Set(activeDocs.map((d) => d.niveau))).sort(),
@@ -633,6 +635,13 @@ export default function WeekOverview() {
   const leerjaarOptions = React.useMemo(
     () =>
       Array.from(new Set(activeDocs.map((d) => d.leerjaar))).sort(
+        (a, b) => Number(a) - Number(b)
+      ),
+    [activeDocs]
+  );
+  const periodeOptions = React.useMemo(
+    () =>
+      Array.from(new Set(activeDocs.map((d) => String(d.periode)))).sort(
         (a, b) => Number(a) - Number(b)
       ),
     [activeDocs]
@@ -658,14 +667,25 @@ export default function WeekOverview() {
     }
   }, [hasActiveDocs, leerjaarOptions, leerjaarWO, setLeerjaarWO]);
 
+  React.useEffect(() => {
+    if (!hasActiveDocs && weekPeriode !== "ALLE") {
+      setWeekPeriode("ALLE");
+      return;
+    }
+    if (hasActiveDocs && weekPeriode !== "ALLE" && !periodeOptions.includes(weekPeriode)) {
+      setWeekPeriode("ALLE");
+    }
+  }, [hasActiveDocs, periodeOptions, setWeekPeriode, weekPeriode]);
+
   const filteredDocs = React.useMemo(
     () =>
       activeDocs.filter(
         (doc) =>
           (niveauWO === "ALLE" || doc.niveau === niveauWO) &&
-          (leerjaarWO === "ALLE" || doc.leerjaar === leerjaarWO)
+          (leerjaarWO === "ALLE" || doc.leerjaar === leerjaarWO) &&
+          (weekPeriode === "ALLE" || String(doc.periode) === weekPeriode)
       ),
-    [activeDocs, niveauWO, leerjaarWO]
+    [activeDocs, leerjaarWO, niveauWO, weekPeriode]
   );
 
   const docsByVak = React.useMemo(() => {
@@ -686,8 +706,31 @@ export default function WeekOverview() {
     [mijnVakken, docsByVak]
   );
 
+  const allowedWeekIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const doc of filteredDocs) {
+      const start = Math.min(doc.beginWeek, doc.eindWeek);
+      const end = Math.max(doc.beginWeek, doc.eindWeek);
+      for (let wk = start; wk <= end; wk++) {
+        if (wk < 1 || wk > 53) continue;
+        const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar });
+        ids.add(makeWeekId(isoYear, wk));
+      }
+    }
+    return ids;
+  }, [filteredDocs]);
+
+  const weeks = React.useMemo(() => {
+    if (!allowedWeekIds.size) {
+      return [];
+    }
+    return allWeeks.filter((w) => allowedWeekIds.has(w.id));
+  }, [allWeeks, allowedWeekIds]);
+
   const hasDocsForFilters = visibleVakken.length > 0;
-  const disableWeekControls = !hasActiveDocs || !hasWeekData;
+  const hasFilteredDocs = filteredDocs.length > 0;
+  const hasFilteredWeekData = weeks.length > 0;
+  const disableWeekControls = !hasFilteredDocs || !hasFilteredWeekData;
 
   const initialWeekRef = React.useRef(false);
   React.useEffect(() => {
@@ -833,21 +876,37 @@ export default function WeekOverview() {
             </option>
           ))}
         </select>
+
+        <select
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+          value={weekPeriode}
+          onChange={(e) => setWeekPeriode(e.target.value)}
+          aria-label="Filter periode"
+          title="Filter op periode"
+          disabled={!hasActiveDocs}
+        >
+          <option value="ALLE">Alle periodes</option>
+          {periodeOptions.map((p) => (
+            <option key={p} value={p}>
+              Periode {p}
+            </option>
+          ))}
+        </select>
       </div>
 
       {!hasActiveDocs ? (
         <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
           Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
         </div>
-      ) : !hasWeekData ? (
+      ) : !hasAnyWeekData ? (
         <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
           Nog geen weekgegevens beschikbaar. Controleer of de documenten studiewijzerdata bevatten.
         </div>
-      ) : !hasDocsForFilters ? (
+      ) : !hasFilteredDocs || !hasFilteredWeekData || !hasDocsForFilters ? (
         <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
           Geen vakken voor deze filters. Pas de selectie aan of controleer de metadata van de documenten.
         </div>
-      ) : ( 
+      ) : (
         <div
           data-tour-id="planner-view"
           aria-label="Plannerweergave"

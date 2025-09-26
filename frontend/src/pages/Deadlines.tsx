@@ -8,7 +8,7 @@ import {
   formatWeekDateRange,
 } from "../lib/weekUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
-import { deriveIsoYearForWeek } from "../lib/calendar";
+import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
 
 type Item = {
   id: string;
@@ -27,6 +27,8 @@ export default function Deadlines() {
   const mijnVakken = useAppStore((s) => s.mijnVakken) ?? [];
   const docs = useAppStore((s) => s.docs) ?? [];
   const weekData = useAppStore((s) => s.weekData);
+  const eventsPeriode = useAppStore((s) => s.eventsPeriode);
+  const setEventsPeriode = useAppStore((s) => s.setEventsPeriode);
   const { openPreview } = useDocumentPreview();
 
   const [vak, setVak] = React.useState<string>("ALLE");
@@ -34,9 +36,35 @@ export default function Deadlines() {
   const [dur, setDur] = React.useState(3);
 
   const activeDocs = React.useMemo(() => docs.filter((d) => d.enabled), [docs]);
+  const periodeOptions = React.useMemo(
+    () =>
+      Array.from(new Set(activeDocs.map((d) => String(d.periode)))).sort(
+        (a, b) => Number(a) - Number(b)
+      ),
+    [activeDocs]
+  );
+
+  React.useEffect(() => {
+    if (!activeDocs.length && eventsPeriode !== "ALLE") {
+      setEventsPeriode("ALLE");
+      return;
+    }
+    if (activeDocs.length && eventsPeriode !== "ALLE" && !periodeOptions.includes(eventsPeriode)) {
+      setEventsPeriode("ALLE");
+    }
+  }, [activeDocs.length, eventsPeriode, periodeOptions, setEventsPeriode]);
+
+  const filteredDocs = React.useMemo(
+    () =>
+      activeDocs.filter(
+        (doc) => eventsPeriode === "ALLE" || String(doc.periode) === eventsPeriode
+      ),
+    [activeDocs, eventsPeriode]
+  );
+
   const docsByVak = React.useMemo(() => {
     const map = new Map<string, DocRecord[]>();
-    for (const doc of activeDocs) {
+    for (const doc of filteredDocs) {
       const list = map.get(doc.vak);
       if (list) {
         list.push(doc);
@@ -45,9 +73,11 @@ export default function Deadlines() {
       }
     }
     return map;
-  }, [activeDocs]);
+  }, [filteredDocs]);
   const hasActiveDocs = activeDocs.length > 0;
+  const hasFilteredDocs = filteredDocs.length > 0;
   const allWeeks = weekData.weeks ?? [];
+  const byWeek = weekData.byWeek ?? {};
   const hasWeekData = allWeeks.length > 0;
   const disableWeekControls = !hasWeekData;
   const vacationsByWeek = weekData.vacationsByWeek ?? {};
@@ -55,9 +85,34 @@ export default function Deadlines() {
   const hasUploads = hasActiveDocs && hasWeekData;
   const hasAnyData = hasUploads || hasVacationData;
 
-  const maxStartIdx = Math.max(0, allWeeks.length - 1);
+  const allowedWeekIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const doc of filteredDocs) {
+      const start = Math.min(doc.beginWeek, doc.eindWeek);
+      const end = Math.max(doc.beginWeek, doc.eindWeek);
+      for (let wk = start; wk <= end; wk++) {
+        if (wk < 1 || wk > 53) continue;
+        const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar });
+        ids.add(makeWeekId(isoYear, wk));
+      }
+    }
+    return ids;
+  }, [filteredDocs]);
+
+  const filteredWeeks = React.useMemo(() => {
+    if (!allowedWeekIds.size) {
+      return [];
+    }
+    return allWeeks.filter((w) => allowedWeekIds.has(w.id));
+  }, [allWeeks, allowedWeekIds]);
+
+  const hasFilteredWeekData = filteredWeeks.length > 0;
+  const disableWeekControls = !hasFilteredDocs || !hasFilteredWeekData;
+  const hasUploads = hasFilteredDocs && hasFilteredWeekData;
+
+  const maxStartIdx = Math.max(0, filteredWeeks.length - 1);
   const clampedFrom = Math.min(fromIdx, maxStartIdx);
-  const weeks = allWeeks.slice(clampedFrom, clampedFrom + dur);
+  const weeks = filteredWeeks.slice(clampedFrom, clampedFrom + dur);
   const windowLabel = formatWeekWindowLabel(weeks);
 
   const prev = () => {
@@ -70,9 +125,9 @@ export default function Deadlines() {
   };
   const goThisWeek = React.useCallback(() => {
     if (disableWeekControls) return;
-    const idx = calcCurrentWeekIdx(allWeeks);
+    const idx = calcCurrentWeekIdx(filteredWeeks);
     setFromIdx(idx);
-  }, [allWeeks, disableWeekControls]);
+  }, [disableWeekControls, filteredWeeks]);
 
   // >>> Eerste load: centreer venster rond huidige week
   React.useEffect(() => {
@@ -200,11 +255,27 @@ export default function Deadlines() {
 
         <select
           className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+          value={eventsPeriode}
+          onChange={(e) => setEventsPeriode(e.target.value)}
+          aria-label="Filter periode"
+          title="Filter op periode"
+          disabled={!hasActiveDocs}
+        >
+          <option value="ALLE">Alle periodes</option>
+          {periodeOptions.map((p) => (
+            <option key={p} value={p}>
+              Periode {p}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
           value={vak}
           onChange={(e) => setVak(e.target.value)}
           aria-label="Filter vak"
           title="Filter op vak"
-          disabled={!hasUploads}
+          disabled={!hasFilteredDocs}
         >
           <option value="ALLE">Alle vakken</option>
           {mijnVakken.map((v) => (
@@ -222,13 +293,17 @@ export default function Deadlines() {
       >
         {!hasAnyData ? (
           <div className="p-6 text-sm theme-muted">
-            {hasActiveDocs
-              ? "Nog geen weekgegevens beschikbaar. Controleer of de documenten studiewijzerdata bevatten."
-              : (
-                  <>
-                    Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
-                  </>
-                )}
+            {!hasActiveDocs ? (
+              <>
+                Nog geen uploads. Voeg eerst één of meer studiewijzers toe via <strong>Uploads</strong>.
+              </>
+            ) : !hasWeekData ? (
+              "Nog geen weekgegevens beschikbaar. Controleer of de documenten studiewijzerdata bevatten."
+            ) : !hasFilteredDocs ? (
+              "Geen vakken voor deze filters. Pas de selectie aan of controleer de metadata van de documenten."
+            ) : (
+              "Geen weekgegevens voor deze filters. Controleer of de documenten studiewijzerdata bevatten."
+            )}
           </div>
         ) : items.length === 0 ? (
           <div className="p-6 text-sm theme-muted">Geen deadlines in deze periode.</div>
