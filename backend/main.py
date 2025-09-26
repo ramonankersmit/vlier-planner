@@ -96,21 +96,43 @@ def get_weeks(from_: date, to: date):
     return weeks
 
 
+def _normalize_period(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        text = str(value).strip()
+    except Exception:  # pragma: no cover - extremely defensive
+        return None
+    if not text:
+        return None
+    if text.lower() == "alle":
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
 @app.get("/api/matrix")
-def get_matrix(period: int, year: int):
+def get_matrix(period: str, year: int):
     data = _load_latest()
     if not data:
         raise HTTPException(404, "No data")
+    requested_period = _normalize_period(period)
     su_period_map: dict[str, int | None] = {}
     for su in data.get("study_units", []):
         raw_period = su.get("period")
-        try:
-            period_value = int(raw_period) if raw_period is not None else None
-        except (TypeError, ValueError):
-            period_value = None
+        period_value = _normalize_period(raw_period)
         su_period_map[su["id"]] = period_value
 
-    allowed_units = {su_id for su_id, su_period in su_period_map.items() if su_period == period}
+    if requested_period is None:
+        allowed_units = set(su_period_map)
+    else:
+        allowed_units = {
+            su_id for su_id, su_period in su_period_map.items() if su_period == requested_period
+        }
     matrix: dict[str, dict[int, int]] = {}
     for s in data.get("sessions", []):
         if s["year"] != year:

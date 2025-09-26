@@ -92,7 +92,7 @@ def _write_normalized_dataset(study_units):
     index_path.write_text(json.dumps(index, indent=2))
 
 
-def test_get_matrix_filters_by_period():
+def _seed_multi_period_dataset():
     _write_normalized_dataset(
         [
             {
@@ -125,8 +125,19 @@ def test_get_matrix_filters_by_period():
                     {"week": 15, "year": 2025},
                 ],
             },
+            {
+                "id": "SU-P3-A",
+                "period": "Alle",
+                "sessions": [
+                    {"week": 16, "year": 2025},
+                ],
+            },
         ]
     )
+
+
+def test_get_matrix_filters_by_period():
+    _seed_multi_period_dataset()
 
     res_period1 = client.get("/api/matrix", params={"period": 1, "year": 2025})
     assert res_period1.status_code == 200
@@ -143,3 +154,14 @@ def test_get_matrix_filters_by_period():
 
     assert set(matrix_period2) == {"SU-P2-A"}
     assert matrix_period2["SU-P2-A"] == {"15": 1}
+
+
+def test_get_matrix_all_periods_includes_everything():
+    _seed_multi_period_dataset()
+
+    res_all = client.get("/api/matrix", params={"period": "ALLE", "year": 2025})
+    assert res_all.status_code == 200
+    matrix_all = res_all.json()
+
+    assert set(matrix_all) == {"SU-P1-A", "SU-P1-B", "SU-P1-C", "SU-P2-A", "SU-P3-A"}
+    assert matrix_all["SU-P3-A"] == {"16": 1}
