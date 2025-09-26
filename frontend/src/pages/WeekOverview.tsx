@@ -23,7 +23,7 @@ import {
 import { formatRange, calcCurrentWeekIdx } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
-import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
+import { deriveIsoYearForWeek, makeWeekId, parseIsoDate } from "../lib/calendar";
 import { hasMeaningfulContent } from "../lib/contentUtils";
 
 type HomeworkItem = {
