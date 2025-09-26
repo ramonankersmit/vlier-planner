@@ -43,9 +43,13 @@ def _load_latest() -> dict:
 async def upload(file: UploadFile = File(...)):
     tmp_dir = Path("uploads")
     tmp_dir.mkdir(exist_ok=True)
-    tmp_path = tmp_dir / file.filename
+
+    filename = Path(file.filename or "").name or "upload.bin"
+    tmp_path = tmp_dir / filename
+
     with tmp_path.open("wb") as fh:
-        fh.write(await file.read())
+        while chunk := await file.read(65536):
+            fh.write(chunk)
     parse_id, model = parse_to_normalized(str(tmp_path))
     return {
         "parse_id": parse_id,
