@@ -802,21 +802,6 @@ export default function WeekOverview() {
         </div>
       </div>
 
-      {vacationsForWeek.length > 0 && (
-        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
-          <div className="flex items-center gap-2 font-semibold text-amber-900">
-            <Sun size={16} /> Schoolvakantie
-          </div>
-          <ul className="mt-2 space-y-1 text-amber-800">
-            {vacationsForWeek.map((vac) => (
-              <li key={`${vac.id}-${week?.id ?? "wk"}`}>
-                <span className="font-medium">{vac.name}</span> ({vac.region}) · {formatVacationPeriod(vac)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <button
           onClick={goThisWeek}
@@ -893,6 +878,21 @@ export default function WeekOverview() {
           ))}
         </select>
       </div>
+
+      {vacationsForWeek.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+          <div className="flex items-center gap-2 font-semibold text-amber-900">
+            <Sun size={16} /> Schoolvakantie
+          </div>
+          <ul className="mt-2 space-y-1 text-amber-800">
+            {vacationsForWeek.map((vac) => (
+              <li key={`${vac.id}-${week?.id ?? "wk"}`}>
+                <span className="font-medium">{vac.name}</span> ({vac.region}) · {formatVacationPeriod(vac)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {!hasActiveDocs ? (
         <div className="rounded-2xl border theme-border theme-surface p-6 text-sm theme-muted">
