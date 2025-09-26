@@ -12,9 +12,12 @@ import type {
 import {
   deriveIsoYearForWeek,
   formatIsoDate,
+  getIsoWeek,
   getIsoWeekEnd,
   getIsoWeekStart,
+  getIsoWeekYear,
   makeWeekId,
+  parseIsoDate,
 } from "../lib/calendar";
 import { splitHomeworkItems } from "../lib/textUtils";
 
@@ -37,9 +40,37 @@ export type WeekData = {
   date?: string;
 };
 
+export type VacationWeekInfo = {
+  id: string;
+  name: string;
+  region: string;
+  startDate: string;
+  endDate: string;
+  schoolYear: string;
+  label: string;
+};
+
+export type SchoolVacation = {
+  id: string;
+  externalId?: string | null;
+  name: string;
+  region: string;
+  startDate: string;
+  endDate: string;
+  schoolYear: string;
+  source: string;
+  label: string;
+  rawText?: string | null;
+  notes?: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type WeekAggregation = {
   weeks: WeekInfo[];
   byWeek: Record<string, Record<string, WeekData>>;
+  vacationsByWeek: Record<string, VacationWeekInfo[]>;
 };
 
 export type CustomHomeworkEntry = {
@@ -199,6 +230,13 @@ type State = {
   setActiveReview: (parseId: string | null) => void;
   applyCommitResult: (commit: CommitResponse, rows: DocRow[], diff?: DocDiff) => void;
   weekData: WeekAggregation;
+  schoolVacations: SchoolVacation[];
+  setSchoolVacations: (entries: SchoolVacation[]) => void;
+  addSchoolVacations: (entries: SchoolVacation[]) => void;
+  updateSchoolVacation: (id: string, update: Partial<SchoolVacation>) => void;
+  removeSchoolVacation: (id: string) => void;
+  clearSchoolVacations: () => void;
+  setSchoolVacationActive: (id: string, active: boolean) => void;
   customHomework: Record<string, Record<string, CustomHomeworkEntry[]>>;
   addCustomHomework: (weekId: string, vak: string, text: string) => void;
   removeCustomHomework: (weekId: string, vak: string, entryId: string) => void;
@@ -296,6 +334,28 @@ const uploadedAtTimestamp = (value?: string | null): number => {
   return Number.isNaN(fallback) ? 0 : fallback;
 };
 
+const generateId = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const sortVacations = (entries: SchoolVacation[]): SchoolVacation[] =>
+  [...entries].sort((a, b) => {
+    if (a.startDate !== b.startDate) {
+      return a.startDate.localeCompare(b.startDate);
+    }
+    if (a.endDate !== b.endDate) {
+      return a.endDate.localeCompare(b.endDate);
+    }
+    const nameCompare = a.name.localeCompare(b.name, "nl-NL");
+    if (nameCompare !== 0) {
+      return nameCompare;
+    }
+    return a.region.localeCompare(b.region, "nl-NL");
+  });
+
 const sortDocsByUploadedAt = <T extends { uploadedAt?: string | null }>(docs: T[]): T[] =>
   [...docs].sort(
     (a, b) => uploadedAtTimestamp(b.uploadedAt) - uploadedAtTimestamp(a.uploadedAt)
@@ -352,10 +412,12 @@ const normalizeText = (value?: string | null, options?: NormalizeOptions) => {
 
 const computeWeekAggregation = (
   docs: DocRecord[],
-  docRows: Record<string, DocRow[]>
+  docRows: Record<string, DocRow[]>,
+  vacations: SchoolVacation[]
 ): WeekAggregation => {
-  if (!docs.length) {
-    return { weeks: [], byWeek: {} };
+  const activeVacations = vacations.filter((vac) => vac.active !== false);
+  if (!docs.length && !activeVacations.length) {
+    return { weeks: [], byWeek: {}, vacationsByWeek: {} };
   }
 
   const weekInfoMap = new Map<string, WeekInfo>();
@@ -379,6 +441,95 @@ const computeWeekAggregation = (
     return { weekId, vakMap: byWeek.get(weekId)! };
   };
   const today = new Date();
+
+  const vacationWeekRegistrations: {
+    weekId: string;
+    isoYear: number;
+    week: number;
+    info: VacationWeekInfo;
+  }[] = [];
+  const vacationWeekSet = new Set<string>();
+
+  const registerVacationWeek = (isoYear: number, week: number, vacation: SchoolVacation) => {
+    const weekId = makeWeekId(isoYear, week);
+    vacationWeekRegistrations.push({
+      weekId,
+      isoYear,
+      week,
+      info: {
+        id: vacation.id,
+        name: vacation.name,
+        region: vacation.region,
+        startDate: vacation.startDate,
+        endDate: vacation.endDate,
+        schoolYear: vacation.schoolYear,
+        label: vacation.label,
+      },
+    });
+    vacationWeekSet.add(weekId);
+  };
+
+  const shiftStartToSchoolWeek = (startDate: Date, endDate: Date) => {
+    const aligned = new Date(startDate);
+    const day = aligned.getUTCDay();
+    if (day === 6) {
+      aligned.setUTCDate(aligned.getUTCDate() + 2);
+    } else if (day === 0) {
+      aligned.setUTCDate(aligned.getUTCDate() + 1);
+    }
+    if (aligned.getTime() > endDate.getTime()) {
+      return new Date(startDate);
+    }
+    return aligned;
+  };
+
+  for (const vacation of activeVacations) {
+    const start = parseIsoDate(vacation.startDate);
+    const end = parseIsoDate(vacation.endDate);
+    if (!start || !end) {
+      continue;
+    }
+    let startDate = start;
+    let endDate = end;
+    if (endDate.getTime() < startDate.getTime()) {
+      [startDate, endDate] = [endDate, startDate];
+    }
+    const adjustedStart = shiftStartToSchoolWeek(startDate, endDate);
+    let cursor = getIsoWeekStart(getIsoWeekYear(adjustedStart), getIsoWeek(adjustedStart));
+    const limit = getIsoWeekStart(getIsoWeekYear(endDate), getIsoWeek(endDate));
+    while (cursor.getTime() <= limit.getTime()) {
+      const isoYear = getIsoWeekYear(cursor);
+      const wk = getIsoWeek(cursor);
+      registerVacationWeek(isoYear, wk, vacation);
+      cursor = new Date(cursor);
+      cursor.setUTCDate(cursor.getUTCDate() + 7);
+    }
+  }
+
+  const hasVakantieText = (value?: string | null, options?: NormalizeOptions) => {
+    const normalized = normalizeText(value, options);
+    return normalized ? normalized.toLocaleLowerCase("nl-NL").includes("vakantie") : false;
+  };
+
+  const rowContainsVakantie = (row: DocRow) => {
+    if (!row) return false;
+    if (hasVakantieText(row.onderwerp) || hasVakantieText(row.les)) {
+      return true;
+    }
+    if (Array.isArray(row.leerdoelen) && row.leerdoelen.some((item) => hasVakantieText(item))) {
+      return true;
+    }
+    if (
+      hasVakantieText(row.huiswerk, { preserveLineBreaks: true }) ||
+      hasVakantieText(row.opdracht, { preserveLineBreaks: true })
+    ) {
+      return true;
+    }
+    if (row.toets?.type && hasVakantieText(row.toets.type)) {
+      return true;
+    }
+    return false;
+  };
 
   for (const doc of docs) {
     if (!doc.enabled) {
@@ -410,7 +561,14 @@ const computeWeekAggregation = (
         candidateDates: [row.datum, row.inleverdatum],
         today,
       });
-      const { vakMap } = ensureWeek(wk, isoYear);
+      const { weekId, vakMap } = ensureWeek(wk, isoYear);
+      if (
+        vacationWeekSet.size > 0 &&
+        vacationWeekSet.has(weekId) &&
+        rowContainsVakantie(row)
+      ) {
+        continue;
+      }
       const accum =
         vakMap[doc.vak] ??
         (vakMap[doc.vak] = {
@@ -503,6 +661,15 @@ const computeWeekAggregation = (
     }
   }
 
+  const vacationWeeks: Record<string, VacationWeekInfo[]> = {};
+  for (const { weekId, isoYear, week, info } of vacationWeekRegistrations) {
+    ensureWeek(week, isoYear);
+    const list = (vacationWeeks[weekId] ??= []);
+    if (!list.some((entry) => entry.id === info.id)) {
+      list.push(info);
+    }
+  }
+
   const resultByWeek: Record<string, Record<string, WeekData>> = {};
   for (const [weekId, vakMap] of byWeek.entries()) {
     const entries: Record<string, WeekData> = {};
@@ -524,13 +691,21 @@ const computeWeekAggregation = (
     resultByWeek[weekId] = entries;
   }
 
+  Object.values(vacationWeeks).forEach((list) => {
+    list.sort((a, b) => {
+      if (a.startDate !== b.startDate) return a.startDate.localeCompare(b.startDate);
+      if (a.endDate !== b.endDate) return a.endDate.localeCompare(b.endDate);
+      return a.region.localeCompare(b.region, "nl-NL");
+    });
+  });
+
   const weeks = Array.from(weekInfoMap.values()).sort((a, b) => {
     if (a.isoYear !== b.isoYear) return a.isoYear - b.isoYear;
     if (a.nr !== b.nr) return a.nr - b.nr;
     return a.id.localeCompare(b.id);
   });
-
-  return { weeks, byWeek: resultByWeek };
+  
+  return { weeks, byWeek: resultByWeek, vacationsByWeek: vacationWeeks };
 };
 
 type InitialStateKeys =
@@ -538,6 +713,7 @@ type InitialStateKeys =
   | "docsInitialized"
   | "docRows"
   | "weekData"
+  | "schoolVacations"
   | "studyGuides"
   | "guideVersions"
   | "guideDiffs"
@@ -578,7 +754,8 @@ export const createInitialState = (): Pick<State, InitialStateKeys> => {
     docs: [],
     docsInitialized: false,
     docRows: {},
-    weekData: { weeks: [], byWeek: {} },
+    weekData: { weeks: [], byWeek: {}, vacationsByWeek: {} },
+    schoolVacations: [],
     studyGuides: [],
     guideVersions: {},
     guideDiffs: {},
@@ -654,7 +831,7 @@ export const useAppStore = create<State>()(
             delete nextVersionRows[key];
           }
         }
-        const weekData = computeWeekAggregation(nextDocs, filteredRows);
+        const weekData = computeWeekAggregation(nextDocs, filteredRows, get().schoolVacations);
         set({
           docs: nextDocs,
           mijnVakken,
@@ -669,7 +846,7 @@ export const useAppStore = create<State>()(
         const mijnVakken = computeMijnVakken(next, state.mijnVakken);
         const nextRows = { ...state.docRows };
         delete nextRows[fileId];
-        const weekData = computeWeekAggregation(next, nextRows);
+        const weekData = computeWeekAggregation(next, nextRows, state.schoolVacations);
         const nextGuideVersions = { ...state.guideVersions };
         delete nextGuideVersions[fileId];
         const nextGuideDiffs = { ...state.guideDiffs };
@@ -715,7 +892,7 @@ export const useAppStore = create<State>()(
         if (!nextRows[doc.fileId]) {
           nextRows[doc.fileId] = [];
         }
-        const weekData = computeWeekAggregation(next, nextRows);
+        const weekData = computeWeekAggregation(next, nextRows, get().schoolVacations);
         set({ docs: next, mijnVakken, docRows: nextRows, weekData });
       },
       replaceDoc: (fileId, nextDoc) => {
@@ -734,7 +911,7 @@ export const useAppStore = create<State>()(
           )
         );
         const mijnVakken = computeMijnVakken(next, get().mijnVakken);
-        const weekData = computeWeekAggregation(next, get().docRows);
+        const weekData = computeWeekAggregation(next, get().docRows, get().schoolVacations);
         set({ docs: next, mijnVakken, weekData });
       },
       setDocEnabled: (fileId, enabled) => {
@@ -751,7 +928,7 @@ export const useAppStore = create<State>()(
         const mijnVakken = computeMijnVakken(next, get().mijnVakken, {
           ensure: ensuredVak ? [ensuredVak] : undefined,
         });
-        const weekData = computeWeekAggregation(next, get().docRows);
+        const weekData = computeWeekAggregation(next, get().docRows, get().schoolVacations);
         set({ docs: next, mijnVakken, weekData });
       },
       setDocRows: (fileId, rows) => {
@@ -765,7 +942,7 @@ export const useAppStore = create<State>()(
           entry[versionId] = rows;
           nextVersionRows[fileId] = entry;
         }
-        const weekData = computeWeekAggregation(state.docs, nextRows);
+        const weekData = computeWeekAggregation(state.docs, nextRows, state.schoolVacations);
         set({ docRows: nextRows, weekData, versionRows: nextVersionRows });
       },
       setDocRowsBulk: (entries) => {
@@ -784,7 +961,7 @@ export const useAppStore = create<State>()(
             nextVersionRows[fileId] = map;
           }
         }
-        const weekData = computeWeekAggregation(state.docs, nextRows);
+        const weekData = computeWeekAggregation(state.docs, nextRows, state.schoolVacations);
         set({ docRows: nextRows, weekData, versionRows: nextVersionRows });
       },
       setStudyGuides: (guides) => {
@@ -862,7 +1039,7 @@ export const useAppStore = create<State>()(
           const doc = state.docs.find((d) => d.fileId === guideId);
           if (doc?.versionId === versionId) {
             const nextDocRows = { ...state.docRows, [guideId]: rows };
-            const weekData = computeWeekAggregation(state.docs, nextDocRows);
+          const weekData = computeWeekAggregation(state.docs, nextDocRows, state.schoolVacations);
             return { versionRows: nextVersionRows, docRows: nextDocRows, weekData };
           }
           return { versionRows: nextVersionRows };
@@ -941,7 +1118,7 @@ export const useAppStore = create<State>()(
           versionEntry[version.versionId] = rows;
           nextVersionRows[guideId] = versionEntry;
           const nextDocRows = { ...state.docRows, [guideId]: rows };
-          const weekData = computeWeekAggregation(nextDocs, nextDocRows);
+          const weekData = computeWeekAggregation(nextDocs, nextDocRows, state.schoolVacations);
           const nextStudyGuides = (() => {
             const existing = state.studyGuides.find((g) => g.guideId === guideId);
             if (existing) {
@@ -981,6 +1158,125 @@ export const useAppStore = create<State>()(
             selectedGuideId: guideId,
             selectedVersionId: version.versionId,
           };
+        });
+      },
+
+      setSchoolVacations: (entries) => {
+        set((state) => {
+          const normalized = sortVacations(
+            entries.map((entry) => ({ ...entry, active: entry.active ?? true }))
+          );
+          const weekData = computeWeekAggregation(state.docs, state.docRows, normalized);
+          return { schoolVacations: normalized, weekData };
+        });
+      },
+      addSchoolVacations: (entries) => {
+        if (!entries.length) {
+          return;
+        }
+        set((state) => {
+          const existing = [...state.schoolVacations];
+          const byExternal = new Map<string, string>();
+          existing.forEach((vac) => {
+            if (vac.externalId) {
+              byExternal.set(vac.externalId, vac.id);
+            }
+          });
+          const now = new Date().toISOString();
+          let changed = false;
+          for (const entry of entries) {
+            const externalKey = entry.externalId ?? null;
+            const matchedId = externalKey ? byExternal.get(externalKey) : undefined;
+            const targetId = matchedId ?? entry.id ?? generateId();
+            const index = existing.findIndex((vac) => vac.id === targetId);
+            const base = index >= 0 ? existing[index] : undefined;
+            const nextEntry: SchoolVacation = {
+              ...entry,
+              id: targetId,
+              externalId: entry.externalId ?? base?.externalId ?? null,
+              active: entry.active ?? base?.active ?? true,
+              createdAt: base?.createdAt ?? entry.createdAt ?? now,
+              updatedAt: entry.updatedAt ?? now,
+            };
+            if (index >= 0) {
+              existing[index] = nextEntry;
+            } else {
+              existing.push(nextEntry);
+            }
+            if (externalKey) {
+              byExternal.set(externalKey, targetId);
+            }
+            changed = true;
+          }
+          if (!changed) {
+            return {};
+          }
+          const sorted = sortVacations(existing);
+          const weekData = computeWeekAggregation(state.docs, state.docRows, sorted);
+          return { schoolVacations: sorted, weekData };
+        });
+      },
+      updateSchoolVacation: (id, update) => {
+        if (!update) {
+          return;
+        }
+        set((state) => {
+          const idx = state.schoolVacations.findIndex((vac) => vac.id === id);
+          if (idx === -1) {
+            return {};
+          }
+          const current = state.schoolVacations[idx];
+          const nextEntry: SchoolVacation = {
+            ...current,
+            ...update,
+            updatedAt: update.updatedAt ?? new Date().toISOString(),
+          };
+          const nextList = [...state.schoolVacations];
+          nextList[idx] = nextEntry;
+          const sorted = sortVacations(nextList);
+          const weekData = computeWeekAggregation(state.docs, state.docRows, sorted);
+          return { schoolVacations: sorted, weekData };
+        });
+      },
+      removeSchoolVacation: (id) => {
+        set((state) => {
+          const next = state.schoolVacations.filter((vac) => vac.id !== id);
+          if (next.length === state.schoolVacations.length) {
+            return {};
+          }
+          const weekData = computeWeekAggregation(state.docs, state.docRows, next);
+          return { schoolVacations: next, weekData };
+        });
+      },
+      clearSchoolVacations: () => {
+        set((state) => {
+          if (state.schoolVacations.length === 0) {
+            return {};
+          }
+          const weekData = computeWeekAggregation(state.docs, state.docRows, []);
+          return { schoolVacations: [], weekData };
+        });
+      },
+      setSchoolVacationActive: (id, active) => {
+        set((state) => {
+          const idx = state.schoolVacations.findIndex((vac) => vac.id === id);
+          if (idx === -1) {
+            return {};
+          }
+          const current = state.schoolVacations[idx];
+          if (current.active === active) {
+            return {};
+          }
+          const nextEntry: SchoolVacation = {
+            ...current,
+            active,
+            updatedAt: new Date().toISOString(),
+          };
+          const nextList = [...state.schoolVacations];
+          nextList[idx] = nextEntry;
+          const sorted = sortVacations(nextList);
+          const weekData = computeWeekAggregation(state.docs, state.docRows, sorted);
+          return { schoolVacations: sorted, weekData };
         });
       },
 
@@ -1436,6 +1732,7 @@ export const useAppStore = create<State>()(
         docs: state.docs,
         docRows: state.docRows,
         weekData: state.weekData,
+        schoolVacations: state.schoolVacations,
         customHomework: state.customHomework,
         homeworkAdjustments: state.homeworkAdjustments,
         mijnVakken: state.mijnVakken,
@@ -1475,6 +1772,11 @@ export const useAppStore = create<State>()(
           };
           const presets = createThemePresets(withDefaults.themePresets);
           const resolved = resolveActiveThemeState(presets, withDefaults.activeThemeId);
+          const normalizedVacations = sortVacations(
+            Array.isArray(state.schoolVacations)
+              ? state.schoolVacations.map((entry) => ({ ...entry, active: entry.active ?? true }))
+              : []
+          );
           return {
             ...withDefaults,
             themePresets: resolved.presets,
@@ -1501,6 +1803,12 @@ export const useAppStore = create<State>()(
             theme: resolved.theme,
             backgroundImage: resolved.backgroundImage,
             surfaceOpacity: resolved.surfaceOpacity,
+            schoolVacations: normalizedVacations,
+            weekData: computeWeekAggregation(
+              Array.isArray(state.docs) ? state.docs : [],
+              state.docRows ?? {},
+              normalizedVacations
+            ),
           };
         }
         const legacy = persistedState as State & {
@@ -1564,7 +1872,7 @@ export const useAppStore = create<State>()(
           );
         }
         const resolved = resolveActiveThemeState(nextPresets, activeThemeId);
-        return {
+        const migrated = {
           ...legacy,
           themePresets: resolved.presets,
           activeThemeId: resolved.activeThemeId,
@@ -1574,6 +1882,20 @@ export const useAppStore = create<State>()(
           matrixPeriode: legacy.matrixPeriode ?? "ALLE",
           weekPeriode: legacy.weekPeriode ?? "ALLE",
           eventsPeriode: legacy.eventsPeriode ?? "ALLE",
+        } as State;
+        const normalizedVacations = sortVacations(
+          Array.isArray(migrated.schoolVacations)
+            ? migrated.schoolVacations.map((entry) => ({ ...entry, active: entry.active ?? true }))
+            : []
+        );
+        return {
+          ...migrated,
+          schoolVacations: normalizedVacations,
+          weekData: computeWeekAggregation(
+            Array.isArray(migrated.docs) ? migrated.docs : [],
+            migrated.docRows ?? {},
+            normalizedVacations
+          ),
         };
       },
     }
