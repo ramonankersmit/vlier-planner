@@ -101,11 +101,23 @@ def get_matrix(period: int, year: int):
     data = _load_latest()
     if not data:
         raise HTTPException(404, "No data")
+    su_period_map: dict[str, int | None] = {}
+    for su in data.get("study_units", []):
+        raw_period = su.get("period")
+        try:
+            period_value = int(raw_period) if raw_period is not None else None
+        except (TypeError, ValueError):
+            period_value = None
+        su_period_map[su["id"]] = period_value
+
+    allowed_units = {su_id for su_id, su_period in su_period_map.items() if su_period == period}
     matrix: dict[str, dict[int, int]] = {}
     for s in data.get("sessions", []):
         if s["year"] != year:
             continue
         su = s["study_unit_id"]
+        if su not in allowed_units:
+            continue
         wk = s["week"]
         matrix.setdefault(su, {}).setdefault(wk, 0)
         matrix[su][wk] += 1

@@ -256,6 +256,8 @@ type State = {
   setNiveauWO: (n: "HAVO" | "VWO" | "ALLE") => void;
   leerjaarWO: string;
   setLeerjaarWO: (j: string) => void;
+  weekPeriode: string;
+  setWeekPeriode: (p: string) => void;
   // ==== matrix (UI state) ====
   matrixStartIdx: number;
   setMatrixStartIdx: (n: number) => void;
@@ -265,6 +267,10 @@ type State = {
   setMatrixNiveau: (n: "HAVO" | "VWO" | "ALLE") => void;
   matrixLeerjaar: string;
   setMatrixLeerjaar: (j: string) => void;
+  matrixPeriode: string;
+  setMatrixPeriode: (p: string) => void;
+  eventsPeriode: string;
+  setEventsPeriode: (p: string) => void;
   lastVisitedRoute: string;
   setLastVisitedRoute: (path: string) => void;
   markDocsInitialized: () => void;
@@ -556,10 +562,13 @@ type InitialStateKeys =
   | "weekIdxWO"
   | "niveauWO"
   | "leerjaarWO"
+  | "weekPeriode"
   | "matrixStartIdx"
   | "matrixCount"
   | "matrixNiveau"
   | "matrixLeerjaar"
+  | "matrixPeriode"
+  | "eventsPeriode"
   | "lastVisitedRoute";
 
 export const createInitialState = (): Pick<State, InitialStateKeys> => {
@@ -594,10 +603,13 @@ export const createInitialState = (): Pick<State, InitialStateKeys> => {
     weekIdxWO: 0,
     niveauWO: "ALLE",
     leerjaarWO: "ALLE",
+    weekPeriode: "ALLE",
     matrixStartIdx: -1,
     matrixCount: 3,
     matrixNiveau: "ALLE",
     matrixLeerjaar: "ALLE",
+    matrixPeriode: "ALLE",
+    eventsPeriode: "ALLE",
     lastVisitedRoute: "/",
   };
 };
@@ -1373,6 +1385,10 @@ export const useAppStore = create<State>()(
       setWeekIdxWO: (n) => set({ weekIdxWO: n }),
       setNiveauWO: (n) => set({ niveauWO: n }),
       setLeerjaarWO: (j) => set({ leerjaarWO: j }),
+      setWeekPeriode: (p) => {
+        const next = p && p.trim() ? p : "ALLE";
+        set({ weekPeriode: next });
+      },
       setMatrixStartIdx: (value) =>
         set(() => {
           const numeric = Number.isFinite(value) ? Math.floor(value) : -1;
@@ -1389,6 +1405,14 @@ export const useAppStore = create<State>()(
       setMatrixLeerjaar: (j) => {
         const next = j && j.trim() ? j : "ALLE";
         set({ matrixLeerjaar: next });
+      },
+      setMatrixPeriode: (p) => {
+        const next = p && p.trim() ? p : "ALLE";
+        set({ matrixPeriode: next });
+      },
+      setEventsPeriode: (p) => {
+        const next = p && p.trim() ? p : "ALLE";
+        set({ eventsPeriode: next });
       },
       setLastVisitedRoute: (path) =>
         set((state) => {
@@ -1407,7 +1431,7 @@ export const useAppStore = create<State>()(
     }),
     {
       name: "vlier-planner-state",
-      version: 4,
+      version: 6,
       partialize: (state) => ({
         docs: state.docs,
         docRows: state.docRows,
@@ -1428,22 +1452,50 @@ export const useAppStore = create<State>()(
         weekIdxWO: state.weekIdxWO,
         niveauWO: state.niveauWO,
         leerjaarWO: state.leerjaarWO,
+        weekPeriode: state.weekPeriode,
         matrixStartIdx: state.matrixStartIdx,
         matrixCount: state.matrixCount,
         matrixNiveau: state.matrixNiveau,
         matrixLeerjaar: state.matrixLeerjaar,
+        matrixPeriode: state.matrixPeriode,
+        eventsPeriode: state.eventsPeriode,
         lastVisitedRoute: state.lastVisitedRoute,
       }),
       migrate: (persistedState, version) => {
         if (!persistedState) {
           return createInitialState();
         }
+        if (version >= 5) {
+          const state = persistedState as State;
+          const withDefaults = {
+            ...state,
+            matrixPeriode: state.matrixPeriode ?? "ALLE",
+            weekPeriode: state.weekPeriode ?? "ALLE",
+            eventsPeriode: state.eventsPeriode ?? "ALLE",
+          };
+          const presets = createThemePresets(withDefaults.themePresets);
+          const resolved = resolveActiveThemeState(presets, withDefaults.activeThemeId);
+          return {
+            ...withDefaults,
+            themePresets: resolved.presets,
+            activeThemeId: resolved.activeThemeId,
+            theme: resolved.theme,
+            backgroundImage: resolved.backgroundImage,
+            surfaceOpacity: resolved.surfaceOpacity,
+          };
+        }
         if (version >= 4) {
           const state = persistedState as State;
-          const presets = createThemePresets(state.themePresets);
-          const resolved = resolveActiveThemeState(presets, state.activeThemeId);
-          return {
+          const withDefaults = {
             ...state,
+            matrixPeriode: state.matrixPeriode ?? "ALLE",
+            weekPeriode: state.weekPeriode ?? "ALLE",
+            eventsPeriode: state.eventsPeriode ?? "ALLE",
+          };
+          const presets = createThemePresets(withDefaults.themePresets);
+          const resolved = resolveActiveThemeState(presets, withDefaults.activeThemeId);
+          return {
+            ...withDefaults,
             themePresets: resolved.presets,
             activeThemeId: resolved.activeThemeId,
             theme: resolved.theme,
@@ -1519,6 +1571,9 @@ export const useAppStore = create<State>()(
           theme: resolved.theme,
           backgroundImage: resolved.backgroundImage,
           surfaceOpacity: resolved.surfaceOpacity,
+          matrixPeriode: legacy.matrixPeriode ?? "ALLE",
+          weekPeriode: legacy.weekPeriode ?? "ALLE",
+          eventsPeriode: legacy.eventsPeriode ?? "ALLE",
         };
       },
     }
