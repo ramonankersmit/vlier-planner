@@ -265,6 +265,8 @@ type State = {
   setMatrixNiveau: (n: "HAVO" | "VWO" | "ALLE") => void;
   matrixLeerjaar: string;
   setMatrixLeerjaar: (j: string) => void;
+  matrixPeriode: string;
+  setMatrixPeriode: (p: string) => void;
   lastVisitedRoute: string;
   setLastVisitedRoute: (path: string) => void;
   markDocsInitialized: () => void;
@@ -560,6 +562,7 @@ type InitialStateKeys =
   | "matrixCount"
   | "matrixNiveau"
   | "matrixLeerjaar"
+  | "matrixPeriode"
   | "lastVisitedRoute";
 
 export const createInitialState = (): Pick<State, InitialStateKeys> => {
@@ -598,6 +601,7 @@ export const createInitialState = (): Pick<State, InitialStateKeys> => {
     matrixCount: 3,
     matrixNiveau: "ALLE",
     matrixLeerjaar: "ALLE",
+    matrixPeriode: "ALLE",
     lastVisitedRoute: "/",
   };
 };
@@ -1390,6 +1394,10 @@ export const useAppStore = create<State>()(
         const next = j && j.trim() ? j : "ALLE";
         set({ matrixLeerjaar: next });
       },
+      setMatrixPeriode: (p) => {
+        const next = p && p.trim() ? p : "ALLE";
+        set({ matrixPeriode: next });
+      },
       setLastVisitedRoute: (path) =>
         set((state) => {
           const sanitized = path && path.trim() ? path : "/";
@@ -1407,7 +1415,7 @@ export const useAppStore = create<State>()(
     }),
     {
       name: "vlier-planner-state",
-      version: 4,
+      version: 5,
       partialize: (state) => ({
         docs: state.docs,
         docRows: state.docRows,
@@ -1432,6 +1440,7 @@ export const useAppStore = create<State>()(
         matrixCount: state.matrixCount,
         matrixNiveau: state.matrixNiveau,
         matrixLeerjaar: state.matrixLeerjaar,
+        matrixPeriode: state.matrixPeriode,
         lastVisitedRoute: state.lastVisitedRoute,
       }),
       migrate: (persistedState, version) => {
@@ -1440,10 +1449,14 @@ export const useAppStore = create<State>()(
         }
         if (version >= 4) {
           const state = persistedState as State;
-          const presets = createThemePresets(state.themePresets);
-          const resolved = resolveActiveThemeState(presets, state.activeThemeId);
-          return {
+          const withDefaults = {
             ...state,
+            matrixPeriode: state.matrixPeriode ?? "ALLE",
+          };
+          const presets = createThemePresets(withDefaults.themePresets);
+          const resolved = resolveActiveThemeState(presets, withDefaults.activeThemeId);
+          return {
+            ...withDefaults,
             themePresets: resolved.presets,
             activeThemeId: resolved.activeThemeId,
             theme: resolved.theme,
@@ -1519,6 +1532,7 @@ export const useAppStore = create<State>()(
           theme: resolved.theme,
           backgroundImage: resolved.backgroundImage,
           surfaceOpacity: resolved.surfaceOpacity,
+          matrixPeriode: legacy.matrixPeriode ?? "ALLE",
         };
       },
     }
