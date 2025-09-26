@@ -23,7 +23,7 @@ import {
 import { formatRange, calcCurrentWeekIdx } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
-import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
+import { deriveIsoYearForWeek, makeWeekId, parseIsoDate } from "../lib/calendar";
 import { hasMeaningfulContent } from "../lib/contentUtils";
 
 type HomeworkItem = {
@@ -626,7 +626,7 @@ export default function WeekOverview() {
   const allWeeks = weekData.weeks ?? [];
   const byWeek = weekData.byWeek ?? {};
   const vacationsByWeek = weekData.vacationsByWeek ?? {};
-  const hasWeekData = allWeeks.length > 0;
+  const hasAnyWeekData = allWeeks.length > 0;
 
   const niveauOptions = React.useMemo(
     () => Array.from(new Set(activeDocs.map((d) => d.niveau))).sort(),

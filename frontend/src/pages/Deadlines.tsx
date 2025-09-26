@@ -79,11 +79,10 @@ export default function Deadlines() {
   const allWeeks = weekData.weeks ?? [];
   const byWeek = weekData.byWeek ?? {};
   const hasWeekData = allWeeks.length > 0;
-  const disableWeekControls = !hasWeekData;
   const vacationsByWeek = weekData.vacationsByWeek ?? {};
   const hasVacationData = Object.keys(vacationsByWeek).length > 0;
-  const hasUploads = hasActiveDocs && hasWeekData;
-  const hasAnyData = hasUploads || hasVacationData;
+  const hasUploadsOverall = hasActiveDocs && hasWeekData;
+  const hasAnyData = hasUploadsOverall || hasVacationData;
 
   const allowedWeekIds = React.useMemo(() => {
     const ids = new Set<string>();
@@ -108,7 +107,7 @@ export default function Deadlines() {
 
   const hasFilteredWeekData = filteredWeeks.length > 0;
   const disableWeekControls = !hasFilteredDocs || !hasFilteredWeekData;
-  const hasUploads = hasFilteredDocs && hasFilteredWeekData;
+  const hasFilteredUploads = hasFilteredDocs && hasFilteredWeekData;
 
   const maxStartIdx = Math.max(0, filteredWeeks.length - 1);
   const clampedFrom = Math.min(fromIdx, maxStartIdx);
@@ -160,7 +159,7 @@ export default function Deadlines() {
     : weeks.flatMap((w) => {
         const perVak = weekData.byWeek?.[w.id] || {};
         const weekRange = formatWeekDateRange(w) ?? undefined;
-        const docItems = hasUploads
+        const docItems = hasFilteredUploads
           ? Object.entries(perVak).flatMap(([vakNaam, d]: any) => {
               if (mijnVakken.length && !mijnVakken.includes(vakNaam)) return [];
               if (vak !== "ALLE" && vakNaam !== vak) return [];
