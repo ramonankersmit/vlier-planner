@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -46,7 +47,15 @@ async def upload(file: UploadFile = File(...)):
     tmp_path = tmp_dir / file.filename
     with tmp_path.open("wb") as fh:
         fh.write(await file.read())
-    parse_id, model = parse_to_normalized(str(tmp_path))
+    try:
+        parse_id, model = await asyncio.to_thread(parse_to_normalized, str(tmp_path))
+    except FileNotFoundError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Unexpected error while parsing %s", tmp_path)
+        raise HTTPException(500, "Kon bestand niet parsen") from exc
     return {
         "parse_id": parse_id,
         "status": "ready",
