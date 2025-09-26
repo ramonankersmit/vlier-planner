@@ -405,12 +405,17 @@ def api_install_update(payload: UpdateRequest) -> dict[str, Any]:
         )
 
     try:
-        installer_path = updater.install_update(info, silent=payload.silent)
+        install_result = updater.install_update(info, silent=payload.silent)
     except updater.UpdateError as exc:
         logger.warning("Installatie van update mislukt: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return {"status": "started", "installerPath": str(installer_path)}
+    return {
+        "status": "started",
+        "installerPath": str(install_result.installer_path),
+        "restartInitiated": install_result.restart_initiated,
+        "targetVersion": info.latest_version,
+    }
 
 
 @app.get("/api/school-vacations", response_model=SchoolVacationResponse)

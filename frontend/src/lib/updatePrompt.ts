@@ -1,6 +1,102 @@
-import { apiCheckForUpdate, apiInstallUpdate, type UpdateCheckResponse } from "./api";
+import {
+  API_BASE,
+  apiCheckForUpdate,
+  apiInstallUpdate,
+  type UpdateCheckResponse,
+} from "./api";
 
 const MAX_NOTES_LENGTH = 600;
+const UPDATE_TIMEOUT_MS = 5 * 60_000;
+const POLL_INTERVAL_MS = 2000;
+
+type RestartWatcherState = { cancel: boolean };
+
+let activeRestartWatcher: RestartWatcherState | null = null;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function waitForBackendRestart(
+  targetVersion: string,
+  state: RestartWatcherState
+): Promise<void> {
+  const deadline = Date.now() + UPDATE_TIMEOUT_MS;
+  let observedDowntime = false;
+
+  while (!state.cancel && Date.now() < deadline) {
+    await delay(POLL_INTERVAL_MS);
+    if (state.cancel) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/system/version?ts=${Date.now()}`,
+        {
+          cache: "no-store",
+        }
+      );
+      if (!response.ok) {
+        observedDowntime = true;
+        continue;
+      }
+      const data = (await response.json()) as { version?: string };
+      const reported = data?.version?.trim();
+      if (!reported) {
+        continue;
+      }
+
+      if (reported === targetVersion) {
+        state.cancel = true;
+        window.location.reload();
+        return;
+      }
+
+      if (observedDowntime && reported !== targetVersion) {
+        state.cancel = true;
+        window.location.reload();
+        return;
+      }
+    } catch {
+      observedDowntime = true;
+    }
+  }
+
+  if (!state.cancel) {
+    const message = observedDowntime
+      ? "De update lijkt niet automatisch te zijn afgerond. Sluit Vlier Planner en start deze opnieuw om de update te voltooien."
+      : "We konden niet bevestigen dat de update is voltooid. Start Vlier Planner handmatig opnieuw om zeker te weten dat de nieuwste versie wordt geladen.";
+    window.alert(message);
+  }
+}
+
+function startBackendRestartWatcher(targetVersion: string | undefined): void {
+  if (!targetVersion) {
+    return;
+  }
+
+  if (activeRestartWatcher) {
+    activeRestartWatcher.cancel = true;
+  }
+
+  const state: RestartWatcherState = { cancel: false };
+  activeRestartWatcher = state;
+
+  void (async () => {
+    try {
+      await waitForBackendRestart(targetVersion, state);
+    } catch (error) {
+      console.warn("Watcher voor update mislukt:", error);
+    } finally {
+      if (activeRestartWatcher === state) {
+        activeRestartWatcher = null;
+      }
+    }
+  })();
+}
 
 export async function promptUpdateInstallation(
   result: UpdateCheckResponse,
@@ -29,8 +125,17 @@ export async function promptUpdateInstallation(
   }
 
   try {
-    await apiInstallUpdate(result.latestVersion);
-    if (!options?.suppressSuccessAlert) {
+    const response = await apiInstallUpdate(result.latestVersion);
+    const targetVersion = response.targetVersion ?? result.latestVersion;
+
+    if (response.restartInitiated) {
+      if (!options?.suppressSuccessAlert) {
+        window.alert(
+          "De update wordt nu geïnstalleerd. Laat Vlier Planner geopend; de pagina wordt automatisch vernieuwd zodra de nieuwe versie klaarstaat."
+        );
+      }
+      startBackendRestartWatcher(targetVersion);
+    } else if (!options?.suppressSuccessAlert) {
       window.alert(
         "De installer is gestart. Sluit Vlier Planner af wanneer daarom wordt gevraagd om de update te voltooien."
       );

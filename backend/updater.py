@@ -9,8 +9,10 @@ import os
 import shutil
 import subprocess
 import sys
+import textwrap
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -46,6 +48,14 @@ class UpdateInfo:
     download_url: str
     release_notes: str | None
     sha256: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class InstallResult:
+    """Details about an update installation attempt."""
+
+    installer_path: Path
+    restart_initiated: bool
 
 
 _CACHE: tuple[float, UpdateInfo | None] | None = None
@@ -201,8 +211,106 @@ def _should_use_silent_install() -> bool:
     return os.getenv("VLIER_UPDATE_SILENT", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def install_update(info: UpdateInfo, *, silent: bool | None = None) -> Path:
-    """Download the installer for ``info`` and start the installation."""
+def _escape_for_powershell(value: str) -> str:
+    return value.replace("`", "``").replace('"', '`"')
+
+
+def _write_restart_helper(
+    installer_path: Path, flags: list[str], target_executable: Path, updates_dir: Path
+) -> Path | None:
+    script_id = uuid.uuid4().hex
+    script_path = updates_dir / f"apply-update-{script_id}.ps1"
+
+    installer_literal = _escape_for_powershell(str(installer_path))
+    target_literal = _escape_for_powershell(str(target_executable))
+    arguments_literal = ", ".join(f'"{_escape_for_powershell(flag)}"' for flag in flags)
+    if not arguments_literal:
+        arguments_literal = ""
+
+    script_contents = textwrap.dedent(
+        f"""
+        $Installer = "{installer_literal}"
+        $Arguments = @({arguments_literal})
+        if ($Arguments.Count -eq 0) {{
+            $Arguments = @()
+        }}
+        $TargetExe = "{target_literal}"
+        $OriginalPid = {os.getpid()}
+
+        Start-Sleep -Seconds 1
+
+        try {{
+            if ($Arguments.Count -eq 0) {{
+                $process = Start-Process -FilePath $Installer -Wait -PassThru
+            }} else {{
+                $process = Start-Process -FilePath $Installer -ArgumentList $Arguments -Wait -PassThru
+            }}
+        }} catch {{
+            exit 1
+        }}
+
+        $deadline = (Get-Date).AddMinutes(5)
+        while ((Get-Process -Id $OriginalPid -ErrorAction SilentlyContinue) -ne $null -and (Get-Date) -lt $deadline) {{
+            Start-Sleep -Milliseconds 250
+        }}
+
+        Start-Sleep -Seconds 1
+        try {{
+            if (Test-Path -LiteralPath $TargetExe) {{
+                Start-Process -FilePath $TargetExe -WorkingDirectory (Split-Path -Path $TargetExe -Parent)
+            }}
+        }} catch {{}}
+
+        try {{
+            Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force
+        }} catch {{}}
+        """
+    ).strip()
+
+    try:
+        script_path.write_text(script_contents, encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - best effort
+        LOGGER.warning("Kon herstartscript niet schrijven: %s", exc)
+        return None
+
+    return script_path
+
+
+def _launch_restart_helper(script_path: Path, updates_dir: Path) -> bool:
+    powershell = shutil.which("powershell") or shutil.which("powershell.exe")
+    if not powershell:
+        LOGGER.info("PowerShell niet gevonden; update wordt gestart zonder automatische herstart")
+        return False
+
+    creationflags = 0
+    if hasattr(subprocess, "DETACHED_PROCESS"):
+        creationflags |= getattr(subprocess, "DETACHED_PROCESS")
+    if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+        creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP")
+
+    try:
+        subprocess.Popen(  # noqa: S603 - gecontroleerde command
+            [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_path)],
+            cwd=str(updates_dir),
+            creationflags=creationflags,
+            close_fds=True,
+        )
+    except Exception as exc:  # pragma: no cover - afhankelijk van platform
+        LOGGER.warning("Kon PowerShell herstartscript niet starten: %s", exc)
+        try:
+            script_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+
+    return True
+
+
+def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallResult:
+    """Download the installer for ``info`` and start the installation.
+
+    Returns an :class:`InstallResult` describing the started installation.
+    """
 
     if sys.platform != "win32":
         raise UpdateError("Automatische updates worden alleen op Windows ondersteund")
@@ -233,18 +341,37 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> Path:
     if use_silent:
         flags.extend(["/VERYSILENT", "/NORESTART"])
 
-    try:
-        subprocess.Popen([str(destination), *flags], shell=False, close_fds=True)  # noqa: S603,S607
-    except Exception as exc:  # pragma: no cover - afhankelijk van platform
-        raise UpdateError(f"Kon installer niet starten: {exc}") from exc
+    restart_initiated = False
+    target_executable = Path(sys.executable).resolve()
+    helper_script = _write_restart_helper(destination, flags, target_executable, updates_dir)
+    if helper_script is not None:
+        restart_initiated = _launch_restart_helper(helper_script, updates_dir)
+        if restart_initiated:
+            LOGGER.info("Automatische herstart wordt uitgevoerd via %s", helper_script)
+
+    if not restart_initiated:
+        try:
+            subprocess.Popen(  # noqa: S603,S607 - gecontroleerde command
+                [str(destination), *flags],
+                shell=False,
+                close_fds=True,
+            )
+        except Exception as exc:  # pragma: no cover - afhankelijk van platform
+            raise UpdateError(f"Kon installer niet starten: {exc}") from exc
 
     def _terminate() -> None:
         LOGGER.info("Applicatie wordt afgesloten voor update")
         os._exit(0)
 
     threading.Timer(2.0, _terminate).start()
-    return destination
+    return InstallResult(installer_path=destination, restart_initiated=restart_initiated)
 
 
-__all__ = ["UpdateError", "UpdateInfo", "check_for_update", "install_update"]
+__all__ = [
+    "InstallResult",
+    "UpdateError",
+    "UpdateInfo",
+    "check_for_update",
+    "install_update",
+]
 
