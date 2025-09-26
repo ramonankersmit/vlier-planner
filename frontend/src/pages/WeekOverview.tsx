@@ -626,7 +626,7 @@ export default function WeekOverview() {
   const allWeeks = weekData.weeks ?? [];
   const byWeek = weekData.byWeek ?? {};
   const vacationsByWeek = weekData.vacationsByWeek ?? {};
-  const hasWeekData = allWeeks.length > 0;
+  const hasAnyWeekData = allWeeks.length > 0;
 
   const niveauOptions = React.useMemo(
     () => Array.from(new Set(activeDocs.map((d) => d.niveau))).sort(),
