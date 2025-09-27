@@ -47,7 +47,7 @@ def _prepare_common_mocks(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
     return updates_dir, installer_path
 
 
-def test_install_update_uses_restart_helper_for_installer(monkeypatch, tmp_path: Path):
+def test_install_update_prefers_python_helper(monkeypatch, tmp_path: Path):
     info = _make_update_info()
     updates_dir, installer_path = _prepare_common_mocks(monkeypatch, tmp_path)
 
@@ -67,18 +67,21 @@ def test_install_update_uses_restart_helper_for_installer(monkeypatch, tmp_path:
 
     monkeypatch.setattr(updater, "_write_restart_plan", fake_write_helper)
 
-    launch_calls: list[tuple[updater.RestartPlanPaths, Path]] = []
+    powershell_calls: list[tuple[updater.RestartPlanPaths, Path]] = []
 
-    def fake_launch(plan_paths: updater.RestartPlanPaths, helper_updates_dir: Path) -> bool:
-        launch_calls.append((plan_paths, helper_updates_dir))
+    def fail_powershell(plan_paths: updater.RestartPlanPaths, helper_updates_dir: Path) -> bool:
+        powershell_calls.append((plan_paths, helper_updates_dir))
+        raise AssertionError("PowerShell helper mag niet worden aangeroepen als Python slaagt")
+
+    monkeypatch.setattr(updater, "_launch_restart_helper", fail_powershell)
+
+    python_helper_calls: list[updater.RestartPlanPaths] = []
+
+    def python_helper(plan: updater.RestartPlanPaths) -> bool:
+        python_helper_calls.append(plan)
         return True
 
-    monkeypatch.setattr(updater, "_launch_restart_helper", fake_launch)
-
-    def fail_python_helper(plan: updater.RestartPlanPaths) -> bool:
-        raise AssertionError("Python helper should not be used when PowerShell succeeds")
-
-    monkeypatch.setattr(updater, "_launch_python_restart_helper", fail_python_helper)
+    monkeypatch.setattr(updater, "_launch_python_restart_helper", python_helper)
 
     cleanup_calls: list[updater.RestartPlanPaths] = []
 
@@ -88,7 +91,7 @@ def test_install_update_uses_restart_helper_for_installer(monkeypatch, tmp_path:
 
     def fake_popen(cmd, **kwargs):  # type: ignore[no-untyped-def]
         popen_calls.append(cmd)
-        raise AssertionError("Installer should not be started directly when helper succeeds")
+        raise AssertionError("Installer mag niet direct starten als helper slaagt")
 
     monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
 
@@ -124,8 +127,8 @@ def test_install_update_uses_restart_helper_for_installer(monkeypatch, tmp_path:
     assert result.installer_path == installer_path
     assert helper_calls and helper_calls[0][1] == installer_path
     assert helper_calls[0][2] == ["/VERYSILENT", "/NORESTART"]
-    assert launch_calls and launch_calls[0][0].plan_path == tmp_path / "restart-plan.json"
-    assert launch_calls[0][1] == updates_dir
+    assert python_helper_calls and python_helper_calls[0].plan_path == tmp_path / "restart-plan.json"
+    assert powershell_calls == []
     assert popen_calls == []
     assert shutdown_requests == [None]
     assert timer_instances and timer_instances[0].interval == 1.0
@@ -152,11 +155,6 @@ def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path
 
     monkeypatch.setattr(updater, "_write_restart_plan", fake_write_helper)
 
-    def fake_launch(plan_paths: updater.RestartPlanPaths, helper_updates_dir: Path) -> bool:
-        return False
-
-    monkeypatch.setattr(updater, "_launch_restart_helper", fake_launch)
-
     python_helper_calls: list[updater.RestartPlanPaths] = []
 
     def fail_python_helper(plan: updater.RestartPlanPaths) -> bool:
@@ -164,6 +162,14 @@ def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path
         return False
 
     monkeypatch.setattr(updater, "_launch_python_restart_helper", fail_python_helper)
+
+    powershell_calls: list[tuple[updater.RestartPlanPaths, Path]] = []
+
+    def fail_powershell(plan_paths: updater.RestartPlanPaths, helper_updates_dir: Path) -> bool:
+        powershell_calls.append((plan_paths, helper_updates_dir))
+        return False
+
+    monkeypatch.setattr(updater, "_launch_restart_helper", fail_powershell)
 
     cleanup_calls: list[updater.RestartPlanPaths] = []
 
@@ -199,13 +205,15 @@ def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path
     assert result.installer_path == installer_path
     assert helper_calls and helper_calls[0][1] == installer_path
     assert helper_calls[0][2] == ["/VERYSILENT", "/NORESTART"]
-    assert python_helper_calls and python_helper_calls[0].plan_path == tmp_path / "restart-plan.json"
+    assert python_helper_calls and len(python_helper_calls) == 2
+    assert python_helper_calls[0].plan_path == tmp_path / "restart-plan.json"
+    assert powershell_calls and powershell_calls[0][0].plan_path == tmp_path / "restart-plan.json"
     assert popen_calls == [[str(installer_path), "/VERYSILENT", "/NORESTART"]]
     assert shutdown_requests == [None]
     assert cleanup_calls and cleanup_calls[0].plan_path == tmp_path / "restart-plan.json"
 
 
-def test_install_update_falls_back_to_python_helper(monkeypatch, tmp_path: Path):
+def test_install_update_uses_powershell_when_python_fails(monkeypatch, tmp_path: Path):
     info = _make_update_info()
     updates_dir, installer_path = _prepare_common_mocks(monkeypatch, tmp_path)
 
@@ -221,13 +229,20 @@ def test_install_update_falls_back_to_python_helper(monkeypatch, tmp_path: Path)
         return updater.RestartPlanPaths(plan_path=plan_path, script_path=script_path, log_path=log_path)
 
     monkeypatch.setattr(updater, "_write_restart_plan", fake_write_helper)
-    monkeypatch.setattr(updater, "_launch_restart_helper", lambda *args, **kwargs: False)
+
+    powershell_calls: list[tuple[updater.RestartPlanPaths, Path]] = []
+
+    def powershell_helper(plan_paths: updater.RestartPlanPaths, helper_updates_dir: Path) -> bool:
+        powershell_calls.append((plan_paths, helper_updates_dir))
+        return True
+
+    monkeypatch.setattr(updater, "_launch_restart_helper", powershell_helper)
 
     python_helper_calls: list[updater.RestartPlanPaths] = []
 
     def python_helper(plan: updater.RestartPlanPaths) -> bool:
         python_helper_calls.append(plan)
-        return True
+        return False
 
     monkeypatch.setattr(updater, "_launch_python_restart_helper", python_helper)
 
@@ -235,7 +250,7 @@ def test_install_update_falls_back_to_python_helper(monkeypatch, tmp_path: Path)
     monkeypatch.setattr(updater, "_cleanup_restart_plan", lambda plan: cleanup_calls.append(plan))
 
     def fail_popen(*args, **kwargs):  # type: ignore[no-untyped-def]
-        raise AssertionError("Installer should not be started directly when Python helper succeeds")
+        raise AssertionError("Installer mag niet direct starten als helper slaagt")
 
     monkeypatch.setattr(updater.subprocess, "Popen", fail_popen)
 
@@ -270,6 +285,7 @@ def test_install_update_falls_back_to_python_helper(monkeypatch, tmp_path: Path)
     assert result.restart_initiated is True
     assert result.installer_path == installer_path
     assert python_helper_calls and python_helper_calls[0].plan_path == tmp_path / "restart-plan.json"
+    assert powershell_calls and powershell_calls[0][0].plan_path == tmp_path / "restart-plan.json"
     assert cleanup_calls == []
     assert shutdown_requests == [None]
     assert timers and timers[0].interval == 1.0
@@ -310,7 +326,8 @@ def test_install_update_rewrites_plan_when_helper_removed(monkeypatch, tmp_path:
 
     def python_helper(plan: updater.RestartPlanPaths) -> bool:
         python_helper_calls.append(plan)
-        return True
+        # First attempt fails so that PowerShell runs and removes the plan
+        return len(python_helper_calls) > 1
 
     monkeypatch.setattr(updater, "_launch_python_restart_helper", python_helper)
 
@@ -340,7 +357,7 @@ def test_install_update_rewrites_plan_when_helper_removed(monkeypatch, tmp_path:
     assert len(helper_calls) == 2
     assert helper_calls[0].plan_path.name == "restart-plan-0.json"
     assert helper_calls[1].plan_path.name == "restart-plan-1.json"
-    assert python_helper_calls and python_helper_calls[0] == helper_calls[1]
+    assert python_helper_calls and python_helper_calls[-1] == helper_calls[1]
     assert cleanup_calls == []
     assert shutdown_requests == [None]
     assert timers and timers[0] == 1.0

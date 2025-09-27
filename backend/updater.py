@@ -541,7 +541,7 @@ def _launch_restart_helper(plan_paths: RestartPlanPaths, updates_dir: Path) -> b
         )
         return False
 
-    LOGGER.info("Herstarthelper gestart met proces-ID %s", process.pid)
+    LOGGER.info("PowerShell-herstarthelper gestart met proces-ID %s", process.pid)
 
     return True
 
@@ -644,32 +644,42 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
     )
 
     if helper_plan is not None:
-        restart_initiated = _launch_restart_helper(helper_plan, updates_dir)
-        if restart_initiated:
+        python_helper_started = _launch_python_restart_helper(helper_plan)
+        if python_helper_started:
+            restart_initiated = True
             LOGGER.info(
-                "Automatische herstart en installatie worden uitgevoerd via %s",
-                helper_plan.script_path,
+                "Automatische herstart wordt uitgevoerd door de Python-helper"
             )
         else:
-            if not helper_plan.plan_path.exists():
-                helper_plan = _write_restart_plan(
-                    target_executable,
-                    updates_dir,
-                    destination,
-                    flags,
+            powershell_started = _launch_restart_helper(helper_plan, updates_dir)
+            if powershell_started:
+                restart_initiated = True
+                LOGGER.info(
+                    "Automatische herstart en installatie worden uitgevoerd via %s",
+                    helper_plan.script_path,
                 )
-
-            if helper_plan is not None:
-                python_helper_started = _launch_python_restart_helper(helper_plan)
-                if python_helper_started:
-                    restart_initiated = True
-                    LOGGER.info(
-                        "Automatische herstart wordt uitgevoerd door de Python-helper"
-                    )
-                else:
-                    _cleanup_restart_plan(helper_plan)
             else:
-                LOGGER.warning("Kon herstartplan niet opnieuw schrijven voor Python-helper")
+                if not helper_plan.plan_path.exists():
+                    helper_plan = _write_restart_plan(
+                        target_executable,
+                        updates_dir,
+                        destination,
+                        flags,
+                    )
+
+                if helper_plan is not None:
+                    python_helper_started = _launch_python_restart_helper(helper_plan)
+                    if python_helper_started:
+                        restart_initiated = True
+                        LOGGER.info(
+                            "Automatische herstart wordt uitgevoerd door de Python-helper"
+                        )
+                    else:
+                        _cleanup_restart_plan(helper_plan)
+                else:
+                    LOGGER.warning(
+                        "Kon herstartplan niet opnieuw schrijven voor Python-helper"
+                    )
 
     if not restart_initiated:
         try:
