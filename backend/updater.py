@@ -232,9 +232,15 @@ def _write_restart_helper(
 ) -> Path | None:
     script_id = uuid.uuid4().hex
     script_path = updates_dir / f"apply-update-{script_id}.ps1"
+    log_path = updates_dir / "restart-helper.log"
+
+    try:
+        log_path.write_text("", encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - best effort
+        LOGGER.warning("Kon helperlog niet initialiseren: %s", exc)
 
     target_literal = _escape_for_powershell(str(target_executable))
-    log_literal = _escape_for_powershell(str(updates_dir / "restart-helper.log"))
+    log_literal = _escape_for_powershell(str(log_path))
     installer_literal = _escape_for_powershell(str(installer_path))
     if installer_args:
         escaped_args = ", ".join(
@@ -388,8 +394,11 @@ def _launch_restart_helper(script_path: Path, updates_dir: Path) -> bool:
     if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
         creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP")
 
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        creationflags |= getattr(subprocess, "CREATE_NO_WINDOW")
+
     try:
-        subprocess.Popen(  # noqa: S603 - gecontroleerde command
+        process = subprocess.Popen(  # noqa: S603 - gecontroleerde command
             [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_path)],
             cwd=str(updates_dir),
             creationflags=creationflags,
@@ -402,6 +411,21 @@ def _launch_restart_helper(script_path: Path, updates_dir: Path) -> bool:
         except OSError:
             pass
         return False
+
+    time.sleep(0.2)
+    exit_code = process.poll()
+    if exit_code is not None:
+        LOGGER.warning(
+            "PowerShell herstartscript stopte direct met code %s; val terug naar directe installatie",
+            exit_code,
+        )
+        try:
+            script_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+
+    LOGGER.info("PowerShell herstartscript gestart met proces-ID %s", process.pid)
 
     return True
 

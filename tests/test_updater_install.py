@@ -179,3 +179,54 @@ def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path
     assert helper_calls[0][2] == ["/VERYSILENT", "/NORESTART"]
     assert popen_calls == [[str(installer_path), "/VERYSILENT", "/NORESTART"]]
     assert shutdown_requests == [None]
+
+
+def test_launch_restart_helper_detects_immediate_exit(monkeypatch, tmp_path: Path):
+    script = tmp_path / "helper.ps1"
+    script.write_text("exit", encoding="utf-8")
+
+    monkeypatch.setattr(updater, "_resolve_powershell_executable", lambda: "powershell.exe")
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(updater.time, "sleep", lambda duration: sleeps.append(duration))
+
+    class DummyProcess:
+        pid = 123
+
+        @staticmethod
+        def poll() -> int:
+            return 1
+
+    popen_calls: list[tuple[tuple, dict]] = []
+
+    def fake_popen(*args, **kwargs):  # type: ignore[no-untyped-def]
+        popen_calls.append((args, kwargs))
+        return DummyProcess()
+
+    monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
+
+    assert updater._launch_restart_helper(script, tmp_path) is False
+    assert sleeps == [0.2]
+    assert popen_calls
+
+
+def test_launch_restart_helper_succeeds_when_process_keeps_running(monkeypatch, tmp_path: Path):
+    script = tmp_path / "helper.ps1"
+    script.write_text("exit", encoding="utf-8")
+
+    monkeypatch.setattr(updater, "_resolve_powershell_executable", lambda: "powershell.exe")
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(updater.time, "sleep", lambda duration: sleeps.append(duration))
+
+    class DummyProcess:
+        pid = 456
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+    monkeypatch.setattr(updater.subprocess, "Popen", lambda *args, **kwargs: DummyProcess())
+
+    assert updater._launch_restart_helper(script, tmp_path) is True
+    assert sleeps == [0.2]
