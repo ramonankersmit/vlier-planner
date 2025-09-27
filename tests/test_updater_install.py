@@ -58,19 +58,26 @@ def test_install_update_uses_restart_helper_for_installer(monkeypatch, tmp_path:
         helper_updates_dir: Path,
         helper_installer_path: Path,
         helper_args: list[str],
-    ) -> Path:
+    ) -> updater.RestartPlanPaths:
         helper_calls.append((target_executable, helper_installer_path, helper_args.copy()))
-        return tmp_path / "restart-plan.json"
+        plan_path = tmp_path / "restart-plan.json"
+        script_path = tmp_path / "restart-plan.ps1"
+        log_path = tmp_path / "restart-helper.log"
+        return updater.RestartPlanPaths(plan_path=plan_path, script_path=script_path, log_path=log_path)
 
     monkeypatch.setattr(updater, "_write_restart_plan", fake_write_helper)
 
-    launch_calls: list[tuple[Path, Path]] = []
+    launch_calls: list[tuple[updater.RestartPlanPaths, Path]] = []
 
-    def fake_launch(plan_path: Path, helper_updates_dir: Path) -> bool:
-        launch_calls.append((plan_path, helper_updates_dir))
+    def fake_launch(plan_paths: updater.RestartPlanPaths, helper_updates_dir: Path) -> bool:
+        launch_calls.append((plan_paths, helper_updates_dir))
         return True
 
     monkeypatch.setattr(updater, "_launch_restart_helper", fake_launch)
+
+    cleanup_calls: list[updater.RestartPlanPaths] = []
+
+    monkeypatch.setattr(updater, "_cleanup_restart_plan", lambda plan: cleanup_calls.append(plan))
 
     popen_calls: list[list[str]] = []
 
@@ -112,10 +119,12 @@ def test_install_update_uses_restart_helper_for_installer(monkeypatch, tmp_path:
     assert result.installer_path == installer_path
     assert helper_calls and helper_calls[0][1] == installer_path
     assert helper_calls[0][2] == ["/VERYSILENT", "/NORESTART"]
-    assert launch_calls == [(tmp_path / "restart-plan.json", updates_dir)]
+    assert launch_calls and launch_calls[0][0].plan_path == tmp_path / "restart-plan.json"
+    assert launch_calls[0][1] == updates_dir
     assert popen_calls == []
     assert shutdown_requests == [None]
     assert timer_instances and timer_instances[0].interval == 1.0
+    assert cleanup_calls == []
 
 
 def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path):
@@ -129,16 +138,23 @@ def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path
         helper_updates_dir: Path,
         helper_installer_path: Path,
         helper_args: list[str],
-    ) -> Path:
+    ) -> updater.RestartPlanPaths:
         helper_calls.append((target_executable, helper_installer_path, helper_args.copy()))
-        return tmp_path / "restart-plan.json"
+        plan_path = tmp_path / "restart-plan.json"
+        script_path = tmp_path / "restart-plan.ps1"
+        log_path = tmp_path / "restart-helper.log"
+        return updater.RestartPlanPaths(plan_path=plan_path, script_path=script_path, log_path=log_path)
 
     monkeypatch.setattr(updater, "_write_restart_plan", fake_write_helper)
 
-    def fake_launch(plan_path: Path, helper_updates_dir: Path) -> bool:
+    def fake_launch(plan_paths: updater.RestartPlanPaths, helper_updates_dir: Path) -> bool:
         return False
 
     monkeypatch.setattr(updater, "_launch_restart_helper", fake_launch)
+
+    cleanup_calls: list[updater.RestartPlanPaths] = []
+
+    monkeypatch.setattr(updater, "_cleanup_restart_plan", lambda plan: cleanup_calls.append(plan))
 
     popen_calls: list[list[str]] = []
 
@@ -179,13 +195,21 @@ def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path
     assert helper_calls[0][2] == ["/VERYSILENT", "/NORESTART"]
     assert popen_calls == [[str(installer_path), "/VERYSILENT", "/NORESTART"]]
     assert shutdown_requests == [None]
+    assert cleanup_calls and cleanup_calls[0].plan_path == tmp_path / "restart-plan.json"
 
 
 def test_launch_restart_helper_detects_immediate_exit(monkeypatch, tmp_path: Path):
-    plan_path = tmp_path / "restart-plan.json"
+    plan_paths = updater.RestartPlanPaths(
+        plan_path=tmp_path / "restart-plan.json",
+        script_path=tmp_path / "restart-plan.ps1",
+        log_path=tmp_path / "restart-helper.log",
+    )
 
     sleeps: list[float] = []
     monkeypatch.setattr(updater.time, "sleep", lambda duration: sleeps.append(duration))
+
+    powershell_path = Path("C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
+    monkeypatch.setattr(updater, "_resolve_powershell_executable", lambda: powershell_path)
 
     class DummyProcess:
         pid = 123
@@ -201,23 +225,36 @@ def test_launch_restart_helper_detects_immediate_exit(monkeypatch, tmp_path: Pat
         return DummyProcess()
 
     monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(updater.sys, "executable", str(tmp_path / "app.exe"))
 
-    assert updater._launch_restart_helper(plan_path, tmp_path) is False
+    cleanup_calls: list[updater.RestartPlanPaths] = []
+    monkeypatch.setattr(updater, "_cleanup_restart_plan", lambda plan: cleanup_calls.append(plan))
+
+    assert updater._launch_restart_helper(plan_paths, tmp_path) is False
     assert sleeps == [0.2]
     assert popen_calls
     assert popen_calls[0][0][0] == [
-        str(tmp_path / "app.exe"),
-        "--apply-update",
-        str(plan_path),
+        str(powershell_path),
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(plan_paths.script_path),
     ]
+    assert cleanup_calls == [plan_paths]
 
 
 def test_launch_restart_helper_succeeds_when_process_keeps_running(monkeypatch, tmp_path: Path):
-    plan_path = tmp_path / "restart-plan.json"
+    plan_paths = updater.RestartPlanPaths(
+        plan_path=tmp_path / "restart-plan.json",
+        script_path=tmp_path / "restart-plan.ps1",
+        log_path=tmp_path / "restart-helper.log",
+    )
 
     sleeps: list[float] = []
     monkeypatch.setattr(updater.time, "sleep", lambda duration: sleeps.append(duration))
+
+    powershell_path = Path("C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
+    monkeypatch.setattr(updater, "_resolve_powershell_executable", lambda: powershell_path)
 
     class DummyProcess:
         pid = 456
@@ -227,7 +264,10 @@ def test_launch_restart_helper_succeeds_when_process_keeps_running(monkeypatch, 
             return None
 
     monkeypatch.setattr(updater.subprocess, "Popen", lambda *args, **kwargs: DummyProcess())
-    monkeypatch.setattr(updater.sys, "executable", str(tmp_path / "app.exe"))
 
-    assert updater._launch_restart_helper(plan_path, tmp_path) is True
+    cleanup_calls: list[updater.RestartPlanPaths] = []
+    monkeypatch.setattr(updater, "_cleanup_restart_plan", lambda plan: cleanup_calls.append(plan))
+
+    assert updater._launch_restart_helper(plan_paths, tmp_path) is True
     assert sleeps == [0.2]
+    assert cleanup_calls == []

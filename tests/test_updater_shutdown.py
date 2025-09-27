@@ -89,18 +89,24 @@ def test_write_restart_plan_records_expected_metadata(monkeypatch, tmp_path: Pat
 
     monkeypatch.setattr(updater.os, "getpid", lambda: 4242)
 
-    plan_path = updater._write_restart_plan(
+    plan_paths = updater._write_restart_plan(
         target,
         updates_dir,
         installer,
         ["/VERYSILENT"],
     )
 
-    assert plan_path is not None
-    data = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan_paths is not None
+    data = json.loads(plan_paths.plan_path.read_text(encoding="utf-8"))
     assert data["original_pid"] == 4242
     assert data["target_executable"] == str(target)
     assert data["installer_path"] == str(installer)
     assert data["installer_args"] == ["/VERYSILENT"]
     assert Path(data["log_path"]) == updates_dir / "restart-helper.log"
-    assert (updates_dir / "restart-helper.log").read_text(encoding="utf-8") == ""
+    assert plan_paths.log_path == updates_dir / "restart-helper.log"
+    assert plan_paths.script_path.exists()
+    assert plan_paths.plan_path.exists()
+    assert plan_paths.log_path.read_text(encoding="utf-8") == ""
+    script_text = plan_paths.script_path.read_text(encoding="utf-8")
+    assert str(plan_paths.plan_path) in script_text
+    assert str(plan_paths.log_path) in script_text

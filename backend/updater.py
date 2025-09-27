@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import uuid
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Final
@@ -55,6 +56,15 @@ class InstallResult:
 
     installer_path: Path
     restart_initiated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RestartPlanPaths:
+    """File-system locations that make up the restart helper plan."""
+
+    plan_path: Path
+    script_path: Path
+    log_path: Path
 
 
 _CACHE: tuple[float, UpdateInfo | None] | None = None
@@ -219,14 +229,172 @@ def _should_use_silent_install() -> bool:
     return os.getenv("VLIER_UPDATE_SILENT", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _powershell_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _build_restart_helper_script(plan_path: Path, log_path: Path) -> str:
+    plan_literal = _powershell_quote(str(plan_path))
+    log_literal = _powershell_quote(str(log_path))
+
+    script = textwrap.dedent(
+        f"""
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+        $PlanPath = {plan_literal}
+        $LogPath = {log_literal}
+        $ScriptPath = $MyInvocation.MyCommand.Path
+
+        function Write-HelperLog {{
+            param([string]$Message)
+            $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            $line = "[{0}] {1}" -f $timestamp, $Message
+            try {{
+                $logDir = Split-Path -Path $LogPath -Parent
+                if ($logDir -and -not (Test-Path -Path $logDir)) {{
+                    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+                }}
+                $line | Out-File -FilePath $LogPath -Append -Encoding UTF8
+            }} catch {{}}
+        }}
+
+        function Wait-ForProcessExit {{
+            param([int]$Pid)
+
+            if ($Pid -le 0) {{
+                Write-HelperLog "Geen geldig proces-ID ontvangen; ga direct verder."
+                return
+            }}
+
+            Write-HelperLog ("Wachten tot proces {0} wordt afgesloten." -f $Pid)
+            $deadline = (Get-Date).AddMinutes(5)
+
+            while ((Get-Date) -lt $deadline) {{
+                try {{
+                    Get-Process -Id $Pid -ErrorAction Stop | Out-Null
+                    Start-Sleep -Milliseconds 500
+                }} catch {{
+                    Write-HelperLog "Origineel proces is gestopt."
+                    return
+                }}
+            }}
+
+            try {{
+                Get-Process -Id $Pid -ErrorAction Stop | Out-Null
+                Write-HelperLog "Origineel proces draait nog na wachttijd; ga verder met herstart."
+            }} catch {{
+                Write-HelperLog "Origineel proces is gestopt."
+            }}
+        }}
+
+        try {{
+            if (-not (Test-Path -Path $PlanPath)) {{
+                Write-HelperLog ("Herstartplan niet gevonden: {0}" -f $PlanPath)
+                exit 1
+            }}
+
+            $Plan = Get-Content -Path $PlanPath -Raw | ConvertFrom-Json
+
+            $TargetExecutable = [string]$Plan.target_executable
+            $InstallerPath = [string]$Plan.installer_path
+            $InstallerArgs = @()
+            if ($Plan.installer_args -is [System.Array]) {{
+                $InstallerArgs = $Plan.installer_args
+            }} elseif ($Plan.installer_args) {{
+                $InstallerArgs = @([string]$Plan.installer_args)
+            }}
+
+            Write-HelperLog ("Helper gestart. Doel: {0}; Installer: {1}" -f $TargetExecutable, $InstallerPath)
+
+            $OriginalPid = 0
+            if ($Plan.PSObject.Properties.Name -contains 'original_pid') {{
+                $OriginalPid = [int]$Plan.original_pid
+            }}
+            Wait-ForProcessExit -Pid $OriginalPid
+
+            if (-not (Test-Path -Path $InstallerPath)) {{
+                Write-HelperLog ("Installerbestand niet gevonden: {0}" -f $InstallerPath)
+            }} else {{
+                Write-HelperLog "Installer wordt gestart."
+                try {{
+                    $installerProcess = Start-Process -FilePath $InstallerPath -ArgumentList $InstallerArgs -Wait -PassThru
+                    if ($null -ne $installerProcess) {{
+                        Write-HelperLog ("Installer afgerond met exitcode {0}." -f $installerProcess.ExitCode)
+                    }} else {{
+                        Write-HelperLog "Installer afgerond."
+                    }}
+                }} catch {{
+                    Write-HelperLog ("Fout tijdens start van installer: {0}" -f $_.Exception.Message)
+                }}
+            }}
+
+            $deadline = (Get-Date).AddMinutes(5)
+            $launched = $false
+            $missingLogged = $false
+            $lockedLogged = $false
+
+            while ((Get-Date) -lt $deadline) {{
+                if (-not (Test-Path -Path $TargetExecutable)) {{
+                    if (-not $missingLogged) {{
+                        Write-HelperLog "Doelbestand nog niet gevonden; opnieuw proberen."
+                        $missingLogged = $true
+                    }}
+                    Start-Sleep -Milliseconds 500
+                    continue
+                }}
+
+                try {{
+                    $stream = [System.IO.File]::Open(
+                        $TargetExecutable,
+                        [System.IO.FileMode]::Open,
+                        [System.IO.FileAccess]::Read,
+                        [System.IO.FileShare]::Read
+                    )
+                    $stream.Close()
+                }} catch {{
+                    if (-not $lockedLogged) {{
+                        Write-HelperLog "Bestand nog vergrendeld; wachten tot het wordt vrijgegeven."
+                        $lockedLogged = $true
+                    }}
+                    Start-Sleep -Milliseconds 500
+                    continue
+                }}
+
+                try {{
+                    Start-Process -FilePath $TargetExecutable -WorkingDirectory (Split-Path -Path $TargetExecutable -Parent) | Out-Null
+                    Write-HelperLog "Herstart gelukt."
+                    $launched = $true
+                    break
+                }} catch {{
+                    Write-HelperLog ("Fout tijdens startpoging: {0}" -f $_.Exception.Message)
+                    Start-Sleep -Milliseconds 500
+                }}
+            }}
+
+            if (-not $launched) {{
+                Write-HelperLog "Kon de applicatie niet automatisch herstarten binnen de wachttijd."
+            }}
+        }} catch {{
+            Write-HelperLog ("Onverwachte fout in helper: {0}" -f $_.Exception.Message)
+        }} finally {{
+            try {{ Remove-Item -Path $PlanPath -Force -ErrorAction SilentlyContinue }} catch {{}}
+            try {{ Remove-Item -Path $ScriptPath -Force -ErrorAction SilentlyContinue }} catch {{}}
+        }}
+        """
+    ).strip()
+
+    return script + "\n"
+
+
 def _write_restart_plan(
     target_executable: Path,
     updates_dir: Path,
     installer_path: Path,
     installer_args: list[str],
-) -> Path | None:
+) -> RestartPlanPaths | None:
     plan_id = uuid.uuid4().hex
     plan_path = updates_dir / f"apply-update-{plan_id}.json"
+    script_path = plan_path.with_suffix(".ps1")
     log_path = updates_dir / "restart-helper.log"
 
     try:
@@ -248,10 +416,78 @@ def _write_restart_plan(
         LOGGER.warning("Kon herstartplan niet schrijven: %s", exc)
         return None
 
-    return plan_path
+    script_content = _build_restart_helper_script(plan_path, log_path)
+
+    try:
+        script_path.write_text(script_content, encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - best effort
+        LOGGER.warning("Kon helper script niet schrijven: %s", exc)
+        try:
+            plan_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return None
+
+    return RestartPlanPaths(plan_path=plan_path, script_path=script_path, log_path=log_path)
 
 
-def _launch_restart_helper(plan_path: Path, updates_dir: Path) -> bool:
+def _resolve_powershell_executable() -> Path | None:
+    names = ("powershell.exe", "pwsh.exe")
+
+    path_env = os.getenv("PATH")
+    if path_env:
+        for entry in path_env.split(os.pathsep):
+            entry = entry.strip()
+            if not entry:
+                continue
+            for name in names:
+                candidate = Path(entry) / name
+                if candidate.exists():
+                    return candidate
+
+    system_root = os.getenv("SystemRoot")
+    if system_root:
+        system_root_path = Path(system_root)
+        system32_candidate = system_root_path / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        if system32_candidate.exists():
+            return system32_candidate
+        syswow_candidate = system_root_path / "SysWOW64" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        if syswow_candidate.exists():
+            return syswow_candidate
+
+    for env_var in ("ProgramFiles", "ProgramFiles(x86)"):
+        base = os.getenv(env_var)
+        if not base:
+            continue
+        root = Path(base) / "PowerShell"
+        if not root.exists():
+            continue
+        try:
+            candidate_dirs = sorted(root.iterdir(), reverse=True)
+        except OSError:
+            continue
+        for candidate_dir in candidate_dirs:
+            candidate = candidate_dir / "pwsh.exe"
+            if candidate.exists():
+                return candidate
+
+    return None
+
+
+def _cleanup_restart_plan(plan_paths: RestartPlanPaths) -> None:
+    for path in (plan_paths.plan_path, plan_paths.script_path):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _launch_restart_helper(plan_paths: RestartPlanPaths, updates_dir: Path) -> bool:
+    powershell = _resolve_powershell_executable()
+    if powershell is None:
+        LOGGER.warning("Kon PowerShell niet vinden; helper wordt niet gestart")
+        return False
+
     creationflags = 0
     if hasattr(subprocess, "DETACHED_PROCESS"):
         creationflags |= getattr(subprocess, "DETACHED_PROCESS")
@@ -261,21 +497,23 @@ def _launch_restart_helper(plan_path: Path, updates_dir: Path) -> bool:
     if hasattr(subprocess, "CREATE_NO_WINDOW"):
         creationflags |= getattr(subprocess, "CREATE_NO_WINDOW")
 
-    target_executable = Path(sys.executable).resolve()
-
     try:
         process = subprocess.Popen(  # noqa: S603 - gecontroleerde command
-            [str(target_executable), "--apply-update", str(plan_path)],
+            [
+                str(powershell),
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(plan_paths.script_path),
+            ],
             cwd=str(updates_dir),
             creationflags=creationflags,
-            close_fds=True,
+            close_fds=False,
         )
     except Exception as exc:  # pragma: no cover - afhankelijk van platform
         LOGGER.warning("Kon herstartproces niet starten: %s", exc)
-        try:
-            plan_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        _cleanup_restart_plan(plan_paths)
         return False
 
     time.sleep(0.2)
@@ -285,10 +523,7 @@ def _launch_restart_helper(plan_path: Path, updates_dir: Path) -> bool:
             "Herstarthelper stopte direct met code %s; val terug naar directe installatie",
             exit_code,
         )
-        try:
-            plan_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        _cleanup_restart_plan(plan_paths)
         return False
 
     LOGGER.info("Herstarthelper gestart met proces-ID %s", process.pid)
@@ -368,13 +603,10 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
         if restart_initiated:
             LOGGER.info(
                 "Automatische herstart en installatie worden uitgevoerd via %s",
-                helper_plan,
+                helper_plan.script_path,
             )
         else:
-            try:
-                helper_plan.unlink(missing_ok=True)
-            except OSError:
-                pass
+            _cleanup_restart_plan(helper_plan)
 
     if not restart_initiated:
         try:
