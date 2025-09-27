@@ -215,51 +215,48 @@ def _escape_for_powershell(value: str) -> str:
     return value.replace("`", "``").replace('"', '`"')
 
 
-def _write_restart_helper(
-    installer_path: Path, flags: list[str], target_executable: Path, updates_dir: Path
-) -> Path | None:
+def _write_restart_helper(target_executable: Path, updates_dir: Path) -> Path | None:
     script_id = uuid.uuid4().hex
     script_path = updates_dir / f"apply-update-{script_id}.ps1"
 
-    installer_literal = _escape_for_powershell(str(installer_path))
     target_literal = _escape_for_powershell(str(target_executable))
-    arguments_literal = ", ".join(f'"{_escape_for_powershell(flag)}"' for flag in flags)
-    if not arguments_literal:
-        arguments_literal = ""
 
     script_contents = textwrap.dedent(
         f"""
-        $Installer = "{installer_literal}"
-        $Arguments = @({arguments_literal})
-        if ($Arguments.Count -eq 0) {{
-            $Arguments = @()
-        }}
         $TargetExe = "{target_literal}"
         $OriginalPid = {os.getpid()}
-
-        Start-Sleep -Seconds 1
-
-        try {{
-            if ($Arguments.Count -eq 0) {{
-                $process = Start-Process -FilePath $Installer -Wait -PassThru
-            }} else {{
-                $process = Start-Process -FilePath $Installer -ArgumentList $Arguments -Wait -PassThru
-            }}
-        }} catch {{
-            exit 1
-        }}
 
         $deadline = (Get-Date).AddMinutes(5)
         while ((Get-Process -Id $OriginalPid -ErrorAction SilentlyContinue) -ne $null -and (Get-Date) -lt $deadline) {{
             Start-Sleep -Milliseconds 250
         }}
 
-        Start-Sleep -Seconds 1
-        try {{
-            if (Test-Path -LiteralPath $TargetExe) {{
+        $refreshDeadline = (Get-Date).AddMinutes(5)
+        while ((Get-Date) -lt $refreshDeadline) {{
+            try {{
+                if (-not (Test-Path -LiteralPath $TargetExe)) {{
+                    Start-Sleep -Milliseconds 500
+                    continue
+                }}
+
+                $stream = $null
+                try {{
+                    $stream = [System.IO.File]::Open($TargetExe, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                }} catch {{
+                    Start-Sleep -Milliseconds 500
+                    continue
+                }}
+
+                if ($stream -ne $null) {{
+                    $stream.Close()
+                }}
+
                 Start-Process -FilePath $TargetExe -WorkingDirectory (Split-Path -Path $TargetExe -Parent)
+                break
+            }} catch {{
+                Start-Sleep -Milliseconds 500
             }}
-        }} catch {{}}
+        }}
 
         try {{
             Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force
@@ -343,21 +340,20 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
 
     restart_initiated = False
     target_executable = Path(sys.executable).resolve()
-    helper_script = _write_restart_helper(destination, flags, target_executable, updates_dir)
+    helper_script = _write_restart_helper(target_executable, updates_dir)
     if helper_script is not None:
         restart_initiated = _launch_restart_helper(helper_script, updates_dir)
         if restart_initiated:
             LOGGER.info("Automatische herstart wordt uitgevoerd via %s", helper_script)
 
-    if not restart_initiated:
-        try:
-            subprocess.Popen(  # noqa: S603,S607 - gecontroleerde command
-                [str(destination), *flags],
-                shell=False,
-                close_fds=True,
-            )
-        except Exception as exc:  # pragma: no cover - afhankelijk van platform
-            raise UpdateError(f"Kon installer niet starten: {exc}") from exc
+    try:
+        subprocess.Popen(  # noqa: S603,S607 - gecontroleerde command
+            [str(destination), *flags],
+            shell=False,
+            close_fds=True,
+        )
+    except Exception as exc:  # pragma: no cover - afhankelijk van platform
+        raise UpdateError(f"Kon installer niet starten: {exc}") from exc
 
     def _terminate() -> None:
         LOGGER.info("Applicatie wordt afgesloten voor update")
