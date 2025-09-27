@@ -514,7 +514,6 @@ def _launch_restart_helper(plan_paths: RestartPlanPaths, updates_dir: Path) -> b
         )
     except Exception as exc:  # pragma: no cover - afhankelijk van platform
         LOGGER.warning("Kon herstartproces niet starten: %s", exc)
-        _cleanup_restart_plan(plan_paths)
         return False
 
     time.sleep(0.2)
@@ -524,7 +523,6 @@ def _launch_restart_helper(plan_paths: RestartPlanPaths, updates_dir: Path) -> b
             "Herstarthelper stopte direct met code %s; val terug naar directe installatie",
             exit_code,
         )
-        _cleanup_restart_plan(plan_paths)
         return False
 
     LOGGER.info("Herstarthelper gestart met proces-ID %s", process.pid)
@@ -637,14 +635,25 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
                 helper_plan.script_path,
             )
         else:
-            python_helper_started = _launch_python_restart_helper(helper_plan)
-            if python_helper_started:
-                restart_initiated = True
-                LOGGER.info(
-                    "Automatische herstart wordt uitgevoerd door de Python-helper"
+            if not helper_plan.plan_path.exists():
+                helper_plan = _write_restart_plan(
+                    target_executable,
+                    updates_dir,
+                    destination,
+                    flags,
                 )
+
+            if helper_plan is not None:
+                python_helper_started = _launch_python_restart_helper(helper_plan)
+                if python_helper_started:
+                    restart_initiated = True
+                    LOGGER.info(
+                        "Automatische herstart wordt uitgevoerd door de Python-helper"
+                    )
+                else:
+                    _cleanup_restart_plan(helper_plan)
             else:
-                _cleanup_restart_plan(helper_plan)
+                LOGGER.warning("Kon herstartplan niet opnieuw schrijven voor Python-helper")
 
     if not restart_initiated:
         try:
