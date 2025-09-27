@@ -313,6 +313,13 @@ export type UpdateCheckResponse = {
   checksum?: string | null;
 };
 
+export type UpdateInstallResponse = {
+  status: "started";
+  installerPath: string;
+  restartInitiated?: boolean;
+  targetVersion?: string;
+};
+
 export async function apiCheckForUpdate(): Promise<UpdateCheckResponse> {
   const response = await fetch(`${BASE}/api/system/update`);
   if (!response.ok) {
@@ -321,7 +328,7 @@ export async function apiCheckForUpdate(): Promise<UpdateCheckResponse> {
   return response.json();
 }
 
-export async function apiInstallUpdate(version: string): Promise<void> {
+export async function apiInstallUpdate(version: string): Promise<UpdateInstallResponse> {
   const response = await fetch(`${BASE}/api/system/update`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -331,4 +338,5 @@ export async function apiInstallUpdate(version: string): Promise<void> {
     const message = await response.text();
     throw new Error(`update_install failed: ${response.status} – ${message}`);
   }
+  return (await response.json()) as UpdateInstallResponse;
 }

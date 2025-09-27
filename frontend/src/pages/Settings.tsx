@@ -236,7 +236,7 @@ export default function Settings() {
         setUpdateCheckStatus({
           type: "success",
           message:
-            "De update is gestart. Sluit Vlier Planner af wanneer de installer daarom vraagt om te voltooien.",
+            "De update is gestart. Laat Vlier Planner geopend; de pagina wordt automatisch vernieuwd zodra de nieuwe versie klaarstaat.",
         });
       } else {
         setUpdateCheckStatus({
