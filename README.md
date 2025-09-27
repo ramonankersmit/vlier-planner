@@ -51,6 +51,7 @@ klas waarvoor het materiaal bedoeld is.
 - **Reviewwizard** – `/api/reviews` en `/api/reviews/{parseId}` leveren pending reviews met meta, regels, diff en waarschuwingen. `frontend/src/pages/Review.tsx` vormt hier de meerstapsreview rond, terwijl `frontend/src/pages/Uploads.tsx` pending reviews en hun waarschuwingen toont en naar de wizard linkt.【F:backend/app.py†L802-L918】【F:frontend/src/pages/Review.tsx†L518-L1160】【F:frontend/src/pages/Uploads.tsx†L20-L1298】
 - **Versiebeheer & diffing** – commits naar `/api/reviews/{parseId}/commit` slaan een nieuwe versie van een studiewijzer weg en updaten de diff-geschiedenis. Bestanden en metadata blijven per versie beschikbaar via `/api/docs/...`-endpoints (rows, preview, download) zodat je oudere versies kunt vergelijken.【F:backend/app.py†L723-L918】
 - **Automatische updates** – `/api/system/update` controleert op nieuwe releases, terwijl een POST naar hetzelfde endpoint een download/installer kan starten. De frontend start automatisch een check via `frontend/src/App.tsx` en biedt handmatige bediening op de instellingenpagina (`frontend/src/pages/Settings.tsx`).【F:backend/app.py†L323-L366】【F:frontend/src/App.tsx†L172-L188】【F:frontend/src/pages/Settings.tsx†L36-L396】
+- **Windows-updateflow testen** – Volg de stapsgewijze checklist in [`docs/windows-update-testing.md`](docs/windows-update-testing.md) om PyInstaller-builds te maken, de Inno Setup-installer te compileren en de automatische update in een Windows-omgeving te valideren.
 
 ## Projectstructuur
 ```
