@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from backend import updater
@@ -74,3 +76,48 @@ def test_request_app_shutdown_callback_failure(monkeypatch):
     updater._request_app_shutdown()
 
     assert exit_calls == [0]
+
+
+def test_resolve_powershell_uses_standard_path(monkeypatch):
+    recorded: list[str] = []
+
+    def fake_which(name: str) -> str | None:
+        recorded.append(name)
+        return None
+
+    monkeypatch.setattr(updater.shutil, "which", fake_which)
+
+    expected = Path(r"C:\\Windows") / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    monkeypatch.setenv("SYSTEMROOT", r"C:\\Windows")
+
+    def fake_exists(self: Path) -> bool:  # type: ignore[override]
+        return Path(self) == expected
+
+    monkeypatch.setattr(updater.Path, "exists", fake_exists, raising=False)
+
+    resolved = updater._resolve_powershell_executable()
+
+    assert resolved == str(expected)
+    assert recorded[:2] == ["powershell.exe", "powershell"]
+
+
+def test_resolve_powershell_falls_back_to_pwsh(monkeypatch):
+    lookup: dict[str, str | None] = {
+        "powershell.exe": None,
+        "powershell": None,
+        "pwsh.exe": r"C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+        "pwsh": None,
+    }
+
+    def fake_which(name: str) -> str | None:
+        return lookup.get(name)
+
+    monkeypatch.setattr(updater.shutil, "which", fake_which)
+    monkeypatch.delenv("SYSTEMROOT", raising=False)
+    monkeypatch.delenv("SystemRoot", raising=False)
+    monkeypatch.delenv("WINDIR", raising=False)
+    monkeypatch.setattr(updater.Path, "exists", lambda self: False, raising=False)
+
+    resolved = updater._resolve_powershell_executable()
+
+    assert resolved == lookup["pwsh.exe"]

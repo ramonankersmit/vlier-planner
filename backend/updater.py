@@ -347,8 +347,32 @@ def _write_restart_helper(
     return script_path
 
 
+def _resolve_powershell_executable() -> str | None:
+    """Return the path to a PowerShell executable if one is available."""
+
+    for candidate in ("powershell.exe", "powershell"):
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+
+    system_root = os.getenv("SYSTEMROOT") or os.getenv("SystemRoot") or os.getenv("WINDIR")
+    if system_root:
+        base = Path(system_root)
+        for subdir in ("System32", "Sysnative", "SysWOW64"):
+            candidate = base / subdir / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+            if candidate.exists():
+                return str(candidate)
+
+    for candidate in ("pwsh.exe", "pwsh"):
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+
+    return None
+
+
 def _launch_restart_helper(script_path: Path, updates_dir: Path) -> bool:
-    powershell = shutil.which("powershell") or shutil.which("powershell.exe")
+    powershell = _resolve_powershell_executable()
     if not powershell:
         LOGGER.info("PowerShell niet gevonden; update wordt gestart zonder automatische herstart")
         return False
