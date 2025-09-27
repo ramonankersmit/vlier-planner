@@ -12,7 +12,9 @@ def test_execute_update_plan_invokes_steps(monkeypatch, tmp_path: Path):
     log_path = tmp_path / "restart-helper.log"
     target_executable = tmp_path / "VlierPlanner.exe"
     installer_path = tmp_path / "VlierPlanner-Setup.exe"
-    helper_executable = tmp_path / "python-helper.exe"
+    helper_dir = tmp_path / "python-helper"
+    helper_dir.mkdir()
+    helper_executable = helper_dir / "python-helper.exe"
 
     plan_path.write_text(
         json.dumps(
@@ -24,6 +26,7 @@ def test_execute_update_plan_invokes_steps(monkeypatch, tmp_path: Path):
                 "log_path": str(log_path),
                 "script_path": str(script_path),
                 "python_helper_executable": str(helper_executable),
+                "python_helper_cleanup_dir": str(helper_dir),
             }
         ),
         encoding="utf-8",
@@ -65,6 +68,7 @@ def test_execute_update_plan_invokes_steps(monkeypatch, tmp_path: Path):
     assert plan_path.exists() is False
     assert script_path.exists() is False
     assert helper_executable.exists() is False
+    assert helper_dir.exists() is False
     assert any(message.startswith("Python helper gestart.") for _, message in log_calls)
 
 

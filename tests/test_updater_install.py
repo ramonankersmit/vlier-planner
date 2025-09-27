@@ -435,19 +435,29 @@ def test_launch_restart_helper_succeeds_when_process_keeps_running(monkeypatch, 
     assert cleanup_calls == []
 
 
-def test_launch_python_restart_helper_copies_executable(monkeypatch, tmp_path: Path):
+def test_launch_python_restart_helper_copies_runtime(monkeypatch, tmp_path: Path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    updates_dir = runtime_dir / "updates"
+    updates_dir.mkdir()
+
     plan_paths = updater.RestartPlanPaths(
-        plan_path=tmp_path / "restart-plan.json",
-        script_path=tmp_path / "restart-plan.ps1",
-        log_path=tmp_path / "restart-helper.log",
+        plan_path=updates_dir / "restart-plan.json",
+        script_path=updates_dir / "restart-plan.ps1",
+        log_path=updates_dir / "restart-helper.log",
     )
 
     plan_paths.plan_path.write_text(json.dumps({}), encoding="utf-8")
 
-    app_dir = tmp_path / "app"
-    app_dir.mkdir()
-    original_executable = app_dir / "VlierPlanner.exe"
+    original_executable = runtime_dir / "VlierPlanner.exe"
     original_executable.write_bytes(b"binary")
+    dll_file = runtime_dir / "python311.dll"
+    dll_file.write_bytes(b"dll")
+    data_dir = runtime_dir / "backend"
+    data_dir.mkdir()
+    (data_dir / "__init__.py").write_text("", encoding="utf-8")
+
+    (updates_dir / "existing.txt").write_text("keep", encoding="utf-8")
 
     monkeypatch.setattr(updater.sys, "executable", str(original_executable))
 
@@ -476,14 +486,19 @@ def test_launch_python_restart_helper_copies_executable(monkeypatch, tmp_path: P
 
     assert updater._launch_python_restart_helper(plan_paths) is True
 
-    helper_path = plan_paths.plan_path.parent / "python-helper-abc123.exe"
+    helper_dir = updates_dir / "python-helper-abc123"
+    helper_path = helper_dir / "VlierPlanner.exe"
     assert helper_path.exists()
     assert helper_path.read_bytes() == original_executable.read_bytes()
+    assert (helper_dir / "python311.dll").read_bytes() == dll_file.read_bytes()
+    assert (helper_dir / "backend" / "__init__.py").exists()
+    assert not any(child.name == "updates" for child in helper_dir.iterdir())
     assert sleeps == [0.2]
     assert popen_calls == [[str(helper_path), "--apply-update", str(plan_paths.plan_path)]]
 
     plan_data = json.loads(plan_paths.plan_path.read_text(encoding="utf-8"))
     assert plan_data["python_helper_executable"] == str(helper_path)
+    assert plan_data["python_helper_cleanup_dir"] == str(helper_dir)
 
 
 def test_cleanup_restart_plan_removes_helper(tmp_path: Path):
@@ -493,10 +508,18 @@ def test_cleanup_restart_plan_removes_helper(tmp_path: Path):
         log_path=tmp_path / "restart-helper.log",
     )
 
-    helper_path = tmp_path / "python-helper.exe"
+    helper_dir = tmp_path / "python-helper"
+    helper_dir.mkdir()
+    helper_path = helper_dir / "python-helper.exe"
     helper_path.write_text("helper", encoding="utf-8")
+    (helper_dir / "extra.txt").write_text("data", encoding="utf-8")
     plan_paths.plan_path.write_text(
-        json.dumps({"python_helper_executable": str(helper_path)}),
+        json.dumps(
+            {
+                "python_helper_executable": str(helper_path),
+                "python_helper_cleanup_dir": str(helper_dir),
+            }
+        ),
         encoding="utf-8",
     )
     plan_paths.script_path.write_text("Write-Output", encoding="utf-8")
@@ -506,6 +529,7 @@ def test_cleanup_restart_plan_removes_helper(tmp_path: Path):
     assert plan_paths.plan_path.exists() is False
     assert plan_paths.script_path.exists() is False
     assert helper_path.exists() is False
+    assert helper_dir.exists() is False
 def test_should_use_silent_install_defaults_to_true(monkeypatch):
     monkeypatch.delenv("VLIER_UPDATE_SILENT", raising=False)
     assert updater._should_use_silent_install() is True

@@ -426,6 +426,7 @@ def _write_restart_plan(
         "log_path": str(log_path),
         "script_path": str(script_path),
         "python_helper_executable": None,
+        "python_helper_cleanup_dir": None,
     }
 
     try:
@@ -494,6 +495,7 @@ def _resolve_powershell_executable() -> Path | None:
 
 def _cleanup_restart_plan(plan_paths: RestartPlanPaths) -> None:
     helper_executable: Path | None = None
+    helper_cleanup_dir: Path | None = None
 
     try:
         raw = plan_paths.plan_path.read_text(encoding="utf-8")
@@ -510,6 +512,14 @@ def _cleanup_restart_plan(plan_paths: RestartPlanPaths) -> None:
             if isinstance(helper_value, str) and helper_value:
                 helper_executable = Path(helper_value)
 
+            cleanup_value = (
+                plan_data.get("python_helper_cleanup_dir")
+                if isinstance(plan_data, dict)
+                else None
+            )
+            if isinstance(cleanup_value, str) and cleanup_value:
+                helper_cleanup_dir = Path(cleanup_value)
+
     for path in (plan_paths.plan_path, plan_paths.script_path):
         try:
             path.unlink(missing_ok=True)
@@ -521,6 +531,9 @@ def _cleanup_restart_plan(plan_paths: RestartPlanPaths) -> None:
             helper_executable.unlink(missing_ok=True)
         except OSError:
             pass
+
+    if helper_cleanup_dir is not None:
+        shutil.rmtree(helper_cleanup_dir, ignore_errors=True)
 
 
 def _launch_restart_helper(plan_paths: RestartPlanPaths, updates_dir: Path) -> bool:
@@ -571,57 +584,74 @@ def _launch_restart_helper(plan_paths: RestartPlanPaths, updates_dir: Path) -> b
 
 
 def _launch_python_restart_helper(plan_paths: RestartPlanPaths) -> bool:
-    """Fallback helper that reuses the packaged executable in helper mode."""
+    """Fallback helper that reuses the packaged runtime in helper mode."""
 
     target_executable = Path(sys.executable).resolve()
-    helper_executable = plan_paths.plan_path.parent / (
-        f"python-helper-{uuid.uuid4().hex}.exe"
-    )
+    helper_dir = plan_paths.plan_path.parent / f"python-helper-{uuid.uuid4().hex}"
+    updates_root = plan_paths.plan_path.parent.resolve()
+
+    def _ignore_updates(directory: str, names: list[str]) -> set[str]:
+        ignored: set[str] = set()
+        for name in names:
+            candidate = Path(directory) / name
+            try:
+                resolved = candidate.resolve()
+            except OSError:
+                resolved = candidate
+
+            if resolved == updates_root:
+                ignored.add(name)
+                continue
+
+            if name.lower() == "updates":
+                ignored.add(name)
+        return ignored
 
     try:
-        shutil.copy2(target_executable, helper_executable)
+        shutil.copytree(
+            target_executable.parent,
+            helper_dir,
+            ignore=_ignore_updates,
+        )
     except OSError as exc:
-        LOGGER.warning("Kon helperkopie niet maken: %s", exc)
+        LOGGER.warning("Kon helpermap niet kopiëren: %s", exc)
+        shutil.rmtree(helper_dir, ignore_errors=True)
+        return False
+
+    helper_executable = helper_dir / target_executable.name
+
+    if not helper_executable.exists():
+        LOGGER.warning("Helper-executable ontbrak na kopiëren; helper wordt verwijderd")
+        shutil.rmtree(helper_dir, ignore_errors=True)
         return False
 
     try:
         raw = plan_paths.plan_path.read_text(encoding="utf-8")
     except OSError as exc:
         LOGGER.warning("Kon herstartplan niet openen voor helperkopie: %s", exc)
-        try:
-            helper_executable.unlink(missing_ok=True)
-        except OSError:
-            pass
+        shutil.rmtree(helper_dir, ignore_errors=True)
         return False
 
     try:
         plan_data = json.loads(raw)
     except json.JSONDecodeError as exc:
         LOGGER.warning("Kon herstartplan niet bijwerken voor helperkopie: %s", exc)
-        try:
-            helper_executable.unlink(missing_ok=True)
-        except OSError:
-            pass
+        shutil.rmtree(helper_dir, ignore_errors=True)
         return False
 
     if not isinstance(plan_data, dict):
-        LOGGER.warning("Onverwachte structuur in herstartplan; helperkopie wordt verwijderd")
-        try:
-            helper_executable.unlink(missing_ok=True)
-        except OSError:
-            pass
+        LOGGER.warning("Onverwachte structuur in herstartplan; helpermap wordt verwijderd")
+        shutil.rmtree(helper_dir, ignore_errors=True)
         return False
 
     plan_data["python_helper_executable"] = str(helper_executable)
+    plan_data["python_helper_cleanup_dir"] = str(helper_dir)
 
     try:
         plan_paths.plan_path.write_text(json.dumps(plan_data), encoding="utf-8")
     except OSError as exc:
         LOGGER.warning("Kon herstartplan niet opslaan voor helperkopie: %s", exc)
-        try:
-            helper_executable.unlink(missing_ok=True)
-        except OSError:
-            pass
+        shutil.rmtree(helper_dir, ignore_errors=True)
         return False
 
     try:
@@ -631,15 +661,12 @@ def _launch_python_restart_helper(plan_paths: RestartPlanPaths) -> bool:
                 "--apply-update",
                 str(plan_paths.plan_path),
             ],
-            cwd=str(plan_paths.plan_path.parent),
+            cwd=str(helper_dir),
             close_fds=False,
         )
     except Exception as exc:  # pragma: no cover - afhankelijk van platform
         LOGGER.warning("Kon Python-herstarthelper niet starten: %s", exc)
-        try:
-            helper_executable.unlink(missing_ok=True)
-        except OSError:
-            pass
+        shutil.rmtree(helper_dir, ignore_errors=True)
         return False
 
     time.sleep(0.2)
@@ -648,10 +675,7 @@ def _launch_python_restart_helper(plan_paths: RestartPlanPaths) -> bool:
         LOGGER.warning(
             "Python-herstarthelper stopte direct met code %s", exit_code
         )
-        try:
-            helper_executable.unlink(missing_ok=True)
-        except OSError:
-            pass
+        shutil.rmtree(helper_dir, ignore_errors=True)
         return False
 
     LOGGER.info("Python-herstarthelper gestart met proces-ID %s", process.pid)

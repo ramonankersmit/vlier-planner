@@ -4,6 +4,7 @@ import ctypes
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -417,6 +418,7 @@ def _execute_update_plan(plan_path: Path) -> int:
     log_path: Path | None = plan_path.parent / "restart-helper.log"
     script_path: Path | None = None
     helper_executable: Path | None = None
+    helper_cleanup_dir: Path | None = None
 
     try:
         try:
@@ -453,6 +455,10 @@ def _execute_update_plan(plan_path: Path) -> int:
         if isinstance(helper_value, str) and helper_value:
             helper_executable = Path(helper_value)
 
+        cleanup_value = plan.get("python_helper_cleanup_dir")
+        if isinstance(cleanup_value, str) and cleanup_value:
+            helper_cleanup_dir = Path(cleanup_value)
+
         try:
             original_pid = int(plan.get("original_pid", 0))
         except (TypeError, ValueError):
@@ -475,6 +481,12 @@ def _execute_update_plan(plan_path: Path) -> int:
                 continue
             try:
                 cleanup.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        if helper_cleanup_dir is not None:
+            try:
+                shutil.rmtree(helper_cleanup_dir, ignore_errors=True)
             except OSError:
                 pass
 
