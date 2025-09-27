@@ -9,6 +9,7 @@ import {
   Trash2,
   Pencil,
   Undo2,
+  Sun,
 } from "lucide-react";
 import {
   useAppStore,
@@ -16,6 +17,7 @@ import {
   type WeekInfo,
   type WeekData,
   type CustomHomeworkEntry,
+  type VacationWeekInfo,
 } from "../app/store";
 import {
   formatRange,
@@ -584,6 +586,7 @@ export default function Matrix() {
   const huiswerkWeergave = useAppStore((s) => s.huiswerkWeergave);
   const docs = useAppStore((s) => s.docs) ?? [];
   const weekData = useAppStore((s) => s.weekData);
+  const vacationsByWeek = weekData.vacationsByWeek ?? {};
   const customHomework = useAppStore((s) => s.customHomework);
   const addCustomHomework = useAppStore((s) => s.addCustomHomework);
   const removeCustomHomework = useAppStore((s) => s.removeCustomHomework);
@@ -595,6 +598,8 @@ export default function Matrix() {
   const setNiveau = useAppStore((s) => s.setMatrixNiveau);
   const leerjaar = useAppStore((s) => s.matrixLeerjaar);
   const setLeerjaar = useAppStore((s) => s.setMatrixLeerjaar);
+  const periode = useAppStore((s) => s.matrixPeriode);
+  const setPeriode = useAppStore((s) => s.setMatrixPeriode);
   const accentColor = useAppStore((s) => s.theme.accent);
   const { openPreview } = useDocumentPreview();
 
@@ -608,6 +613,13 @@ export default function Matrix() {
   const leerjaarOptions = React.useMemo(
     () =>
       Array.from(new Set(activeDocs.map((d) => d.leerjaar))).sort(
+        (a, b) => Number(a) - Number(b)
+      ),
+    [activeDocs]
+  );
+  const periodeOptions = React.useMemo(
+    () =>
+      Array.from(new Set(activeDocs.map((d) => String(d.periode)))).sort(
         (a, b) => Number(a) - Number(b)
       ),
     [activeDocs]
@@ -633,14 +645,25 @@ export default function Matrix() {
     }
   }, [hasAnyDocs, leerjaar, leerjaarOptions]);
 
+  React.useEffect(() => {
+    if (!hasAnyDocs && periode !== "ALLE") {
+      setPeriode("ALLE");
+      return;
+    }
+    if (hasAnyDocs && periode !== "ALLE" && !periodeOptions.includes(periode)) {
+      setPeriode("ALLE");
+    }
+  }, [hasAnyDocs, periode, periodeOptions, setPeriode]);
+
   const filteredDocs = React.useMemo(
     () =>
       activeDocs.filter(
         (doc) =>
           (niveau === "ALLE" || doc.niveau === niveau) &&
-          (leerjaar === "ALLE" || doc.leerjaar === leerjaar)
+          (leerjaar === "ALLE" || doc.leerjaar === leerjaar) &&
+          (periode === "ALLE" || String(doc.periode) === periode)
       ),
-    [activeDocs, niveau, leerjaar]
+    [activeDocs, niveau, leerjaar, periode]
   );
 
   const docsByVak = React.useMemo(() => {
@@ -838,6 +861,22 @@ export default function Matrix() {
             </option>
           ))}
         </select>
+
+        <select
+          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+          value={periode}
+          onChange={(e) => setPeriode(e.target.value)}
+          aria-label="Filter periode"
+          title="Filter op periode"
+          disabled={!hasAnyDocs}
+        >
+          <option value="ALLE">Alle periodes</option>
+          {periodeOptions.map((p) => (
+            <option key={p} value={p}>
+              Periode {p}
+            </option>
+          ))}
+        </select>
       </div>
 
       {!hasAnyDocs ? (
@@ -864,6 +903,10 @@ export default function Matrix() {
                 <th className="px-4 py-2 text-left whitespace-nowrap">Vak</th>
                 {weeks.map((w) => {
                   const isCurrent = w.id === currentWeekId;
+                  const vacationEntries: VacationWeekInfo[] = vacationsByWeek[w.id] ?? [];
+                  const vacationLabel = vacationEntries
+                    .map((vac) => `${vac.name} (${vac.region})`)
+                    .join(" • ");
                   const headerStyle: React.CSSProperties | undefined = isCurrent
                     ? {
                         backgroundColor: currentWeekHighlightColor,
@@ -881,6 +924,12 @@ export default function Matrix() {
                     >
                       <div className="font-medium">Week {w.nr}</div>
                       <div className="text-xs theme-muted">{formatRange(w)}</div>
+                      {vacationLabel && (
+                        <div className="mt-1 flex items-center gap-1 text-xs text-amber-700">
+                          <Sun size={12} />
+                          <span>{vacationLabel}</span>
+                        </div>
+                      )}
                     </th>
                   );
                 })}

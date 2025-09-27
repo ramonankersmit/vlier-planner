@@ -10,8 +10,9 @@ from html import escape
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote
 
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile
-from pydantic import BaseModel
+import httpx
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Query
+from pydantic import AliasChoices, BaseModel, Field, ConfigDict
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -78,6 +79,11 @@ try:
 except ImportError:  # pragma: no cover
     from version import APP_VERSION  # type: ignore
     import updater  # type: ignore
+
+try:
+    from .school_vacations import fetch_school_vacations
+except ImportError:  # pragma: no cover
+    from school_vacations import fetch_school_vacations  # type: ignore
 
 app = FastAPI(title="Vlier Planner API")
 
@@ -284,6 +290,45 @@ class UpdateRequest(BaseModel):
     silent: bool | None = None
 
 
+class SchoolVacationItemModel(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    name: str
+    region: str
+    startDate: str = Field(
+        ...,
+        validation_alias=AliasChoices("startDate", "start_date"),
+        serialization_alias="startDate",
+    )
+    endDate: str = Field(
+        ...,
+        validation_alias=AliasChoices("endDate", "end_date"),
+        serialization_alias="endDate",
+    )
+    schoolYear: str = Field(
+        ...,
+        validation_alias=AliasChoices("schoolYear", "school_year"),
+        serialization_alias="schoolYear",
+    )
+    source: str
+    label: str
+    rawText: str = Field(
+        ...,
+        validation_alias=AliasChoices("rawText", "raw_text"),
+        serialization_alias="rawText",
+    )
+    notes: Optional[str] = None
+
+
+class SchoolVacationResponse(BaseModel):
+    schoolYear: str
+    source: str
+    retrievedAt: str
+    title: Optional[str] = None
+    vacations: List[SchoolVacationItemModel]
+
+
 def _truncate_notes(text: str | None, limit: int = 2000) -> str | None:
     if not text:
         return None
@@ -344,6 +389,34 @@ def api_install_update(payload: UpdateRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "started", "installerPath": str(installer_path)}
+
+
+@app.get("/api/school-vacations", response_model=SchoolVacationResponse)
+async def api_get_school_vacations(
+    school_year: str = Query(..., alias="schoolYear"),
+) -> dict[str, Any]:
+    try:
+        data = await fetch_school_vacations(school_year)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        logger.warning("Schoolvakanties downloaden mislukt: %s", exc)
+        raise HTTPException(status_code=502, detail="Download van schoolvakanties mislukt") from exc
+
+    vacations_raw = data.get("vacations", [])
+    items = [SchoolVacationItemModel.model_validate(entry) for entry in vacations_raw]
+    items.sort(key=lambda item: (item.startDate, item.endDate, item.region))
+
+    response = SchoolVacationResponse(
+        schoolYear=data.get("schoolYear", school_year),
+        source=data.get("source"),
+        retrievedAt=data.get("retrievedAt"),
+        title=data.get("title"),
+        vacations=items,
+    )
+
+    return response.model_dump()
+
 
 # -----------------------------
 # Endpoints
