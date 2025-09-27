@@ -15,7 +15,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Callable, Final
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -59,6 +59,8 @@ class InstallResult:
 
 
 _CACHE: tuple[float, UpdateInfo | None] | None = None
+_SHUTDOWN_CALLBACK: Callable[[], None] | None = None
+_FORCED_EXIT_DELAY_SECONDS: Final[float] = 30.0
 
 
 def _user_agent() -> str:
@@ -190,6 +192,13 @@ def _fetch_update_info() -> UpdateInfo | None:
         release_notes=notes,
         sha256=checksum,
     )
+
+
+def register_shutdown_callback(callback: Callable[[], None] | None) -> None:
+    """Register a callable that requests a graceful application shutdown."""
+
+    global _SHUTDOWN_CALLBACK
+    _SHUTDOWN_CALLBACK = callback
 
 
 def check_for_update(force: bool = False) -> UpdateInfo | None:
@@ -368,6 +377,28 @@ def _launch_restart_helper(script_path: Path, updates_dir: Path) -> bool:
     return True
 
 
+def _request_app_shutdown() -> None:
+    """Ask the running application to exit, falling back to ``os._exit``."""
+
+    callback = _SHUTDOWN_CALLBACK
+    if callback is None:
+        os._exit(0)
+        return
+
+    try:
+        callback()
+    except Exception as exc:  # pragma: no cover - defensief
+        LOGGER.warning("Automatische afsluitcallback mislukte: %s", exc)
+        os._exit(0)
+        return
+
+    def _force_exit() -> None:
+        LOGGER.info("Geforceerd afsluiten na update")
+        os._exit(0)
+
+    threading.Timer(_FORCED_EXIT_DELAY_SECONDS, _force_exit).start()
+
+
 def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallResult:
     """Download the installer for ``info`` and start the installation.
 
@@ -426,7 +457,7 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
 
     def _terminate() -> None:
         LOGGER.info("Applicatie wordt afgesloten voor update")
-        os._exit(0)
+        _request_app_shutdown()
 
     threading.Timer(2.0, _terminate).start()
     return InstallResult(installer_path=destination, restart_initiated=restart_initiated)
@@ -436,6 +467,7 @@ __all__ = [
     "InstallResult",
     "UpdateError",
     "UpdateInfo",
+    "register_shutdown_callback",
     "check_for_update",
     "install_update",
 ]

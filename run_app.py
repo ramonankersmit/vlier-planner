@@ -218,6 +218,7 @@ _ensure_version_env()
 _configure_logging()
 
 from backend import app as backend_app
+from backend import updater as backend_updater
 
 LOGGER = logging.getLogger(__name__)
 
@@ -393,9 +394,11 @@ def main() -> None:
 
     global _SERVER
     _SERVER = server
+    backend_updater.register_shutdown_callback(_request_shutdown)
     try:
         server.run()
     finally:
+        backend_updater.register_shutdown_callback(None)
         _SERVER = None
         _stop_tray_icon()
 
