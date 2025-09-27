@@ -12,6 +12,7 @@ def test_execute_update_plan_invokes_steps(monkeypatch, tmp_path: Path):
     log_path = tmp_path / "restart-helper.log"
     target_executable = tmp_path / "VlierPlanner.exe"
     installer_path = tmp_path / "VlierPlanner-Setup.exe"
+    helper_executable = tmp_path / "python-helper.exe"
 
     plan_path.write_text(
         json.dumps(
@@ -22,12 +23,14 @@ def test_execute_update_plan_invokes_steps(monkeypatch, tmp_path: Path):
                 "installer_args": ["/VERYSILENT"],
                 "log_path": str(log_path),
                 "script_path": str(script_path),
+                "python_helper_executable": str(helper_executable),
             }
         ),
         encoding="utf-8",
     )
 
     script_path.write_text("Write-Output 'helper'", encoding="utf-8")
+    helper_executable.write_text("helper", encoding="utf-8")
 
     log_calls: list[tuple[Path | None, str]] = []
     monkeypatch.setattr(run_app, "_append_helper_log", lambda path, message: log_calls.append((path, message)))
@@ -61,6 +64,7 @@ def test_execute_update_plan_invokes_steps(monkeypatch, tmp_path: Path):
     assert launch_calls == [(target_executable, log_path)]
     assert plan_path.exists() is False
     assert script_path.exists() is False
+    assert helper_executable.exists() is False
     assert any(message.startswith("Python helper gestart.") for _, message in log_calls)
 
 

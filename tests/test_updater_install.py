@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -432,6 +433,79 @@ def test_launch_restart_helper_succeeds_when_process_keeps_running(monkeypatch, 
     assert updater._launch_restart_helper(plan_paths, tmp_path) is True
     assert sleeps == [0.2]
     assert cleanup_calls == []
+
+
+def test_launch_python_restart_helper_copies_executable(monkeypatch, tmp_path: Path):
+    plan_paths = updater.RestartPlanPaths(
+        plan_path=tmp_path / "restart-plan.json",
+        script_path=tmp_path / "restart-plan.ps1",
+        log_path=tmp_path / "restart-helper.log",
+    )
+
+    plan_paths.plan_path.write_text(json.dumps({}), encoding="utf-8")
+
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    original_executable = app_dir / "VlierPlanner.exe"
+    original_executable.write_bytes(b"binary")
+
+    monkeypatch.setattr(updater.sys, "executable", str(original_executable))
+
+    class DummyUuid:
+        hex = "abc123"
+
+    monkeypatch.setattr(updater.uuid, "uuid4", lambda: DummyUuid())
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(updater.time, "sleep", lambda duration: sleeps.append(duration))
+
+    class DummyProcess:
+        pid = 999
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+    popen_calls: list[list[str]] = []
+
+    def fake_popen(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        popen_calls.append(cmd)
+        return DummyProcess()
+
+    monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
+
+    assert updater._launch_python_restart_helper(plan_paths) is True
+
+    helper_path = plan_paths.plan_path.parent / "python-helper-abc123.exe"
+    assert helper_path.exists()
+    assert helper_path.read_bytes() == original_executable.read_bytes()
+    assert sleeps == [0.2]
+    assert popen_calls == [[str(helper_path), "--apply-update", str(plan_paths.plan_path)]]
+
+    plan_data = json.loads(plan_paths.plan_path.read_text(encoding="utf-8"))
+    assert plan_data["python_helper_executable"] == str(helper_path)
+
+
+def test_cleanup_restart_plan_removes_helper(tmp_path: Path):
+    plan_paths = updater.RestartPlanPaths(
+        plan_path=tmp_path / "restart-plan.json",
+        script_path=tmp_path / "restart-plan.ps1",
+        log_path=tmp_path / "restart-helper.log",
+    )
+
+    helper_path = tmp_path / "python-helper.exe"
+    helper_path.write_text("helper", encoding="utf-8")
+    plan_paths.plan_path.write_text(
+        json.dumps({"python_helper_executable": str(helper_path)}),
+        encoding="utf-8",
+    )
+    plan_paths.script_path.write_text("Write-Output", encoding="utf-8")
+
+    updater._cleanup_restart_plan(plan_paths)
+
+    assert plan_paths.plan_path.exists() is False
+    assert plan_paths.script_path.exists() is False
+    assert helper_path.exists() is False
 def test_should_use_silent_install_defaults_to_true(monkeypatch):
     monkeypatch.delenv("VLIER_UPDATE_SILENT", raising=False)
     assert updater._should_use_silent_install() is True

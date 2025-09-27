@@ -416,6 +416,7 @@ def _wait_for_target_and_launch(target_executable: Path, log_path: Path | None) 
 def _execute_update_plan(plan_path: Path) -> int:
     log_path: Path | None = plan_path.parent / "restart-helper.log"
     script_path: Path | None = None
+    helper_executable: Path | None = None
 
     try:
         try:
@@ -448,6 +449,10 @@ def _execute_update_plan(plan_path: Path) -> int:
         else:
             installer_args = []
 
+        helper_value = plan.get("python_helper_executable")
+        if isinstance(helper_value, str) and helper_value:
+            helper_executable = Path(helper_value)
+
         try:
             original_pid = int(plan.get("original_pid", 0))
         except (TypeError, ValueError):
@@ -465,7 +470,7 @@ def _execute_update_plan(plan_path: Path) -> int:
         _append_helper_log(log_path, f"Onverwachte fout in helper: {exc}")
         return 1
     finally:
-        for cleanup in (plan_path, script_path):
+        for cleanup in (plan_path, script_path, helper_executable):
             if cleanup is None:
                 continue
             try:

@@ -425,6 +425,7 @@ def _write_restart_plan(
         "installer_args": installer_args,
         "log_path": str(log_path),
         "script_path": str(script_path),
+        "python_helper_executable": None,
     }
 
     try:
@@ -492,9 +493,32 @@ def _resolve_powershell_executable() -> Path | None:
 
 
 def _cleanup_restart_plan(plan_paths: RestartPlanPaths) -> None:
+    helper_executable: Path | None = None
+
+    try:
+        raw = plan_paths.plan_path.read_text(encoding="utf-8")
+    except OSError:
+        raw = None
+
+    if raw:
+        try:
+            plan_data = json.loads(raw)
+        except json.JSONDecodeError:
+            plan_data = None
+        else:
+            helper_value = plan_data.get("python_helper_executable") if isinstance(plan_data, dict) else None
+            if isinstance(helper_value, str) and helper_value:
+                helper_executable = Path(helper_value)
+
     for path in (plan_paths.plan_path, plan_paths.script_path):
         try:
             path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    if helper_executable is not None:
+        try:
+            helper_executable.unlink(missing_ok=True)
         except OSError:
             pass
 
@@ -550,10 +574,60 @@ def _launch_python_restart_helper(plan_paths: RestartPlanPaths) -> bool:
     """Fallback helper that reuses the packaged executable in helper mode."""
 
     target_executable = Path(sys.executable).resolve()
+    helper_executable = plan_paths.plan_path.parent / (
+        f"python-helper-{uuid.uuid4().hex}.exe"
+    )
+
+    try:
+        shutil.copy2(target_executable, helper_executable)
+    except OSError as exc:
+        LOGGER.warning("Kon helperkopie niet maken: %s", exc)
+        return False
+
+    try:
+        raw = plan_paths.plan_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        LOGGER.warning("Kon herstartplan niet openen voor helperkopie: %s", exc)
+        try:
+            helper_executable.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+
+    try:
+        plan_data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        LOGGER.warning("Kon herstartplan niet bijwerken voor helperkopie: %s", exc)
+        try:
+            helper_executable.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+
+    if not isinstance(plan_data, dict):
+        LOGGER.warning("Onverwachte structuur in herstartplan; helperkopie wordt verwijderd")
+        try:
+            helper_executable.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+
+    plan_data["python_helper_executable"] = str(helper_executable)
+
+    try:
+        plan_paths.plan_path.write_text(json.dumps(plan_data), encoding="utf-8")
+    except OSError as exc:
+        LOGGER.warning("Kon herstartplan niet opslaan voor helperkopie: %s", exc)
+        try:
+            helper_executable.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+
     try:
         process = subprocess.Popen(  # noqa: S603 - gecontroleerde command
             [
-                str(target_executable),
+                str(helper_executable),
                 "--apply-update",
                 str(plan_paths.plan_path),
             ],
@@ -562,6 +636,10 @@ def _launch_python_restart_helper(plan_paths: RestartPlanPaths) -> bool:
         )
     except Exception as exc:  # pragma: no cover - afhankelijk van platform
         LOGGER.warning("Kon Python-herstarthelper niet starten: %s", exc)
+        try:
+            helper_executable.unlink(missing_ok=True)
+        except OSError:
+            pass
         return False
 
     time.sleep(0.2)
@@ -570,6 +648,10 @@ def _launch_python_restart_helper(plan_paths: RestartPlanPaths) -> bool:
         LOGGER.warning(
             "Python-herstarthelper stopte direct met code %s", exit_code
         )
+        try:
+            helper_executable.unlink(missing_ok=True)
+        except OSError:
+            pass
         return False
 
     LOGGER.info("Python-herstarthelper gestart met proces-ID %s", process.pid)
