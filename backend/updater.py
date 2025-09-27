@@ -408,6 +408,7 @@ def _write_restart_plan(
         "installer_path": str(installer_path),
         "installer_args": installer_args,
         "log_path": str(log_path),
+        "script_path": str(script_path),
     }
 
     try:
@@ -531,6 +532,36 @@ def _launch_restart_helper(plan_paths: RestartPlanPaths, updates_dir: Path) -> b
     return True
 
 
+def _launch_python_restart_helper(plan_paths: RestartPlanPaths) -> bool:
+    """Fallback helper that reuses the packaged executable in helper mode."""
+
+    target_executable = Path(sys.executable).resolve()
+    try:
+        process = subprocess.Popen(  # noqa: S603 - gecontroleerde command
+            [
+                str(target_executable),
+                "--apply-update",
+                str(plan_paths.plan_path),
+            ],
+            cwd=str(plan_paths.plan_path.parent),
+            close_fds=False,
+        )
+    except Exception as exc:  # pragma: no cover - afhankelijk van platform
+        LOGGER.warning("Kon Python-herstarthelper niet starten: %s", exc)
+        return False
+
+    time.sleep(0.2)
+    exit_code = process.poll()
+    if exit_code is not None:
+        LOGGER.warning(
+            "Python-herstarthelper stopte direct met code %s", exit_code
+        )
+        return False
+
+    LOGGER.info("Python-herstarthelper gestart met proces-ID %s", process.pid)
+    return True
+
+
 def _request_app_shutdown() -> None:
     """Ask the running application to exit, falling back to ``os._exit``."""
 
@@ -606,7 +637,14 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
                 helper_plan.script_path,
             )
         else:
-            _cleanup_restart_plan(helper_plan)
+            python_helper_started = _launch_python_restart_helper(helper_plan)
+            if python_helper_started:
+                restart_initiated = True
+                LOGGER.info(
+                    "Automatische herstart wordt uitgevoerd door de Python-helper"
+                )
+            else:
+                _cleanup_restart_plan(helper_plan)
 
     if not restart_initiated:
         try:
@@ -622,7 +660,10 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
         LOGGER.info("Applicatie wordt afgesloten voor update")
         _request_app_shutdown()
 
-    threading.Timer(1.0, _terminate).start()
+    if restart_initiated:
+        threading.Timer(1.0, _terminate).start()
+    else:
+        _terminate()
     return InstallResult(installer_path=destination, restart_initiated=restart_initiated)
 
 

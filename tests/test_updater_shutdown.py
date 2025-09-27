@@ -103,6 +103,7 @@ def test_write_restart_plan_records_expected_metadata(monkeypatch, tmp_path: Pat
     assert data["installer_path"] == str(installer)
     assert data["installer_args"] == ["/VERYSILENT"]
     assert Path(data["log_path"]) == updates_dir / "restart-helper.log"
+    assert Path(data["script_path"]) == plan_paths.script_path
     assert plan_paths.log_path == updates_dir / "restart-helper.log"
     assert plan_paths.script_path.exists()
     assert plan_paths.plan_path.exists()

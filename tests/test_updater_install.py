@@ -75,6 +75,11 @@ def test_install_update_uses_restart_helper_for_installer(monkeypatch, tmp_path:
 
     monkeypatch.setattr(updater, "_launch_restart_helper", fake_launch)
 
+    def fail_python_helper(plan: updater.RestartPlanPaths) -> bool:
+        raise AssertionError("Python helper should not be used when PowerShell succeeds")
+
+    monkeypatch.setattr(updater, "_launch_python_restart_helper", fail_python_helper)
+
     cleanup_calls: list[updater.RestartPlanPaths] = []
 
     monkeypatch.setattr(updater, "_cleanup_restart_plan", lambda plan: cleanup_calls.append(plan))
@@ -152,6 +157,14 @@ def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path
 
     monkeypatch.setattr(updater, "_launch_restart_helper", fake_launch)
 
+    python_helper_calls: list[updater.RestartPlanPaths] = []
+
+    def fail_python_helper(plan: updater.RestartPlanPaths) -> bool:
+        python_helper_calls.append(plan)
+        return False
+
+    monkeypatch.setattr(updater, "_launch_python_restart_helper", fail_python_helper)
+
     cleanup_calls: list[updater.RestartPlanPaths] = []
 
     monkeypatch.setattr(updater, "_cleanup_restart_plan", lambda plan: cleanup_calls.append(plan))
@@ -175,6 +188,64 @@ def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path
 
     monkeypatch.setattr(updater, "_request_app_shutdown", fake_shutdown)
 
+    def fail_timer(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("Timer should not be used when helper is unavailable")
+
+    monkeypatch.setattr(updater.threading, "Timer", fail_timer)
+
+    result = updater.install_update(info)
+
+    assert result.restart_initiated is False
+    assert result.installer_path == installer_path
+    assert helper_calls and helper_calls[0][1] == installer_path
+    assert helper_calls[0][2] == ["/VERYSILENT", "/NORESTART"]
+    assert python_helper_calls and python_helper_calls[0].plan_path == tmp_path / "restart-plan.json"
+    assert popen_calls == [[str(installer_path), "/VERYSILENT", "/NORESTART"]]
+    assert shutdown_requests == [None]
+    assert cleanup_calls and cleanup_calls[0].plan_path == tmp_path / "restart-plan.json"
+
+
+def test_install_update_falls_back_to_python_helper(monkeypatch, tmp_path: Path):
+    info = _make_update_info()
+    updates_dir, installer_path = _prepare_common_mocks(monkeypatch, tmp_path)
+
+    def fake_write_helper(
+        target_executable: Path,
+        helper_updates_dir: Path,
+        helper_installer_path: Path,
+        helper_args: list[str],
+    ) -> updater.RestartPlanPaths:
+        plan_path = tmp_path / "restart-plan.json"
+        script_path = tmp_path / "restart-plan.ps1"
+        log_path = tmp_path / "restart-helper.log"
+        return updater.RestartPlanPaths(plan_path=plan_path, script_path=script_path, log_path=log_path)
+
+    monkeypatch.setattr(updater, "_write_restart_plan", fake_write_helper)
+    monkeypatch.setattr(updater, "_launch_restart_helper", lambda *args, **kwargs: False)
+
+    python_helper_calls: list[updater.RestartPlanPaths] = []
+
+    def python_helper(plan: updater.RestartPlanPaths) -> bool:
+        python_helper_calls.append(plan)
+        return True
+
+    monkeypatch.setattr(updater, "_launch_python_restart_helper", python_helper)
+
+    cleanup_calls: list[updater.RestartPlanPaths] = []
+    monkeypatch.setattr(updater, "_cleanup_restart_plan", lambda plan: cleanup_calls.append(plan))
+
+    def fail_popen(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("Installer should not be started directly when Python helper succeeds")
+
+    monkeypatch.setattr(updater.subprocess, "Popen", fail_popen)
+
+    shutdown_requests: list[None] = []
+
+    def fake_shutdown() -> None:
+        shutdown_requests.append(None)
+
+    monkeypatch.setattr(updater, "_request_app_shutdown", fake_shutdown)
+
     class DummyTimer:
         def __init__(self, interval: float, func):
             self.interval = interval
@@ -185,17 +256,23 @@ def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path
             self.started = True
             self.func()
 
-    monkeypatch.setattr(updater.threading, "Timer", lambda interval, func: DummyTimer(interval, func))
+    timers: list[DummyTimer] = []
+
+    def fake_timer(interval: float, func):
+        timer = DummyTimer(interval, func)
+        timers.append(timer)
+        return timer
+
+    monkeypatch.setattr(updater.threading, "Timer", fake_timer)
 
     result = updater.install_update(info)
 
-    assert result.restart_initiated is False
+    assert result.restart_initiated is True
     assert result.installer_path == installer_path
-    assert helper_calls and helper_calls[0][1] == installer_path
-    assert helper_calls[0][2] == ["/VERYSILENT", "/NORESTART"]
-    assert popen_calls == [[str(installer_path), "/VERYSILENT", "/NORESTART"]]
+    assert python_helper_calls and python_helper_calls[0].plan_path == tmp_path / "restart-plan.json"
+    assert cleanup_calls == []
     assert shutdown_requests == [None]
-    assert cleanup_calls and cleanup_calls[0].plan_path == tmp_path / "restart-plan.json"
+    assert timers and timers[0].interval == 1.0
 
 
 def test_launch_restart_helper_detects_immediate_exit(monkeypatch, tmp_path: Path):

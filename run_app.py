@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
+import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from configparser import ConfigParser, Error as ConfigParserError
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
@@ -244,6 +248,188 @@ def open_browser(host: str, port: int, delay: float = 1.0) -> None:
     threading.Timer(delay, webbrowser.open, args=(url, 2)).start()
 
 
+def _append_helper_log(log_path: Path | None, message: str) -> None:
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{timestamp}] {message}"
+
+    if log_path is not None:
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+        except OSError:
+            pass
+
+    LOGGER.info(message)
+
+
+def _process_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+    return True
+
+
+def _wait_for_process_exit(original_pid: int, log_path: Path | None) -> None:
+    if original_pid <= 0:
+        _append_helper_log(log_path, "Geen geldig proces-ID ontvangen; ga direct verder.")
+        return
+
+    _append_helper_log(log_path, f"Wachten tot proces {original_pid} wordt afgesloten.")
+    deadline = time.monotonic() + 300.0
+
+    while time.monotonic() < deadline:
+        if not _process_running(original_pid):
+            _append_helper_log(log_path, "Origineel proces is gestopt.")
+            return
+        time.sleep(0.5)
+
+    if _process_running(original_pid):
+        _append_helper_log(log_path, "Origineel proces draait nog na wachttijd; ga verder met herstart.")
+    else:
+        _append_helper_log(log_path, "Origineel proces is gestopt.")
+
+
+def _run_installer(installer_path: Path, installer_args: list[str], log_path: Path | None) -> None:
+    if not installer_path.exists():
+        _append_helper_log(log_path, f"Installerbestand niet gevonden: {installer_path}")
+        return
+
+    _append_helper_log(log_path, "Installer wordt gestart.")
+    try:
+        completed = subprocess.run(  # noqa: S603 - gecontroleerde command
+            [str(installer_path), *installer_args],
+            check=False,
+            cwd=str(installer_path.parent),
+        )
+    except Exception as exc:  # pragma: no cover - afhankelijk van platform
+        _append_helper_log(log_path, f"Fout tijdens start van installer: {exc}")
+        return
+
+    _append_helper_log(
+        log_path,
+        f"Installer afgerond met exitcode {completed.returncode}.",
+    )
+
+
+def _wait_for_target_and_launch(target_executable: Path, log_path: Path | None) -> None:
+    deadline = time.monotonic() + 300.0
+    missing_logged = False
+    locked_logged = False
+
+    while time.monotonic() < deadline:
+        if not target_executable.exists():
+            if not missing_logged:
+                _append_helper_log(log_path, "Doelbestand nog niet gevonden; opnieuw proberen.")
+                missing_logged = True
+            time.sleep(0.5)
+            continue
+
+        try:
+            with target_executable.open("rb"):
+                pass
+        except OSError:
+            if not locked_logged:
+                _append_helper_log(
+                    log_path,
+                    "Bestand nog vergrendeld; wachten tot het wordt vrijgegeven.",
+                )
+                locked_logged = True
+            time.sleep(0.5)
+            continue
+
+        try:
+            subprocess.Popen(  # noqa: S603 - gecontroleerde command
+                [str(target_executable)],
+                cwd=str(target_executable.parent),
+                close_fds=False,
+            )
+        except Exception as exc:  # pragma: no cover - afhankelijk van platform
+            _append_helper_log(log_path, f"Fout tijdens startpoging: {exc}")
+            time.sleep(0.5)
+            continue
+
+        _append_helper_log(log_path, "Herstart gelukt.")
+        return
+
+    _append_helper_log(
+        log_path,
+        "Kon de applicatie niet automatisch herstarten binnen de wachttijd.",
+    )
+
+
+def _execute_update_plan(plan_path: Path) -> int:
+    log_path: Path | None = plan_path.parent / "restart-helper.log"
+    script_path: Path | None = None
+
+    try:
+        try:
+            raw = plan_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            _append_helper_log(log_path, f"Herstartplan niet gevonden: {plan_path}")
+            return 1
+        except OSError as exc:
+            _append_helper_log(log_path, f"Kon herstartplan niet openen: {exc}")
+            return 1
+
+        try:
+            plan = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            _append_helper_log(log_path, f"Kon herstartplan niet lezen: {exc}")
+            return 1
+
+        log_path = Path(plan.get("log_path", log_path))
+        script_value = plan.get("script_path")
+        if isinstance(script_value, str) and script_value:
+            script_path = Path(script_value)
+
+        target_executable = Path(str(plan.get("target_executable", "")))
+        installer_path = Path(str(plan.get("installer_path", "")))
+        installer_args_raw = plan.get("installer_args", [])
+        if isinstance(installer_args_raw, list):
+            installer_args = [str(arg) for arg in installer_args_raw]
+        elif installer_args_raw:
+            installer_args = [str(installer_args_raw)]
+        else:
+            installer_args = []
+
+        try:
+            original_pid = int(plan.get("original_pid", 0))
+        except (TypeError, ValueError):
+            original_pid = 0
+
+        _append_helper_log(
+            log_path,
+            f"Python helper gestart. Doel: {target_executable}; Installer: {installer_path}",
+        )
+
+        _wait_for_process_exit(original_pid, log_path)
+        _run_installer(installer_path, installer_args, log_path)
+        _wait_for_target_and_launch(target_executable, log_path)
+    except Exception as exc:  # pragma: no cover - defensief
+        _append_helper_log(log_path, f"Onverwachte fout in helper: {exc}")
+        return 1
+    finally:
+        for cleanup in (plan_path, script_path):
+            if cleanup is None:
+                continue
+            try:
+                cleanup.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    return 0
+
+
 def _iter_icon_candidates() -> list[Path]:
     roots: list[Path] = []
 
@@ -372,6 +558,14 @@ def _start_tray_icon(host: str, port: int) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] == "--apply-update":
+        if len(sys.argv) < 3:
+            LOGGER.error("--apply-update vereist een pad naar het herstartplan")
+            raise SystemExit(2)
+
+        plan_path = Path(sys.argv[2])
+        raise SystemExit(_execute_update_plan(plan_path))
+
     base_dir = Path(__file__).resolve().parent
     os.chdir(base_dir)
 
