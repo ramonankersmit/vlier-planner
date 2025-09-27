@@ -1,43 +1,53 @@
 import io
+import sys
+from pathlib import Path
 from typing import Iterator
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.models import DocMeta, DocRow
 import backend.app as backend_app
+from backend.services.data_store import data_store
 
 
 @pytest.fixture()
-def api_client(tmp_path):
-    original_storage_base = backend_app.STORAGE_BASE
-    original_storage = backend_app.STORAGE
-    original_state_file = backend_app.STATE_FILE
-    original_pending = backend_app.PENDING_DIR
-
-    backend_app.STORAGE_BASE = tmp_path
-    backend_app.STORAGE = tmp_path / "uploads"
-    backend_app.STATE_FILE = tmp_path / "state.json"
-    backend_app.PENDING_DIR = tmp_path / "pending"
+def app_test_env(tmp_path):
+    original_base = data_store.base_path
+    data_store.set_base_path(tmp_path)
     backend_app._ensure_state_dir()
     backend_app.GUIDES.clear()
     backend_app.DOCS.clear()
     backend_app.PENDING_PARSES.clear()
+    backend_app._load_state()
+    backend_app._load_pending()
 
-    client = TestClient(backend_app.app)
-
-    yield client
+    yield tmp_path
 
     backend_app.GUIDES.clear()
     backend_app.DOCS.clear()
     backend_app.PENDING_PARSES.clear()
-    backend_app.STORAGE = original_storage
-    backend_app.STATE_FILE = original_state_file
-    backend_app.PENDING_DIR = original_pending
-    backend_app.STORAGE_BASE = original_storage_base
+    data_store.set_base_path(original_base)
     backend_app._ensure_state_dir()
     backend_app._load_state()
     backend_app._load_pending()
+
+
+@pytest.fixture()
+def api_client(app_test_env):
+    return TestClient(backend_app.app)
+
+
+@pytest.fixture()
+def normalized_api_client(app_test_env):
+    from backend import main as backend_main
+
+    return TestClient(backend_main.app)
 
 
 def _scenario_initial() -> tuple[DocMeta, list[DocRow]]:
@@ -332,3 +342,35 @@ def test_week_duplicate_rows_are_disabled(
         "duplicateDate": False,
         "duplicateWeek": True,
     }
+
+
+def test_normalized_api_uses_shared_store(
+    app_test_env, normalized_api_client: TestClient
+):
+    response = normalized_api_client.post(
+        "/api/uploads",
+        files={
+            "file": (
+                "normalized.docx",
+                io.BytesIO(b"normalized"),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    parse_id = payload["parse_id"]
+
+    parse_response = normalized_api_client.get(f"/api/parses/{parse_id}")
+    assert parse_response.status_code == 200
+    parse_data = parse_response.json()
+    assert parse_data["meta"]["source"] == "normalized.docx"
+
+    units_response = normalized_api_client.get("/api/study-units")
+    assert units_response.status_code == 200
+    assert units_response.json()
+
+    stored_file = data_store.normalized_dir / f"{parse_id}.json"
+    assert stored_file.exists()
+    assert stored_file.is_relative_to(app_test_env)
+    assert data_store.base_path == app_test_env
