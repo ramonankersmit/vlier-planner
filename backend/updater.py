@@ -215,26 +215,78 @@ def _escape_for_powershell(value: str) -> str:
     return value.replace("`", "``").replace('"', '`"')
 
 
-def _write_restart_helper(target_executable: Path, updates_dir: Path) -> Path | None:
+def _write_restart_helper(
+    target_executable: Path, updates_dir: Path, installer_pid: int | None
+) -> Path | None:
     script_id = uuid.uuid4().hex
     script_path = updates_dir / f"apply-update-{script_id}.ps1"
 
     target_literal = _escape_for_powershell(str(target_executable))
+    log_literal = _escape_for_powershell(str(updates_dir / "restart-helper.log"))
+    installer_literal = "$null" if installer_pid is None else str(installer_pid)
 
     script_contents = textwrap.dedent(
         f"""
         $TargetExe = "{target_literal}"
         $OriginalPid = {os.getpid()}
+        $InstallerPid = {installer_literal}
+        $LogFile = "{log_literal}"
+
+        function Write-Log([string] $Message) {{
+            try {{
+                $timestamp = (Get-Date).ToString("s")
+                Add-Content -LiteralPath $LogFile -Value "[$timestamp] $Message"
+            }} catch {{}}
+        }}
+
+        Write-Log "Helper gestart. Doel: $TargetExe; InstallerPid: $InstallerPid"
 
         $deadline = (Get-Date).AddMinutes(5)
         while ((Get-Process -Id $OriginalPid -ErrorAction SilentlyContinue) -ne $null -and (Get-Date) -lt $deadline) {{
             Start-Sleep -Milliseconds 250
         }}
 
+        if ((Get-Process -Id $OriginalPid -ErrorAction SilentlyContinue) -ne $null) {{
+            Write-Log "Origineel proces draait nog na wachttijd; ga verder met herstart."
+        }} else {{
+            Write-Log "Origineel proces is gestopt."
+        }}
+
+        if ($InstallerPid -ne $null) {{
+            Write-Log "Wachten tot installer $InstallerPid klaar is."
+            $installDeadline = (Get-Date).AddMinutes(15)
+            $proc = $null
+            while ((Get-Date) -lt $installDeadline) {{
+                try {{
+                    $proc = Get-Process -Id $InstallerPid -ErrorAction SilentlyContinue
+                }} catch {{
+                    $proc = $null
+                }}
+
+                if ($proc -eq $null) {{
+                    Write-Log "Installer niet meer actief."
+                    break
+                }}
+
+                Start-Sleep -Milliseconds 500
+            }}
+
+            if ($proc -ne $null) {{
+                Write-Log "Installer nog actief na timeout; ga toch verder."
+            }}
+        }}
+
         $refreshDeadline = (Get-Date).AddMinutes(5)
+        $missingLogged = $false
+        $lockedLogged = $false
+        $launched = $false
         while ((Get-Date) -lt $refreshDeadline) {{
             try {{
                 if (-not (Test-Path -LiteralPath $TargetExe)) {{
+                    if (-not $missingLogged) {{
+                        Write-Log "Doelbestand nog niet gevonden; opnieuw proberen."
+                        $missingLogged = $true
+                    }}
                     Start-Sleep -Milliseconds 500
                     continue
                 }}
@@ -243,6 +295,10 @@ def _write_restart_helper(target_executable: Path, updates_dir: Path) -> Path | 
                 try {{
                     $stream = [System.IO.File]::Open($TargetExe, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
                 }} catch {{
+                    if (-not $lockedLogged) {{
+                        Write-Log "Bestand nog vergrendeld; wachten tot het wordt vrijgegeven."
+                        $lockedLogged = $true
+                    }}
                     Start-Sleep -Milliseconds 500
                     continue
                 }}
@@ -251,14 +307,23 @@ def _write_restart_helper(target_executable: Path, updates_dir: Path) -> Path | 
                     $stream.Close()
                 }}
 
+                Write-Log "Startproces wordt uitgevoerd."
                 Start-Process -FilePath $TargetExe -WorkingDirectory (Split-Path -Path $TargetExe -Parent)
+                $launched = $true
+                Write-Log "Herstart gelukt."
                 break
             }} catch {{
+                Write-Log "Fout tijdens startpoging: $($_.Exception.Message)"
                 Start-Sleep -Milliseconds 500
             }}
         }}
 
+        if (-not $launched) {{
+            Write-Log "Kon de applicatie niet automatisch herstarten binnen de wachttijd."
+        }}
+
         try {{
+            Write-Log "Opruimen van helper-script."
             Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force
         }} catch {{}}
         """
@@ -340,20 +405,24 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
 
     restart_initiated = False
     target_executable = Path(sys.executable).resolve()
-    helper_script = _write_restart_helper(target_executable, updates_dir)
-    if helper_script is not None:
-        restart_initiated = _launch_restart_helper(helper_script, updates_dir)
-        if restart_initiated:
-            LOGGER.info("Automatische herstart wordt uitgevoerd via %s", helper_script)
-
     try:
-        subprocess.Popen(  # noqa: S603,S607 - gecontroleerde command
+        installer_proc = subprocess.Popen(  # noqa: S603,S607 - gecontroleerde command
             [str(destination), *flags],
             shell=False,
             close_fds=True,
         )
     except Exception as exc:  # pragma: no cover - afhankelijk van platform
         raise UpdateError(f"Kon installer niet starten: {exc}") from exc
+
+    helper_script = _write_restart_helper(
+        target_executable,
+        updates_dir,
+        getattr(installer_proc, "pid", None),
+    )
+    if helper_script is not None:
+        restart_initiated = _launch_restart_helper(helper_script, updates_dir)
+        if restart_initiated:
+            LOGGER.info("Automatische herstart wordt uitgevoerd via %s", helper_script)
 
     def _terminate() -> None:
         LOGGER.info("Applicatie wordt afgesloten voor update")
