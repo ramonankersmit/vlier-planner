@@ -415,3 +415,28 @@ def test_launch_restart_helper_succeeds_when_process_keeps_running(monkeypatch, 
     assert updater._launch_restart_helper(plan_paths, tmp_path) is True
     assert sleeps == [0.2]
     assert cleanup_calls == []
+def test_should_use_silent_install_defaults_to_true(monkeypatch):
+    monkeypatch.delenv("VLIER_UPDATE_SILENT", raising=False)
+    assert updater._should_use_silent_install() is True
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("0", False),
+        ("false", False),
+        ("no", False),
+        ("off", False),
+        ("1", True),
+        ("true", True),
+        ("yes", True),
+        ("on", True),
+        ("unexpected", True),
+        ("   ", True),
+    ],
+)
+def test_should_use_silent_install_env_overrides(monkeypatch, value, expected):
+    monkeypatch.setenv("VLIER_UPDATE_SILENT", value)
+    assert updater._should_use_silent_install() is expected
+
+

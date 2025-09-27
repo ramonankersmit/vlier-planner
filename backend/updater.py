@@ -70,6 +70,8 @@ class RestartPlanPaths:
 _CACHE: tuple[float, UpdateInfo | None] | None = None
 _SHUTDOWN_CALLBACK: Callable[[], None] | None = None
 _FORCED_EXIT_DELAY_SECONDS: Final[float] = 30.0
+_TRUE_VALUES: Final[set[str]] = {"1", "true", "yes", "on"}
+_FALSE_VALUES: Final[set[str]] = {"0", "false", "no", "off"}
 
 
 def _user_agent() -> str:
@@ -226,7 +228,21 @@ def check_for_update(force: bool = False) -> UpdateInfo | None:
 
 
 def _should_use_silent_install() -> bool:
-    return os.getenv("VLIER_UPDATE_SILENT", "").strip().lower() in {"1", "true", "yes", "on"}
+    value = os.getenv("VLIER_UPDATE_SILENT")
+    if value is None:
+        return True
+
+    lowered = value.strip().lower()
+    if not lowered:
+        return True
+
+    if lowered in _TRUE_VALUES:
+        return True
+
+    if lowered in _FALSE_VALUES:
+        return False
+
+    return True
 
 
 def _powershell_quote(value: str) -> str:

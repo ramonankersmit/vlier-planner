@@ -328,11 +328,19 @@ export async function apiCheckForUpdate(): Promise<UpdateCheckResponse> {
   return response.json();
 }
 
-export async function apiInstallUpdate(version: string): Promise<UpdateInstallResponse> {
+export async function apiInstallUpdate(
+  version: string,
+  options?: { silent?: boolean }
+): Promise<UpdateInstallResponse> {
+  const payload = {
+    version,
+    silent: options?.silent ?? true,
+  };
+
   const response = await fetch(`${BASE}/api/system/update`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ version }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const message = await response.text();
