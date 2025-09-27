@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import logging
 import os
@@ -232,6 +233,21 @@ _TRAY_ICON: TrayIcon | None = None
 
 FALSE_VALUES = {"0", "false", "no", "off"}
 
+_IS_WINDOWS = os.name == "nt"
+_ERROR_ACCESS_DENIED = 5
+_PROCESS_QUERY_INFORMATION = 0x0400
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_SYNCHRONIZE = 0x00100000
+_PROCESS_ACCESS_FLAGS = (
+    _PROCESS_QUERY_INFORMATION | _PROCESS_QUERY_LIMITED_INFORMATION | _SYNCHRONIZE
+)
+_STILL_ACTIVE = 259
+
+if _IS_WINDOWS:  # pragma: no cover - afhankelijk van platform
+    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
+else:
+    _KERNEL32 = None
+
 
 def should_enable(value: str | None, default: bool = True) -> bool:
     if value is None:
@@ -263,15 +279,45 @@ def _append_helper_log(log_path: Path | None, message: str) -> None:
     LOGGER.info(message)
 
 
+def _windows_process_running(pid: int) -> bool:
+    if _KERNEL32 is None:
+        return False
+
+    try:
+        ctypes.set_last_error(0)
+    except AttributeError:  # pragma: no cover - afhankelijk van platform
+        pass
+
+    handle = _KERNEL32.OpenProcess(_PROCESS_ACCESS_FLAGS, False, pid)
+    if not handle:
+        error = ctypes.get_last_error()
+        if error == _ERROR_ACCESS_DENIED:
+            return True
+        return False
+
+    try:
+        exit_code = ctypes.c_ulong()
+        if not _KERNEL32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return True
+        return exit_code.value == _STILL_ACTIVE
+    finally:
+        _KERNEL32.CloseHandle(handle)
+
+
 def _process_running(pid: int) -> bool:
     if pid <= 0:
         return False
+
+    if _IS_WINDOWS:
+        return _windows_process_running(pid)
 
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
+        return True
+    except ValueError:
         return True
     except OSError:
         return False
