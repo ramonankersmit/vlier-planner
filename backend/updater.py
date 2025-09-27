@@ -225,20 +225,31 @@ def _escape_for_powershell(value: str) -> str:
 
 
 def _write_restart_helper(
-    target_executable: Path, updates_dir: Path, installer_pid: int | None
+    target_executable: Path,
+    updates_dir: Path,
+    installer_path: Path,
+    installer_args: list[str],
 ) -> Path | None:
     script_id = uuid.uuid4().hex
     script_path = updates_dir / f"apply-update-{script_id}.ps1"
 
     target_literal = _escape_for_powershell(str(target_executable))
     log_literal = _escape_for_powershell(str(updates_dir / "restart-helper.log"))
-    installer_literal = "$null" if installer_pid is None else str(installer_pid)
+    installer_literal = _escape_for_powershell(str(installer_path))
+    if installer_args:
+        escaped_args = ", ".join(
+            f'"{_escape_for_powershell(value)}"' for value in installer_args
+        )
+        installer_args_literal = f"@({escaped_args})"
+    else:
+        installer_args_literal = "@()"
 
     script_contents = textwrap.dedent(
         f"""
         $TargetExe = "{target_literal}"
         $OriginalPid = {os.getpid()}
-        $InstallerPid = {installer_literal}
+        $InstallerPath = "{installer_literal}"
+        $InstallerArgs = {installer_args_literal}
         $LogFile = "{log_literal}"
 
         function Write-Log([string] $Message) {{
@@ -248,7 +259,7 @@ def _write_restart_helper(
             }} catch {{}}
         }}
 
-        Write-Log "Helper gestart. Doel: $TargetExe; InstallerPid: $InstallerPid"
+        Write-Log "Helper gestart. Doel: $TargetExe; Installer: $InstallerPath"
 
         $deadline = (Get-Date).AddMinutes(5)
         while ((Get-Process -Id $OriginalPid -ErrorAction SilentlyContinue) -ne $null -and (Get-Date) -lt $deadline) {{
@@ -261,27 +272,21 @@ def _write_restart_helper(
             Write-Log "Origineel proces is gestopt."
         }}
 
-        if ($InstallerPid -ne $null) {{
-            Write-Log "Wachten tot installer $InstallerPid klaar is."
-            $installDeadline = (Get-Date).AddMinutes(15)
-            $proc = $null
-            while ((Get-Date) -lt $installDeadline) {{
-                try {{
-                    $proc = Get-Process -Id $InstallerPid -ErrorAction SilentlyContinue
-                }} catch {{
-                    $proc = $null
-                }}
-
-                if ($proc -eq $null) {{
-                    Write-Log "Installer niet meer actief."
-                    break
-                }}
-
-                Start-Sleep -Milliseconds 500
+        if (-not (Test-Path -LiteralPath $InstallerPath)) {{
+            Write-Log "Installerbestand niet gevonden: $InstallerPath"
+        }} else {{
+            Write-Log "Installer wordt gestart."
+            $installProcess = $null
+            try {{
+                $installProcess = Start-Process -FilePath $InstallerPath -ArgumentList $InstallerArgs -Wait -PassThru
+            }} catch {{
+                Write-Log "Fout tijdens start van installer: $($_.Exception.Message)"
             }}
 
-            if ($proc -ne $null) {{
-                Write-Log "Installer nog actief na timeout; ga toch verder."
+            if ($installProcess -ne $null) {{
+                Write-Log "Installer afgerond met exitcode $($installProcess.ExitCode)."
+            }} else {{
+                Write-Log "Installer leek niet te starten; ga verder met herstart."
             }}
         }}
 
@@ -460,30 +465,42 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
 
     restart_initiated = False
     target_executable = Path(sys.executable).resolve()
-    try:
-        installer_proc = subprocess.Popen(  # noqa: S603,S607 - gecontroleerde command
-            [str(destination), *flags],
-            shell=False,
-            close_fds=True,
-        )
-    except Exception as exc:  # pragma: no cover - afhankelijk van platform
-        raise UpdateError(f"Kon installer niet starten: {exc}") from exc
 
     helper_script = _write_restart_helper(
         target_executable,
         updates_dir,
-        getattr(installer_proc, "pid", None),
+        destination,
+        flags,
     )
+
     if helper_script is not None:
         restart_initiated = _launch_restart_helper(helper_script, updates_dir)
         if restart_initiated:
-            LOGGER.info("Automatische herstart wordt uitgevoerd via %s", helper_script)
+            LOGGER.info(
+                "Automatische herstart en installatie worden uitgevoerd via %s",
+                helper_script,
+            )
+        else:
+            try:
+                helper_script.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    if not restart_initiated:
+        try:
+            subprocess.Popen(  # noqa: S603,S607 - gecontroleerde command
+                [str(destination), *flags],
+                shell=False,
+                close_fds=True,
+            )
+        except Exception as exc:  # pragma: no cover - afhankelijk van platform
+            raise UpdateError(f"Kon installer niet starten: {exc}") from exc
 
     def _terminate() -> None:
         LOGGER.info("Applicatie wordt afgesloten voor update")
         _request_app_shutdown()
 
-    threading.Timer(2.0, _terminate).start()
+    threading.Timer(1.0, _terminate).start()
     return InstallResult(installer_path=destination, restart_initiated=restart_initiated)
 
 
