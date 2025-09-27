@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -78,46 +79,28 @@ def test_request_app_shutdown_callback_failure(monkeypatch):
     assert exit_calls == [0]
 
 
-def test_resolve_powershell_uses_standard_path(monkeypatch):
-    recorded: list[str] = []
+def test_write_restart_plan_records_expected_metadata(monkeypatch, tmp_path: Path):
+    updates_dir = tmp_path / "updates"
+    updates_dir.mkdir()
+    target = tmp_path / "VlierPlanner.exe"
+    installer = updates_dir / "installer.exe"
+    target.write_text("binary", encoding="utf-8")
+    installer.write_text("installer", encoding="utf-8")
 
-    def fake_which(name: str) -> str | None:
-        recorded.append(name)
-        return None
+    monkeypatch.setattr(updater.os, "getpid", lambda: 4242)
 
-    monkeypatch.setattr(updater.shutil, "which", fake_which)
+    plan_path = updater._write_restart_plan(
+        target,
+        updates_dir,
+        installer,
+        ["/VERYSILENT"],
+    )
 
-    expected = Path(r"C:\\Windows") / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-    monkeypatch.setenv("SYSTEMROOT", r"C:\\Windows")
-
-    def fake_exists(self: Path) -> bool:  # type: ignore[override]
-        return Path(self) == expected
-
-    monkeypatch.setattr(updater.Path, "exists", fake_exists, raising=False)
-
-    resolved = updater._resolve_powershell_executable()
-
-    assert resolved == str(expected)
-    assert recorded[:2] == ["powershell.exe", "powershell"]
-
-
-def test_resolve_powershell_falls_back_to_pwsh(monkeypatch):
-    lookup: dict[str, str | None] = {
-        "powershell.exe": None,
-        "powershell": None,
-        "pwsh.exe": r"C:\\Program Files\\PowerShell\\7\\pwsh.exe",
-        "pwsh": None,
-    }
-
-    def fake_which(name: str) -> str | None:
-        return lookup.get(name)
-
-    monkeypatch.setattr(updater.shutil, "which", fake_which)
-    monkeypatch.delenv("SYSTEMROOT", raising=False)
-    monkeypatch.delenv("SystemRoot", raising=False)
-    monkeypatch.delenv("WINDIR", raising=False)
-    monkeypatch.setattr(updater.Path, "exists", lambda self: False, raising=False)
-
-    resolved = updater._resolve_powershell_executable()
-
-    assert resolved == lookup["pwsh.exe"]
+    assert plan_path is not None
+    data = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert data["original_pid"] == 4242
+    assert data["target_executable"] == str(target)
+    assert data["installer_path"] == str(installer)
+    assert data["installer_args"] == ["/VERYSILENT"]
+    assert Path(data["log_path"]) == updates_dir / "restart-helper.log"
+    assert (updates_dir / "restart-helper.log").read_text(encoding="utf-8") == ""

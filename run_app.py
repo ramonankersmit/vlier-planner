@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import ctypes
+from ctypes import wintypes
+import json
 import logging
 import os
+import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from configparser import ConfigParser, Error as ConfigParserError
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
@@ -46,6 +52,174 @@ _ICON_SEARCH_DIRECTORIES = (
     "backend/static",
     "backend/static/dist",
 )
+
+
+def _helper_log(log_path: Path, message: str) -> None:
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{timestamp}] {message}"
+
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{line}\n")
+    except OSError:
+        pass
+
+    logging.getLogger(__name__).info("restart-helper: %s", message)
+
+
+def _is_process_running(pid: int) -> bool:
+    if sys.platform != "win32" or pid <= 0:
+        return False
+
+    kernel32 = ctypes.windll.kernel32
+    kernel32.SetLastError(0)
+    process_query_information = 0x0400
+    process_query_limited_information = 0x1000
+    synchronize = 0x00100000
+    access = process_query_information | process_query_limited_information | synchronize
+
+    handle = kernel32.OpenProcess(access, False, pid)
+    if not handle:
+        error = kernel32.GetLastError()
+        error_invalid_parameter = 87
+        if error == error_invalid_parameter:
+            return False
+        return True
+
+    try:
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return True
+        still_active = 259
+        return exit_code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _wait_for_process_exit(pid: int, log_path: Path) -> None:
+    _helper_log(log_path, f"Wachten tot proces {pid} wordt afgesloten.")
+    deadline = time.time() + 5 * 60
+
+    while time.time() < deadline:
+        if not _is_process_running(pid):
+            _helper_log(log_path, "Origineel proces is gestopt.")
+            return
+        time.sleep(0.25)
+
+    if _is_process_running(pid):
+        _helper_log(
+            log_path,
+            "Origineel proces draait nog na wachttijd; ga verder met herstart.",
+        )
+    else:
+        _helper_log(log_path, "Origineel proces is gestopt.")
+
+
+def _run_update_plan(plan_path: Path) -> int:
+    _configure_logging()
+    logger = logging.getLogger(__name__)
+
+    if sys.platform != "win32":
+        logger.warning("Updatehelper wordt alleen op Windows ondersteund")
+        return 1
+
+    try:
+        plan_data = json.loads(plan_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # pragma: no cover - defensief
+        logger.error("Kon herstartplan niet lezen: %s", exc)
+        return 1
+
+    log_path = Path(plan_data.get("log_path", plan_path.with_suffix(".log")))
+
+    raw_args = plan_data.get("installer_args", [])
+    if isinstance(raw_args, list):
+        installer_args = [str(value) for value in raw_args]
+    else:
+        installer_args = []
+
+    original_pid = int(plan_data.get("original_pid", 0))
+    installer_path = Path(plan_data.get("installer_path", ""))
+    target_executable = Path(plan_data.get("target_executable", ""))
+
+    _helper_log(
+        log_path,
+        "Helper gestart. Doel: %s; Installer: %s" % (target_executable, installer_path),
+    )
+
+    if original_pid > 0:
+        _wait_for_process_exit(original_pid, log_path)
+    else:
+        _helper_log(log_path, "Geen geldig proces-ID ontvangen; ga direct verder.")
+
+    if not installer_path.exists():
+        _helper_log(log_path, f"Installerbestand niet gevonden: {installer_path}")
+    else:
+        _helper_log(log_path, "Installer wordt gestart.")
+        try:
+            process = subprocess.Popen(  # noqa: S603 - gecontroleerde command
+                [str(installer_path), *installer_args],
+                close_fds=False,
+            )
+        except Exception as exc:  # pragma: no cover - afhankelijk van platform
+            _helper_log(log_path, f"Fout tijdens start van installer: {exc}")
+        else:
+            exit_code = process.wait()
+            _helper_log(log_path, f"Installer afgerond met exitcode {exit_code}.")
+
+    refresh_deadline = time.time() + 5 * 60
+    missing_logged = False
+    locked_logged = False
+    launched = False
+
+    while time.time() < refresh_deadline:
+        if not target_executable.exists():
+            if not missing_logged:
+                _helper_log(log_path, "Doelbestand nog niet gevonden; opnieuw proberen.")
+                missing_logged = True
+            time.sleep(0.5)
+            continue
+
+        try:
+            with target_executable.open("rb"):
+                pass
+        except OSError:
+            if not locked_logged:
+                _helper_log(
+                    log_path,
+                    "Bestand nog vergrendeld; wachten tot het wordt vrijgegeven.",
+                )
+                locked_logged = True
+            time.sleep(0.5)
+            continue
+
+        try:
+            subprocess.Popen(  # noqa: S603 - gecontroleerde command
+                [str(target_executable)],
+                cwd=str(target_executable.parent),
+                close_fds=True,
+            )
+        except Exception as exc:  # pragma: no cover - afhankelijk van platform
+            _helper_log(log_path, f"Fout tijdens startpoging: {exc}")
+            time.sleep(0.5)
+            continue
+
+        _helper_log(log_path, "Herstart gelukt.")
+        launched = True
+        break
+
+    if not launched:
+        _helper_log(
+            log_path,
+            "Kon de applicatie niet automatisch herstarten binnen de wachttijd.",
+        )
+
+    try:
+        plan_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    return 0
 
 def _get_configured_log_level(default: int = logging.WARNING) -> int:
     """Resolve the desired log level from the environment."""
@@ -407,4 +581,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[1] == "--apply-update":
+        sys.exit(_run_update_plan(Path(sys.argv[2])))
+
     main()

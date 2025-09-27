@@ -9,7 +9,6 @@ import os
 import shutil
 import subprocess
 import sys
-import textwrap
 import threading
 import time
 import uuid
@@ -220,18 +219,14 @@ def _should_use_silent_install() -> bool:
     return os.getenv("VLIER_UPDATE_SILENT", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _escape_for_powershell(value: str) -> str:
-    return value.replace("`", "``").replace('"', '`"')
-
-
-def _write_restart_helper(
+def _write_restart_plan(
     target_executable: Path,
     updates_dir: Path,
     installer_path: Path,
     installer_args: list[str],
 ) -> Path | None:
-    script_id = uuid.uuid4().hex
-    script_path = updates_dir / f"apply-update-{script_id}.ps1"
+    plan_id = uuid.uuid4().hex
+    plan_path = updates_dir / f"apply-update-{plan_id}.json"
     log_path = updates_dir / "restart-helper.log"
 
     try:
@@ -239,155 +234,24 @@ def _write_restart_helper(
     except OSError as exc:  # pragma: no cover - best effort
         LOGGER.warning("Kon helperlog niet initialiseren: %s", exc)
 
-    target_literal = _escape_for_powershell(str(target_executable))
-    log_literal = _escape_for_powershell(str(log_path))
-    installer_literal = _escape_for_powershell(str(installer_path))
-    if installer_args:
-        escaped_args = ", ".join(
-            f'"{_escape_for_powershell(value)}"' for value in installer_args
-        )
-        installer_args_literal = f"@({escaped_args})"
-    else:
-        installer_args_literal = "@()"
-
-    script_contents = textwrap.dedent(
-        f"""
-        $TargetExe = "{target_literal}"
-        $OriginalPid = {os.getpid()}
-        $InstallerPath = "{installer_literal}"
-        $InstallerArgs = {installer_args_literal}
-        $LogFile = "{log_literal}"
-
-        function Write-Log([string] $Message) {{
-            try {{
-                $timestamp = (Get-Date).ToString("s")
-                Add-Content -LiteralPath $LogFile -Value "[$timestamp] $Message"
-            }} catch {{}}
-        }}
-
-        Write-Log "Helper gestart. Doel: $TargetExe; Installer: $InstallerPath"
-
-        $deadline = (Get-Date).AddMinutes(5)
-        while ((Get-Process -Id $OriginalPid -ErrorAction SilentlyContinue) -ne $null -and (Get-Date) -lt $deadline) {{
-            Start-Sleep -Milliseconds 250
-        }}
-
-        if ((Get-Process -Id $OriginalPid -ErrorAction SilentlyContinue) -ne $null) {{
-            Write-Log "Origineel proces draait nog na wachttijd; ga verder met herstart."
-        }} else {{
-            Write-Log "Origineel proces is gestopt."
-        }}
-
-        if (-not (Test-Path -LiteralPath $InstallerPath)) {{
-            Write-Log "Installerbestand niet gevonden: $InstallerPath"
-        }} else {{
-            Write-Log "Installer wordt gestart."
-            $installProcess = $null
-            try {{
-                $installProcess = Start-Process -FilePath $InstallerPath -ArgumentList $InstallerArgs -Wait -PassThru
-            }} catch {{
-                Write-Log "Fout tijdens start van installer: $($_.Exception.Message)"
-            }}
-
-            if ($installProcess -ne $null) {{
-                Write-Log "Installer afgerond met exitcode $($installProcess.ExitCode)."
-            }} else {{
-                Write-Log "Installer leek niet te starten; ga verder met herstart."
-            }}
-        }}
-
-        $refreshDeadline = (Get-Date).AddMinutes(5)
-        $missingLogged = $false
-        $lockedLogged = $false
-        $launched = $false
-        while ((Get-Date) -lt $refreshDeadline) {{
-            try {{
-                if (-not (Test-Path -LiteralPath $TargetExe)) {{
-                    if (-not $missingLogged) {{
-                        Write-Log "Doelbestand nog niet gevonden; opnieuw proberen."
-                        $missingLogged = $true
-                    }}
-                    Start-Sleep -Milliseconds 500
-                    continue
-                }}
-
-                $stream = $null
-                try {{
-                    $stream = [System.IO.File]::Open($TargetExe, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-                }} catch {{
-                    if (-not $lockedLogged) {{
-                        Write-Log "Bestand nog vergrendeld; wachten tot het wordt vrijgegeven."
-                        $lockedLogged = $true
-                    }}
-                    Start-Sleep -Milliseconds 500
-                    continue
-                }}
-
-                if ($stream -ne $null) {{
-                    $stream.Close()
-                }}
-
-                Write-Log "Startproces wordt uitgevoerd."
-                Start-Process -FilePath $TargetExe -WorkingDirectory (Split-Path -Path $TargetExe -Parent)
-                $launched = $true
-                Write-Log "Herstart gelukt."
-                break
-            }} catch {{
-                Write-Log "Fout tijdens startpoging: $($_.Exception.Message)"
-                Start-Sleep -Milliseconds 500
-            }}
-        }}
-
-        if (-not $launched) {{
-            Write-Log "Kon de applicatie niet automatisch herstarten binnen de wachttijd."
-        }}
-
-        try {{
-            Write-Log "Opruimen van helper-script."
-            Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force
-        }} catch {{}}
-        """
-    ).strip()
+    plan = {
+        "original_pid": os.getpid(),
+        "target_executable": str(target_executable),
+        "installer_path": str(installer_path),
+        "installer_args": installer_args,
+        "log_path": str(log_path),
+    }
 
     try:
-        script_path.write_text(script_contents, encoding="utf-8")
+        plan_path.write_text(json.dumps(plan), encoding="utf-8")
     except OSError as exc:  # pragma: no cover - best effort
-        LOGGER.warning("Kon herstartscript niet schrijven: %s", exc)
+        LOGGER.warning("Kon herstartplan niet schrijven: %s", exc)
         return None
 
-    return script_path
+    return plan_path
 
 
-def _resolve_powershell_executable() -> str | None:
-    """Return the path to a PowerShell executable if one is available."""
-
-    for candidate in ("powershell.exe", "powershell"):
-        resolved = shutil.which(candidate)
-        if resolved:
-            return resolved
-
-    system_root = os.getenv("SYSTEMROOT") or os.getenv("SystemRoot") or os.getenv("WINDIR")
-    if system_root:
-        base = Path(system_root)
-        for subdir in ("System32", "Sysnative", "SysWOW64"):
-            candidate = base / subdir / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-            if candidate.exists():
-                return str(candidate)
-
-    for candidate in ("pwsh.exe", "pwsh"):
-        resolved = shutil.which(candidate)
-        if resolved:
-            return resolved
-
-    return None
-
-
-def _launch_restart_helper(script_path: Path, updates_dir: Path) -> bool:
-    powershell = _resolve_powershell_executable()
-    if not powershell:
-        LOGGER.info("PowerShell niet gevonden; update wordt gestart zonder automatische herstart")
-        return False
-
+def _launch_restart_helper(plan_path: Path, updates_dir: Path) -> bool:
     creationflags = 0
     if hasattr(subprocess, "DETACHED_PROCESS"):
         creationflags |= getattr(subprocess, "DETACHED_PROCESS")
@@ -397,17 +261,19 @@ def _launch_restart_helper(script_path: Path, updates_dir: Path) -> bool:
     if hasattr(subprocess, "CREATE_NO_WINDOW"):
         creationflags |= getattr(subprocess, "CREATE_NO_WINDOW")
 
+    target_executable = Path(sys.executable).resolve()
+
     try:
         process = subprocess.Popen(  # noqa: S603 - gecontroleerde command
-            [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_path)],
+            [str(target_executable), "--apply-update", str(plan_path)],
             cwd=str(updates_dir),
             creationflags=creationflags,
             close_fds=True,
         )
     except Exception as exc:  # pragma: no cover - afhankelijk van platform
-        LOGGER.warning("Kon PowerShell herstartscript niet starten: %s", exc)
+        LOGGER.warning("Kon herstartproces niet starten: %s", exc)
         try:
-            script_path.unlink(missing_ok=True)
+            plan_path.unlink(missing_ok=True)
         except OSError:
             pass
         return False
@@ -416,16 +282,16 @@ def _launch_restart_helper(script_path: Path, updates_dir: Path) -> bool:
     exit_code = process.poll()
     if exit_code is not None:
         LOGGER.warning(
-            "PowerShell herstartscript stopte direct met code %s; val terug naar directe installatie",
+            "Herstarthelper stopte direct met code %s; val terug naar directe installatie",
             exit_code,
         )
         try:
-            script_path.unlink(missing_ok=True)
+            plan_path.unlink(missing_ok=True)
         except OSError:
             pass
         return False
 
-    LOGGER.info("PowerShell herstartscript gestart met proces-ID %s", process.pid)
+    LOGGER.info("Herstarthelper gestart met proces-ID %s", process.pid)
 
     return True
 
@@ -490,23 +356,23 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
     restart_initiated = False
     target_executable = Path(sys.executable).resolve()
 
-    helper_script = _write_restart_helper(
+    helper_plan = _write_restart_plan(
         target_executable,
         updates_dir,
         destination,
         flags,
     )
 
-    if helper_script is not None:
-        restart_initiated = _launch_restart_helper(helper_script, updates_dir)
+    if helper_plan is not None:
+        restart_initiated = _launch_restart_helper(helper_plan, updates_dir)
         if restart_initiated:
             LOGGER.info(
                 "Automatische herstart en installatie worden uitgevoerd via %s",
-                helper_script,
+                helper_plan,
             )
         else:
             try:
-                helper_script.unlink(missing_ok=True)
+                helper_plan.unlink(missing_ok=True)
             except OSError:
                 pass
 
