@@ -4,17 +4,19 @@ Vlier Planner helpt leerlingen en docenten om studiewijzers uit het voortgezet o
 
 ## Inhoud
 1. [Functioneel overzicht](#functioneel-overzicht)
-2. [Onboarding tour](#onboarding-tour)
-3. [Voorbeeldschermen](#voorbeeldschermen)
-4. [Technische architectuur](#technische-architectuur)
-5. [Projectstructuur](#projectstructuur)
-6. [Installatie en ontwikkeling](#installatie-en-ontwikkeling)
-7. [Gebruik van de applicatie](#gebruik-van-de-applicatie)
-8. [Review-, versie- en updateflows](#review--versie--en-updateflows)
-9. [Frontend-build koppelen](#frontend-build-koppelen)
-10. [Alles-in-één backend](#alles-in-één-backend)
-11. [Windows distributie](#windows-distributie)
-12. [Licentie](#licentie)
+   - [Belangrijkste schermen](#belangrijkste-schermen)
+   - [Kernfeatures](#kernfeatures)
+   - [Onboarding tour](#onboarding-tour)
+2. [Voorbeeldschermen](#voorbeeldschermen)
+3. [Technische architectuur](#technische-architectuur)
+4. [Projectstructuur](#projectstructuur)
+5. [Installatie en ontwikkeling](#installatie-en-ontwikkeling)
+6. [Gebruik van de applicatie](#gebruik-van-de-applicatie)
+7. [Review-, versie- en updateflows](#review--versie--en-updateflows)
+8. [Frontend-build koppelen](#frontend-build-koppelen)
+9. [Alles-in-één backend](#alles-in-één-backend)
+10. [Windows distributie](#windows-distributie)
+11. [Licentie](#licentie)
 
 ## Functioneel overzicht
 ### Belangrijkste schermen
@@ -33,7 +35,7 @@ Vlier Planner helpt leerlingen en docenten om studiewijzers uit het voortgezet o
 - Zelf thema's ontwerpen en opslaan voor een gepersonaliseerde look & feel van de planner.
 - Onboarding tour die nieuwe gebruikers stap voor stap door de belangrijkste schermen leidt.
 
-## Onboarding tour
+### Onboarding tour
 - Bij het eerste bezoek start een rondleiding met zes stappen: **Uitleg**, **Upload**, **Weekoverzicht**, **Matrix overzicht**, **Belangrijke events** en **Settings**.
 - Enter of spatie gaat naar de volgende stap, Escape sluit de tour. Via het menu-item **Rondleiding** kun je de tour later opnieuw starten.
 - De status wordt opgeslagen in `localStorage` onder de sleutel `vlier.tourDone`.
@@ -59,19 +61,23 @@ De onderstaande voorbeelden komen uit `frontend/public` en tonen de belangrijkst
 
 ## Technische architectuur
 ### Backend
-- Gebouwd met FastAPI en ingericht als twee entrypoints:
-  - `backend/main.py` biedt een minimalistische API voor snelle parser-tests met endpoints voor uploaden, status en basisoverzichten.
-  - `backend/app.py` levert de volledige studiewijzer-backend met reviewflows, versiebeheer, diffs, waarschuwingen en documentendownloads.
-- Uploads, reviews en genormaliseerde resultaten worden opgeslagen via de gedeelde `DataStore` service in `backend/services/data_store.py`. De opslaglocatie kan worden overschreven met `VLIER_DATA_DIR` of `VLIER_STORAGE_DIR`.
+- Gebouwd met FastAPI en opgesplitst in twee entrypoints:
+  - `backend/main.py` exposeert een compacte API voor de planner-weergaven met endpoints voor uploads, weekschema’s, matrixoverzichten, agenda en toetsmomenten.
+  - `backend/app.py` levert de volledige workflow voor importeren, reviewen, diffen en committen van studiewijzers, inclusief documentvoorbeelden, versiebeheer, schoolvakantie-endpoints en updatecontroles.
+- `backend/services/data_store.py` beheert de opslag van uploads, pending parses, genormaliseerde modellen en het state-bestand. Via `VLIER_DATA_DIR` of `VLIER_STORAGE_DIR` kan de opslaglocatie worden geconfigureerd.
+- `backend/school_vacations.py` haalt vakantieperiodes op bij rijksoverheid.nl met `httpx` en `lxml`, structureert de uitkomsten en levert ze via `/api/school-vacations` aan de frontend.
+- `backend/update_checker.py` en `backend/updater.py` verzorgen versiecontrole en het uitvoeren van applicatie-updates vanuit de UI.
 
 ### Frontend
 - Gebouwd met React, Vite en Tailwind CSS.
-- Pagina’s voor uploads, reviewwizard, week- en matrixoverzichten, events en instellingen.
-- Maakt verbinding met de backend via REST API’s en toont waarschuwingen, diff-informatie en update-notificaties.
+- Router-gedreven pagina’s voor uploads en reviews, week- en matrixoverzichten, events, instellingen (inclusief thema-editor) en de onboarding-tour.
+- `frontend/src/app/store.ts` beheert applicatiestatus zoals gebruikersvoorkeuren, thema’s, imports en synchronisatie met de backend-API.
+- Communiceert via REST API’s voor data, diff-waarschuwingen, vakantiegegevens en update-notificaties.
 
-### Parser
-- `vlier_parser/normalize.py` bevat de normalisatielogica voor studiewijzers en wordt door beide backend-entrypoints gebruikt.
-- Dummy-implementatie is aanwezig; breid deze uit met de daadwerkelijke parser en voeg gerichte tests toe.
+### Parser en normalisatie
+- `backend/parsers/parser_docx.py` en `backend/parsers/parser_pdf.py` extraheren metadata, weken, toetsen, huiswerk en URLs uit DOCX- en PDF-studiewijzers. PDF-ondersteuning gebruikt `pdfplumber` met een `PyPDF2`-fallback.
+- `vlier_parser/normalize.py` zet geparste bestanden om naar het genormaliseerde `NormalizedModel`, voegt waarschuwingen toe en bewaart resultaten via de `DataStore` zodat week-, matrix- en agendaweergaven direct te voeden zijn.
+- `backend/study_guides.py` bewaakt versies per studiewijzer, berekent diffs, houdt waarschuwingen bij en koppelt bestanden aan stabiele identifiers voor de reviewflow.
 
 ### Dataflows
 - Zowel de snelle normalisatie-API als de volledige workflow schrijven naar dezelfde opslagstructuur (`backend/storage/`).
@@ -108,11 +114,24 @@ De applicatieversie staat in `VERSION.ini` onder `[app]`. Gebruik `npm run sync-
 - Specifieke parser- of normalisatietests kun je draaien met `pytest -k normalize` zodra echte parserlogica aanwezig is.
 
 ## Gebruik van de applicatie
-1. Start de backend op poort 8000 (minimalistische API) of start `backend/app.py` voor de volledige workflow.
-2. Start de frontend op poort 5173 met `npm run dev`.
-3. Upload één of meerdere studiewijzers via het Uploads-scherm.
-4. Beheer huiswerk via Weekoverzicht of Matrix overzicht en bekijk events via het Belangrijke events-scherm.
-5. Gebruik de reviewwizard om nieuwe versies te beoordelen en committen.
+
+### Eerste keer opstarten
+1. Start de backend op poort 8000 (minimalistische API) of kies `backend/app.py` voor de volledige workflow met reviews en versies.
+2. Start de frontend op poort 5173 met `npm run dev` en open `http://localhost:5173`.
+3. Bij de eerste sessie start automatisch de onboarding-tour die de belangrijkste schermen toelicht; je kunt deze later opnieuw openen via het menu **Rondleiding**.
+
+### Studiewijzer importeren en plannen
+- Upload een DOCX- of PDF-studiewijzer via het tabblad **Uploads & Documentbeheer**. De backend normaliseert het document, detecteert vak, leerjaar, weken en toetsen en slaat het resultaat op.
+- Ga naar **Weekoverzicht**, **Matrix** of **Belangrijke events** om ingeplande lessen, toetsen en huiswerk te bekijken. Voeg eigen taken toe, gebruik filters voor vak/niveau/leerjaar en vink afgeronde items af.
+- Handmatige wijzigingen worden lokaal bewaard en gecombineerd met nieuwe versies zodra je een studiewijzer opnieuw importeert.
+
+### Schoolvakanties en thema’s
+- Gebruik het tabblad **Schoolvakanties** binnen de uploads-pagina om actuele vakantieperiodes bij de rijksoverheid op te halen. Selecteer de gewenste regio’s en importeer ze zodat vrije dagen direct zichtbaar zijn in week- en agendaweergaven.
+- Open **Instellingen** om thema’s te beheren. Je kunt bestaande thema’s dupliceren, kleuren en achtergronden aanpassen en meerdere eigen thema’s opslaan voor verschillende doelgroepen.
+
+### Versies beoordelen
+- Nieuwe uploads verschijnen als concept in de reviewwizard met diff-samenvattingen, waarschuwingen (zoals ontbrekende weken of dubbele datums) en een documentpreview.
+- Werk feedback direct af in het brondocument, upload een bijgewerkte versie en gebruik de wizard om wijzigingen goed te keuren of af te wijzen. Goedgekeurde versies worden opgeslagen met een oplopend versienummer en blijven beschikbaar voor historische downloads en diffs.
 
 ## Review-, versie- en updateflows
 - **Reviewwizard** – `/api/reviews` en `/api/reviews/{parseId}` leveren pending reviews met metadata, regels, diff en waarschuwingen. De frontend toont deze in de uploads- en reviewpagina’s.
