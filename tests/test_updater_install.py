@@ -9,14 +9,14 @@ from backend import updater
 
 
 def test_pick_windows_asset_accepts_plain_executable() -> None:
-    asset = {"name": "VlierPlanner-1.4.1.exe", "browser_download_url": "https://example.invalid"}
+    asset = {"name": "VlierPlanner-2.0.0.exe", "browser_download_url": "https://example.invalid"}
     result = updater._pick_windows_asset([asset])
     assert result is asset
 
 
 def test_pick_windows_asset_prefers_setup_named_assets() -> None:
-    plain = {"name": "VlierPlanner-1.4.1.exe", "browser_download_url": "https://example.invalid/plain"}
-    setup = {"name": "VlierPlanner-Setup-1.4.1.exe", "browser_download_url": "https://example.invalid/setup"}
+    plain = {"name": "VlierPlanner-2.0.0.exe", "browser_download_url": "https://example.invalid/plain"}
+    setup = {"name": "VlierPlanner-Setup-2.0.0.exe", "browser_download_url": "https://example.invalid/setup"}
     result = updater._pick_windows_asset([plain, setup])
     assert result is setup
 

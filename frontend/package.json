@@ -1,7 +1,7 @@
 {
   "name": "stuplan-frontend",
   "private": true,
-  "version": "1.4.1",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "sync-version": "node ../tools/sync-version.mjs",
