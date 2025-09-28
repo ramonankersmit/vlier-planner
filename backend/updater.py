@@ -475,6 +475,35 @@ def _cleanup_restart_plan(plan_paths: RestartPlanPaths) -> None:
         shutil.rmtree(helper_cleanup_dir, ignore_errors=True)
 
 
+def _cleanup_python_helper_directories(updates_dir: Path) -> None:
+    """Remove leftover helper directories copied during previous updates."""
+
+    try:
+        candidates = list(updates_dir.iterdir())
+    except OSError as exc:
+        LOGGER.warning(
+            "Kon updates-map niet lezen voor helperopruiming: %s", exc
+        )
+        return
+
+    for entry in candidates:
+        if not entry.is_dir():
+            continue
+
+        name = entry.name.lower()
+        if name != "python-helper" and not name.startswith("python-helper-"):
+            continue
+
+        try:
+            shutil.rmtree(entry)
+        except OSError as exc:
+            LOGGER.warning(
+                "Kon Python-helpermap niet verwijderen: %s (%s)", entry, exc
+            )
+        else:
+            LOGGER.info("Oude Python-helpermap verwijderd: %s", entry)
+
+
 def _launch_restart_helper(plan_paths: RestartPlanPaths, updates_dir: Path) -> bool:
     powershell = _resolve_powershell_executable()
     if powershell is None:
@@ -678,6 +707,8 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
 
     restart_initiated = False
     target_executable = Path(sys.executable).resolve()
+
+    _cleanup_python_helper_directories(updates_dir)
 
     helper_plan = _write_restart_plan(
         target_executable,

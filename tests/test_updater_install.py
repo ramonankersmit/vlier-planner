@@ -543,6 +543,29 @@ def test_cleanup_restart_plan_removes_helper(tmp_path: Path):
     assert plan_paths.script_path.exists() is False
     assert helper_path.exists() is False
     assert helper_dir.exists() is False
+
+
+def test_cleanup_python_helper_directories_removes_matches(tmp_path: Path):
+    updates_dir = tmp_path / "updates"
+    updates_dir.mkdir()
+
+    helper_dir = updates_dir / "python-helper-xyz"
+    helper_dir.mkdir()
+    (helper_dir / "dummy.txt").write_text("data", encoding="utf-8")
+
+    legacy_helper = updates_dir / "python-helper"
+    legacy_helper.mkdir()
+
+    keep_dir = updates_dir / "anders"
+    keep_dir.mkdir()
+
+    updater._cleanup_python_helper_directories(updates_dir)
+
+    assert helper_dir.exists() is False
+    assert legacy_helper.exists() is False
+    assert keep_dir.exists() is True
+
+
 def test_should_use_silent_install_defaults_to_true(monkeypatch):
     monkeypatch.delenv("VLIER_UPDATE_SILENT", raising=False)
     assert updater._should_use_silent_install() is True
