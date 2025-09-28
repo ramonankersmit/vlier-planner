@@ -77,6 +77,11 @@ except ImportError:  # pragma: no cover
     import update_checker  # type: ignore
 
 try:
+    from .services.data_store import data_store
+except ImportError:  # pragma: no cover
+    from services.data_store import data_store  # type: ignore
+
+try:
     from .school_vacations import fetch_school_vacations
 except ImportError:  # pragma: no cover
     from school_vacations import fetch_school_vacations  # type: ignore
