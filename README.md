@@ -4,16 +4,16 @@ Vlier Planner helpt leerlingen en docenten om studiewijzers uit het voortgezet o
 
 ## Inhoud
 1. [Functioneel overzicht](#functioneel-overzicht)
-2. [Voorbeeldschermen](#voorbeeldschermen)
-3. [Technische architectuur](#technische-architectuur)
-4. [Projectstructuur](#projectstructuur)
-5. [Installatie en ontwikkeling](#installatie-en-ontwikkeling)
-6. [Gebruik van de applicatie](#gebruik-van-de-applicatie)
-7. [Review-, versie- en updateflows](#review--versie--en-updateflows)
-8. [Frontend-build koppelen](#frontend-build-koppelen)
-9. [Alles-in-één backend](#alles-in-één-backend)
-10. [Windows distributie](#windows-distributie)
-11. [Onboarding tour](#onboarding-tour)
+2. [Onboarding tour](#onboarding-tour)
+3. [Voorbeeldschermen](#voorbeeldschermen)
+4. [Technische architectuur](#technische-architectuur)
+5. [Projectstructuur](#projectstructuur)
+6. [Installatie en ontwikkeling](#installatie-en-ontwikkeling)
+7. [Gebruik van de applicatie](#gebruik-van-de-applicatie)
+8. [Review-, versie- en updateflows](#review--versie--en-updateflows)
+9. [Frontend-build koppelen](#frontend-build-koppelen)
+10. [Alles-in-één backend](#alles-in-één-backend)
+11. [Windows distributie](#windows-distributie)
 12. [Licentie](#licentie)
 
 ## Functioneel overzicht
@@ -29,7 +29,14 @@ Vlier Planner helpt leerlingen en docenten om studiewijzers uit het voortgezet o
 - Filteren op leerjaar, niveau en zelfgekozen vakselecties.
 - Diff-overzichten en waarschuwingen tijdens reviews om wijzigingen en mogelijke problemen te tonen.
 - Automatische updatecontrole met de mogelijkheid om nieuwe versies vanuit de applicatie te downloaden.
+- Automatisch vakantieschema's ophalen om vrije dagen en vakanties meteen in de planning te verwerken.
+- Zelf thema's ontwerpen en opslaan voor een gepersonaliseerde look & feel van de planner.
 - Onboarding tour die nieuwe gebruikers stap voor stap door de belangrijkste schermen leidt.
+
+## Onboarding tour
+- Bij het eerste bezoek start een rondleiding met zes stappen: **Uitleg**, **Upload**, **Weekoverzicht**, **Matrix overzicht**, **Belangrijke events** en **Settings**.
+- Enter of spatie gaat naar de volgende stap, Escape sluit de tour. Via het menu-item **Rondleiding** kun je de tour later opnieuw starten.
+- De status wordt opgeslagen in `localStorage` onder de sleutel `vlier.tourDone`.
 
 ## Voorbeeldschermen
 De onderstaande voorbeelden komen uit `frontend/public` en tonen de belangrijkste flows.
@@ -161,11 +168,6 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
    ```
    Pas opties als `--add-data` of `--collect-all` aan wanneer extra pakketten of assets nodig zijn. Je kunt ook `pyinstaller VlierPlanner.spec` gebruiken; dezelfde version resource wordt dan automatisch toegevoegd.
 5. Het resultaat vind je in `dist/VlierPlanner.exe`. Kopieer dit bestand naar een Windows-machine en start het met een dubbelklik; de app opent automatisch op `http://127.0.0.1:8000`.
-
-## Onboarding tour
-- Bij het eerste bezoek start een rondleiding met zes stappen: **Uitleg**, **Upload**, **Weekoverzicht**, **Matrix overzicht**, **Belangrijke events** en **Settings**.
-- Enter of spatie gaat naar de volgende stap, Escape sluit de tour. Via het menu-item **Rondleiding** kun je de tour later opnieuw starten.
-- De status wordt opgeslagen in `localStorage` onder de sleutel `vlier.tourDone`.
 
 ## Licentie
 MIT
