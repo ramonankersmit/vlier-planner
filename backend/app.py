@@ -68,17 +68,13 @@ except ImportError:  # pragma: no cover
         write_pending_parse,
     )
 
-try:  # pragma: no cover - fallback for legacy execution styles
-    from .services.data_store import data_store
+try:
+    from .version import __version__
+    from . import updater, update_checker
 except ImportError:  # pragma: no cover
-    from services.data_store import data_store  # type: ignore
-
-try:  
-    from .version import APP_VERSION
-    from . import updater
-except ImportError:  # pragma: no cover
-    from version import APP_VERSION  # type: ignore
+    from version import __version__  # type: ignore
     import updater  # type: ignore
+    import update_checker  # type: ignore
 
 try:
     from .school_vacations import fetch_school_vacations
@@ -340,35 +336,36 @@ def _truncate_notes(text: str | None, limit: int = 2000) -> str | None:
 
 @app.get("/api/system/version")
 def api_get_version() -> dict[str, str]:
-    return {"version": APP_VERSION}
+    return {"version": __version__}
 
 
 @app.get("/api/system/update")
 def api_check_update() -> dict[str, Any]:
     try:
-        info = updater.check_for_update()
-    except updater.UpdateError as exc:
+        info = update_checker.get_update_info(__version__)
+    except Exception as exc:  # pragma: no cover - defensief
         logger.warning("Update-check mislukt: %s", exc)
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=f"Update check failed: {exc}") from exc
 
-    if info is None:
-        return {"updateAvailable": False, "currentVersion": APP_VERSION}
-
-    notes = _truncate_notes(info.release_notes)
-    return {
-        "updateAvailable": True,
-        "currentVersion": APP_VERSION,
-        "latestVersion": info.latest_version,
-        "assetName": info.asset_name,
-        "notes": notes,
-        "checksum": info.sha256,
+    response: dict[str, Any] = {
+        "current": info.get("current"),
+        "latest": info.get("latest"),
+        "has_update": info.get("has_update", False),
+        "asset_url": info.get("asset_url"),
     }
+
+    if info.get("notes"):
+        response["notes"] = _truncate_notes(info.get("notes"))
+    if info.get("asset_name"):
+        response["asset_name"] = info.get("asset_name")
+
+    return response
 
 
 @app.post("/api/system/update")
 def api_install_update(payload: UpdateRequest) -> dict[str, Any]:
     try:
-        info = updater.check_for_update()
+        info = updater.check_for_update(force=True)
     except updater.UpdateError as exc:
         logger.warning("Update-check mislukt tijdens installatie: %s", exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -383,12 +380,17 @@ def api_install_update(payload: UpdateRequest) -> dict[str, Any]:
         )
 
     try:
-        installer_path = updater.install_update(info, silent=payload.silent)
+        install_result = updater.install_update(info, silent=payload.silent)
     except updater.UpdateError as exc:
         logger.warning("Installatie van update mislukt: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return {"status": "started", "installerPath": str(installer_path)}
+    return {
+        "status": "started",
+        "installerPath": str(install_result.installer_path),
+        "restartInitiated": install_result.restart_initiated,
+        "targetVersion": info.latest_version,
+    }
 
 
 @app.get("/api/school-vacations", response_model=SchoolVacationResponse)

@@ -1,28 +1,46 @@
-"""Application version information used throughout the backend."""
-
+"""Resolve the running application version in a robust way."""
 from __future__ import annotations
 
 import os
 import sys
 from configparser import ConfigParser, Error as ConfigParserError
+from importlib import metadata
 from pathlib import Path
-from typing import Iterable
+from typing import Iterator
+
+_FALLBACK_VERSION = "0.0.0"
+_DISTRIBUTION_NAME = "vlier-planner"
 
 
-DEFAULT_VERSION = "0.0.0-dev"
+def _clean(value: str | None) -> str | None:
+    if not value:
+        return None
+    value = value.strip()
+    return value or None
 
 
-def _candidate_version_paths() -> Iterable[Path]:
-    """Yield potential locations of ``VERSION.ini`` in priority order."""
+def _load_from_env() -> str | None:
+    return _clean(os.getenv("VLIER_APP_VERSION"))
 
-    repo_root = Path(__file__).resolve().parent.parent
-    yield repo_root / "VERSION.ini"
 
-    env_override = os.getenv("VLIER_VERSION_FILE")
-    if env_override:
-        yield Path(env_override)
+def _load_from_metadata() -> str | None:
+    try:
+        return _clean(metadata.version(_DISTRIBUTION_NAME))
+    except metadata.PackageNotFoundError:
+        return None
+    except Exception:
+        return None
 
-    if getattr(sys, "frozen", False):
+
+def _candidate_version_paths() -> Iterator[Path]:
+    module_root = Path(__file__).resolve().parent
+    yield module_root / "VERSION.ini"
+
+    parent = module_root.parent
+    if parent != module_root:
+        yield parent / "VERSION.ini"
+
+    if getattr(sys, "frozen", False):  # pragma: no cover - only in packaged builds
         meipass = getattr(sys, "_MEIPASS", None)
         if meipass:
             yield Path(meipass) / "VERSION.ini"
@@ -32,45 +50,36 @@ def _candidate_version_paths() -> Iterable[Path]:
             pass
 
 
-def _load_version_from_file() -> str | None:
-    """Load the application version from the shared version INI file if possible."""
+def _load_from_version_ini() -> str | None:
+    parser = ConfigParser()
 
     for path in _candidate_version_paths():
-        parser = ConfigParser()
         try:
-            with path.open(encoding="utf8") as handle:
+            with path.open(encoding="utf-8") as handle:
                 parser.read_file(handle)
         except (OSError, ConfigParserError):
             continue
 
         try:
-            value = parser.get("app", "version", fallback="").strip()
+            value = parser.get("app", "version", fallback="")
         except (ConfigParserError, ValueError):
             continue
 
-        if value:
-            return value
+        cleaned = _clean(value)
+        if cleaned:
+            return cleaned
 
     return None
 
 
 def _resolve_version() -> str:
-    """Return the version string for the running application."""
-
-    env_value = os.getenv("VLIER_APP_VERSION")
-    if env_value:
-        cleaned = env_value.strip()
-        if cleaned:
-            return cleaned
-
-    file_version = _load_version_from_file()
-    if file_version:
-        return file_version
-
-    return DEFAULT_VERSION
+    for loader in (_load_from_env, _load_from_metadata, _load_from_version_ini):
+        value = loader()
+        if value:
+            return value
+    return _FALLBACK_VERSION
 
 
-APP_VERSION = _resolve_version()
+__version__ = _resolve_version()
 
-__all__ = ["APP_VERSION"]
-
+__all__ = ["__version__"]

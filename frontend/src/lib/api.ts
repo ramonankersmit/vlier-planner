@@ -304,31 +304,55 @@ export async function apiCreateReviewFromVersion(
   return (await r.json()) as ReviewDraft;
 }
 
-export type UpdateCheckResponse = {
-  updateAvailable: boolean;
-  currentVersion: string;
-  latestVersion?: string;
-  assetName?: string;
+export type UpdateInfo = {
+  current: string;
+  latest: string | null;
+  has_update: boolean;
+  asset_url?: string | null;
+  asset_name?: string | null;
   notes?: string | null;
-  checksum?: string | null;
 };
 
-export async function apiCheckForUpdate(): Promise<UpdateCheckResponse> {
-  const response = await fetch(`${BASE}/api/system/update`);
+export type UpdateInstallResponse = {
+  status: "started";
+  installerPath: string;
+  restartInitiated?: boolean;
+  targetVersion?: string;
+};
+
+export async function apiGetVersion(): Promise<{ version: string }> {
+  const response = await fetch(`${BASE}/api/system/version`, { method: "GET" });
+  if (!response.ok) {
+    throw new Error(`version_fetch failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function apiCheckUpdate(): Promise<UpdateInfo> {
+  const response = await fetch(`${BASE}/api/system/update`, { method: "GET" });
   if (!response.ok) {
     throw new Error(`update_check failed: ${response.status}`);
   }
   return response.json();
 }
 
-export async function apiInstallUpdate(version: string): Promise<void> {
+export async function apiInstallUpdate(
+  version: string,
+  options?: { silent?: boolean }
+): Promise<UpdateInstallResponse> {
+  const payload = {
+    version,
+    silent: options?.silent ?? true,
+  };
+
   const response = await fetch(`${BASE}/api/system/update`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ version }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const message = await response.text();
     throw new Error(`update_install failed: ${response.status} – ${message}`);
   }
+  return (await response.json()) as UpdateInstallResponse;
 }

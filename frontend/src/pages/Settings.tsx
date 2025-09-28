@@ -219,11 +219,11 @@ export default function Settings() {
         import("../lib/api"),
         import("../lib/updatePrompt"),
       ]);
-      const result = await api.apiCheckForUpdate();
-      if (!result.updateAvailable || !result.latestVersion) {
+      const result = await api.apiCheckUpdate();
+      if (!result.has_update || !result.latest) {
         setUpdateCheckStatus({
           type: "info",
-          message: `Je gebruikt de nieuwste versie (v${result.currentVersion}).`,
+          message: `Je gebruikt de nieuwste versie (v${result.current}).`,
         });
         return;
       }
@@ -236,12 +236,12 @@ export default function Settings() {
         setUpdateCheckStatus({
           type: "success",
           message:
-            "De update is gestart. Sluit Vlier Planner af wanneer de installer daarom vraagt om te voltooien.",
+            "De update is gestart. Laat Vlier Planner geopend; de pagina wordt automatisch vernieuwd zodra de nieuwe versie klaarstaat.",
         });
       } else {
         setUpdateCheckStatus({
           type: "info",
-          message: `Er is een update beschikbaar (v${result.latestVersion}). Je kunt deze later opnieuw starten.`,
+          message: `Er is een update beschikbaar (v${result.latest}). Je kunt deze later opnieuw starten.`,
         });
       }
     } catch (error) {
