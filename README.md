@@ -187,6 +187,7 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
    ```
    Pas opties als `--add-data` of `--collect-all` aan wanneer extra pakketten of assets nodig zijn. Je kunt ook `pyinstaller VlierPlanner.spec` gebruiken; dezelfde version resource wordt dan automatisch toegevoegd.
 5. Het resultaat vind je in `dist/VlierPlanner.exe`. Kopieer dit bestand naar een Windows-machine en start het met een dubbelklik; de app opent automatisch op `http://127.0.0.1:8000`.
+6. (Optioneel) Gebruik Inno en "installer.iss" file voor het maken van een installer executable. Deze komt dan in "buils/installer/VlierPlanner-Setup-[version].exe" te staan.
 
 ## Licentie
 MIT
