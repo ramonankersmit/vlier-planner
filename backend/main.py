@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import date
@@ -10,7 +9,9 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from vlier_parser.normalize import DATA_DIR, parse_to_normalized
+from vlier_parser.normalize import parse_to_normalized
+
+from .services.data_store import data_store
 
 logger = logging.getLogger(__name__)
 
@@ -27,26 +28,15 @@ if not serve_frontend:
 
 
 def _load_latest() -> dict:
-    index_path = DATA_DIR / "index.json"
-    if not index_path.exists():
-        return {}
-    with index_path.open("r", encoding="utf-8") as fh:
-        index = json.load(fh)
-    if not index:
-        return {}
-    last = index[-1]["id"]
-    with (DATA_DIR / f"{last}.json").open("r", encoding="utf-8") as fh:
-        return json.load(fh)
+    return data_store.load_latest_normalized()
 
 
 @app.post("/api/uploads")
 async def upload(file: UploadFile = File(...)):
-    tmp_dir = Path("uploads")
-    tmp_dir.mkdir(exist_ok=True)
-
-    filename = Path(file.filename or "").name or "upload.bin"
-    tmp_path = tmp_dir / filename
-
+  
+    data_store.ensure_ready()
+    uploads_dir = data_store.uploads_dir
+    tmp_path = uploads_dir / file.filename
     with tmp_path.open("wb") as fh:
         while chunk := await file.read(65536):
             fh.write(chunk)
@@ -60,11 +50,10 @@ async def upload(file: UploadFile = File(...)):
 
 @app.get("/api/parses/{parse_id}")
 def get_parse(parse_id: str):
-    path = DATA_DIR / f"{parse_id}.json"
-    if not path.exists():
+    try:
+        data = data_store.read_normalized_model(parse_id)
+    except FileNotFoundError:
         raise HTTPException(404, "Not found")
-    with path.open("r", encoding="utf-8") as fh:
-        data = json.load(fh)
     return {"meta": data.get("meta"), "warnings": data.get("warnings", [])}
 
 

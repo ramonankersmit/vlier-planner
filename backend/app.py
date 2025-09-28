@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import sys
 from pathlib import Path
 import mimetypes
 import shutil
@@ -46,7 +45,7 @@ except ImportError:  # pragma: no cover
         extract_rows_from_pdf,
     )
 
-try:  
+try:
     from .study_guides import (
         StudyGuide,
         StudyGuideVersion,
@@ -103,36 +102,7 @@ if not serve_frontend:
     )
 
 # Bestandsopslag (simple disk storage)
-
-
-def _user_data_base() -> Path:
-    if sys.platform == "win32":
-        root = os.getenv("LOCALAPPDATA") or Path.home() / "AppData" / "Local"
-    elif sys.platform == "darwin":
-        root = Path.home() / "Library" / "Application Support"
-    else:
-        root = os.getenv("XDG_DATA_HOME") or Path.home() / ".local" / "share"
-    return Path(root) / "VlierPlanner"
-
-
-def _storage_root() -> Path:
-    custom = os.getenv("VLIER_STORAGE_DIR")
-    if custom:
-        return Path(custom)
-
-    if getattr(sys, "frozen", False):
-        return _user_data_base() / "storage"
-
-    return Path(__file__).resolve().parent / "storage"
-
-
-STORAGE_BASE = _storage_root()
-STORAGE_BASE.mkdir(parents=True, exist_ok=True)
-STORAGE = STORAGE_BASE / "uploads"
-STORAGE.mkdir(parents=True, exist_ok=True)
-STATE_FILE = STORAGE_BASE / "state.json"
-PENDING_DIR = STORAGE_BASE / "pending"
-PENDING_DIR.mkdir(parents=True, exist_ok=True)
+data_store.ensure_ready()
 
 
 GUIDES: Dict[str, StudyGuide] = {}
@@ -163,7 +133,7 @@ def _uploaded_at_timestamp(meta: DocMeta) -> float:
 
 
 def _version_dir(guide_id: str, version_id: int) -> Path:
-    return STORAGE / guide_id / str(version_id)
+    return data_store.uploads_dir / guide_id / str(version_id)
 
 
 def _version_file_path(guide_id: str, version_id: int, file_name: str) -> Path:
@@ -179,8 +149,7 @@ def _refresh_docs_index() -> None:
 
 
 def _ensure_state_dir() -> None:
-    STORAGE.mkdir(parents=True, exist_ok=True)
-    PENDING_DIR.mkdir(parents=True, exist_ok=True)
+    data_store.ensure_ready()
 
 
 def _ensure_file_location(guide_id: str, version: StudyGuideVersion, legacy_file_id: Optional[str] = None) -> None:
@@ -190,9 +159,10 @@ def _ensure_file_location(guide_id: str, version: StudyGuideVersion, legacy_file
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     candidates: List[Path] = []
+    storage_dir = data_store.uploads_dir
     if legacy_file_id:
-        candidates.extend(STORAGE.glob(f"{legacy_file_id}.*"))
-    candidates.append(STORAGE / version.file_name)
+        candidates.extend(storage_dir.glob(f"{legacy_file_id}.*"))
+    candidates.append(storage_dir / version.file_name)
     for candidate in candidates:
         if candidate.exists() and candidate != dest:
             try:
@@ -204,16 +174,17 @@ def _ensure_file_location(guide_id: str, version: StudyGuideVersion, legacy_file
 
 def _save_state() -> None:
     _ensure_state_dir()
+    state_file = data_store.state_file
     if not GUIDES:
         try:
-            STATE_FILE.unlink(missing_ok=True)
+            state_file.unlink(missing_ok=True)
         except Exception as exc:  # pragma: no cover - best-effort opruimen
             logger.warning("Kon state-bestand niet verwijderen: %s", exc)
         return
 
     payload = serialize_guides(GUIDES.values())
     try:
-        STATE_FILE.write_text(
+        state_file.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
@@ -223,12 +194,13 @@ def _save_state() -> None:
 
 def _load_state() -> None:
     GUIDES.clear()
-    if not STATE_FILE.exists():
+    state_file = data_store.state_file
+    if not state_file.exists():
         _refresh_docs_index()
         return
 
     try:
-        data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        data = json.loads(state_file.read_text(encoding="utf-8"))
     except Exception as exc:  # pragma: no cover - IO afhankelijk
         logger.warning("Kon state-bestand niet lezen: %s", exc)
         _refresh_docs_index()
@@ -291,9 +263,10 @@ def _load_state() -> None:
 
 def _load_pending() -> None:
     PENDING_PARSES.clear()
-    if not PENDING_DIR.exists():
+    pending_dir = data_store.pending_dir
+    if not pending_dir.exists():
         return
-    for pending_file in PENDING_DIR.glob("*.json"):
+    for pending_file in pending_dir.glob("*.json"):
         data = read_pending_parse(pending_file)
         if not data:
             continue
@@ -512,11 +485,11 @@ def _pending_or_404(parse_id: str) -> Dict[str, Any]:
 
 
 def _pending_json_path(parse_id: str) -> Path:
-    return PENDING_DIR / f"{parse_id}.json"
+    return data_store.pending_dir / f"{parse_id}.json"
 
 
 def _pending_file_path(parse_id: str, file_name: str) -> Path:
-    folder = PENDING_DIR / parse_id
+    folder = data_store.pending_dir / parse_id
     folder.mkdir(parents=True, exist_ok=True)
     return folder / file_name
 
@@ -573,7 +546,7 @@ def _remove_pending(parse_id: str) -> None:
         json_path.unlink(missing_ok=True)
     except Exception:
         pass
-    folder = PENDING_DIR / parse_id
+    folder = data_store.pending_dir / parse_id
     if folder.exists():
         shutil.rmtree(folder, ignore_errors=True)
 
@@ -677,7 +650,8 @@ def delete_doc(file_id: str):
     guide = GUIDES.pop(file_id, None)
     if not guide:
         raise HTTPException(404, "Not found")
-    target_folder = STORAGE / file_id
+    uploads_dir = data_store.uploads_dir
+    target_folder = uploads_dir / file_id
     if target_folder.exists():
         shutil.rmtree(target_folder, ignore_errors=True)
     _refresh_docs_index()
@@ -690,9 +664,10 @@ def delete_all_docs():
     """Wis alle bekende documenten en fysieke files (opschonen)."""
     GUIDES.clear()
     _refresh_docs_index()
-    if STORAGE.exists():
-        shutil.rmtree(STORAGE, ignore_errors=True)
-        STORAGE.mkdir(parents=True, exist_ok=True)
+    uploads_dir = data_store.uploads_dir
+    if uploads_dir.exists():
+        shutil.rmtree(uploads_dir, ignore_errors=True)
+        uploads_dir.mkdir(parents=True, exist_ok=True)
     _save_state()
     return {"ok": True}
 
@@ -813,7 +788,8 @@ async def upload_doc(file: UploadFile = File(...)):
         raise HTTPException(400, "Unsupported file type (use .docx or .pdf)")
 
     _ensure_state_dir()
-    temp_path = STORAGE / f"pending-{uuid.uuid4().hex}{Path(file.filename).suffix}"
+    uploads_dir = data_store.uploads_dir
+    temp_path = uploads_dir / f"pending-{uuid.uuid4().hex}{Path(file.filename).suffix}"
     with temp_path.open("wb") as fh:
         shutil.copyfileobj(file.file, fh)
 
@@ -842,7 +818,7 @@ async def upload_doc(file: UploadFile = File(...)):
             rows or [],
             parse_id=parse_id,
             file_name=file.filename,
-            stored_file=str(stored_file.relative_to(PENDING_DIR)),
+            stored_file=str(stored_file.relative_to(data_store.pending_dir)),
             uploaded_at=uploaded_at,
         )
         _save_pending(payload)
@@ -909,7 +885,7 @@ def create_review(payload: Dict[str, Any] = Body(...)):
     if source_file and source_file.exists():
         pending_copy = _pending_file_path(parse_id, source_file.name)
         shutil.copyfile(source_file, pending_copy)
-        stored_rel = str(pending_copy.relative_to(PENDING_DIR))
+        stored_rel = str(pending_copy.relative_to(data_store.pending_dir))
 
     meta_copy = version.meta.copy(deep=True)
     payload_data = _build_pending_payload(
@@ -1000,7 +976,9 @@ def commit_review(parse_id: str):
     dest_path = _version_file_path(guide_id, version_id, version.file_name)
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     stored_rel = pending.get("storedFile")
-    stored_path = PENDING_DIR / stored_rel if stored_rel else None
+    stored_path = (
+        data_store.pending_dir / stored_rel if stored_rel else None
+    )
     if stored_path and stored_path.exists():
         shutil.copyfile(stored_path, dest_path)
 
