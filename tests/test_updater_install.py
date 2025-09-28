@@ -8,6 +8,19 @@ import pytest
 from backend import updater
 
 
+def test_pick_windows_asset_accepts_plain_executable() -> None:
+    asset = {"name": "VlierPlanner-1.4.1.exe", "browser_download_url": "https://example.invalid"}
+    result = updater._pick_windows_asset([asset])
+    assert result is asset
+
+
+def test_pick_windows_asset_prefers_setup_named_assets() -> None:
+    plain = {"name": "VlierPlanner-1.4.1.exe", "browser_download_url": "https://example.invalid/plain"}
+    setup = {"name": "VlierPlanner-Setup-1.4.1.exe", "browser_download_url": "https://example.invalid/setup"}
+    result = updater._pick_windows_asset([plain, setup])
+    assert result is setup
+
+
 def _make_update_info() -> updater.UpdateInfo:
     return updater.UpdateInfo(
         current_version="1.0.0",

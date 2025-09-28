@@ -133,24 +133,26 @@ def _extract_sha256(notes: str | None) -> str | None:
 
 
 def _pick_windows_asset(assets: list[dict[str, Any]]) -> dict[str, Any] | None:
-    candidates: list[dict[str, Any]] = []
+    preferred: list[dict[str, Any]] = []
+    fallbacks: list[dict[str, Any]] = []
     for asset in assets:
         name = str(asset.get("name", ""))
         if not name.lower().endswith((".exe", ".msi")):
             continue
-        if "win" not in name.lower() and "setup" not in name.lower():
-            continue
-        candidates.append(asset)
 
-    if not candidates:
-        return None
+        lowered = name.lower()
+        if any(keyword in lowered for keyword in ("setup", "installer", "win")):
+            preferred.append(asset)
+        else:
+            fallbacks.append(asset)
 
-    for candidate in candidates:
-        name = str(candidate.get("name", ""))
-        if "setup" in name.lower() or "installer" in name.lower():
-            return candidate
+    if preferred:
+        return preferred[0]
 
-    return candidates[0]
+    if fallbacks:
+        return fallbacks[0]
+
+    return None
 
 
 def _resolve_updates_dir() -> Path:
