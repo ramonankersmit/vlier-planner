@@ -368,7 +368,7 @@ def api_get_version() -> dict[str, str]:
 @app.get("/api/system/update")
 def api_check_update() -> dict[str, Any]:
     try:
-        info = updater.check_for_update()
+        info = updater.check_for_update(force=True)
     except updater.UpdateError as exc:
         logger.warning("Update-check mislukt: %s", exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -390,7 +390,7 @@ def api_check_update() -> dict[str, Any]:
 @app.post("/api/system/update")
 def api_install_update(payload: UpdateRequest) -> dict[str, Any]:
     try:
-        info = updater.check_for_update()
+        info = updater.check_for_update(force=True)
     except updater.UpdateError as exc:
         logger.warning("Update-check mislukt tijdens installatie: %s", exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
