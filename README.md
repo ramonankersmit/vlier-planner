@@ -1,20 +1,40 @@
 # Vlier Studiewijzer Planner
 
-Een planner voor studiewijzers van het voortgezet onderwijs. Upload een studiewijzer (PDF of DOCX) en bekijk per vak de lesstof, het huiswerk en alle belangrijke events.
+Vlier Planner helpt leerlingen en docenten om studiewijzers uit het voortgezet onderwijs overzichtelijk te plannen. Upload een studiewijzer (PDF of DOCX), bekijk per vak de lesstof, houd huiswerk bij en volg belangrijke events zoals toetsen en deadlines.
 
-## Belangrijkste schermen
-- **Weekoverzicht** – compacte lijst van vakken per week.
+## Inhoud
+1. [Functioneel overzicht](#functioneel-overzicht)
+2. [Voorbeeldschermen](#voorbeeldschermen)
+3. [Technische architectuur](#technische-architectuur)
+4. [Projectstructuur](#projectstructuur)
+5. [Installatie en ontwikkeling](#installatie-en-ontwikkeling)
+6. [Gebruik van de applicatie](#gebruik-van-de-applicatie)
+7. [Review-, versie- en updateflows](#review--versie--en-updateflows)
+8. [Frontend-build koppelen](#frontend-build-koppelen)
+9. [Alles-in-één backend](#alles-in-één-backend)
+10. [Windows distributie](#windows-distributie)
+11. [Onboarding tour](#onboarding-tour)
+12. [Licentie](#licentie)
+
+## Functioneel overzicht
+### Belangrijkste schermen
+- **Weekoverzicht** – compacte lijst van vakken per week met huiswerk en lessen.
 - **Matrix overzicht** – tabelweergave waarmee je meerdere weken naast elkaar kunt volgen.
-- **Belangrijke events** – filterbare lijst met toetsen en andere deadlines.
-- **Uploads & instellingen** – beheer geüploade studiewijzers, zichtbare vakken en thema.
+- **Belangrijke events** – filterbare lijst met toetsen, presentaties en andere deadlines.
+- **Uploads & instellingen** – beheer geüploade studiewijzers, zichtbare vakken, thema en app-instellingen.
 
-### Voorbeeldschermen
+### Kernfeatures
+- Studiewijzers uploaden in PDF of DOCX en automatisch laten normaliseren.
+- Handmatig huiswerk toevoegen, aanpassen en afvinken naast geïmporteerde items.
+- Filteren op leerjaar, niveau en zelfgekozen vakselecties.
+- Diff-overzichten en waarschuwingen tijdens reviews om wijzigingen en mogelijke problemen te tonen.
+- Automatische updatecontrole met de mogelijkheid om nieuwe versies vanuit de applicatie te downloaden.
+- Onboarding tour die nieuwe gebruikers stap voor stap door de belangrijkste schermen leidt.
 
-De onderstaande voorbeelden zijn direct afkomstig uit de `frontend/public` map en geven een indruk van de belangrijkste
-flows in de applicatie.
+## Voorbeeldschermen
+De onderstaande voorbeelden komen uit `frontend/public` en tonen de belangrijkste flows.
 
-**Studiewijzer uploaden** – Upload een PDF of DOCX, bekijk een voorbeeld van de herkende secties en kies het leerjaar en de
-klas waarvoor het materiaal bedoeld is.
+**Studiewijzer uploaden** – Upload een PDF of DOCX, bekijk een voorbeeld van de herkende secties en kies het leerjaar en de klas waarvoor het materiaal bedoeld is.
 
 ![Studiewijzer uploaden](frontend/public/voorbeeld_studiewijzer.png)
 
@@ -30,51 +50,38 @@ klas waarvoor het materiaal bedoeld is.
 
 ![Belangrijke events](frontend/public/voorbeeld_events.png)
 
-## Huiswerk beheren
-- Voeg eigen taken toe via de knop _“Eigen taak toevoegen”_ onder elke vaksectie.
-- Bewerk bestaande items (zowel automatisch geïmporteerd als eigen notities) of verwijder ze.
+## Technische architectuur
+### Backend
+- Gebouwd met FastAPI en ingericht als twee entrypoints:
+  - `backend/main.py` biedt een minimalistische API voor snelle parser-tests met endpoints voor uploaden, status en basisoverzichten.
+  - `backend/app.py` levert de volledige studiewijzer-backend met reviewflows, versiebeheer, diffs, waarschuwingen en documentendownloads.
+- Uploads, reviews en genormaliseerde resultaten worden opgeslagen via de gedeelde `DataStore` service in `backend/services/data_store.py`. De opslaglocatie kan worden overschreven met `VLIER_DATA_DIR` of `VLIER_STORAGE_DIR`.
 
-## Functionaliteit
-- FastAPI-backend met parsers voor PDF- en DOCX-bestanden.
-- API levert genormaliseerde data voor weekoverzichten, matrix, agenda en events.
-- React + Vite + Tailwind frontend met filters voor niveau, leerjaar en eigen vakselecties.
-- Upload, lijst en verwijder studiewijzers via de API; bestanden worden tijdelijk op schijf bewaard.
-- Diff-overzichten en waarschuwingen markeren veranderingen en mogelijke problemen tijdens reviews.
-- Automatische update-check met optionele installer-start om nieuwe versies binnen de app te downloaden.
+### Frontend
+- Gebouwd met React, Vite en Tailwind CSS.
+- Pagina’s voor uploads, reviewwizard, week- en matrixoverzichten, events en instellingen.
+- Maakt verbinding met de backend via REST API’s en toont waarschuwingen, diff-informatie en update-notificaties.
 
-## Normalisatie-API versus studiewijzer-workflow
-- **Gedeelde storage-laag (`backend/services/data_store.py`)** – zowel de snelle normalisatie-API als de volledige studiewijzer-backend gebruiken dezelfde `DataStore` service. Deze laag beheert de basismap (standaard `backend/storage/`) en submappen voor uploads, pending reviews, genormaliseerde JSON en indexbestanden. Door dit te centraliseren voorkom je dat beide entrypoints ieder hun eigen schijfstructuur aanmaken en elkaar voorbijlopen. Via `VLIER_DATA_DIR` of `VLIER_STORAGE_DIR` kun je een alternatieve opslaglocatie configureren.【F:backend/services/data_store.py†L11-L103】
-- **Snelle normalisatie (`backend/main.py`)** – eenvoudige FastAPI-app voor het testen van de parser. Nieuwe uploads en de genormaliseerde resultaten worden via de gedeelde `DataStore` weggeschreven, waarna de API alleen de basisendpoints aanbiedt: uploaden, status opvragen en eenvoudige weergave van weken, matrix, agenda en assessments.【F:backend/main.py†L1-L118】【F:vlier_parser/normalize.py†L17-L94】
-- **Volledige studiewijzer-workflow (`backend/app.py`)** – complete backend voor versiebeheer, reviewflows, diff-berekeningen, waarschuwingen en bestandsbeheer. Ruwe uploads, pending reviews en genormaliseerde output lopen via dezelfde `DataStore`, terwijl goedgekeurde studiewijzerversies daarnaast in gids-specifieke mappen onder `storage/<guideId>/<versionId>/` blijven staan.【F:backend/app.py†L52-L377】【F:backend/app.py†L723-L918】
-- Gebruik de minimalistische API om snel parserresultaten te testen, en de volledige app wanneer je de reviewwizard, versiehistorie of diff/warning-logica wilt uitproberen. Omdat beide entrypoints nu dezelfde opslaglaag delen, kun je probleemloos wisselen zonder data opnieuw te uploaden.【F:backend/main.py†L27-L118】【F:backend/app.py†L713-L918】
+### Parser
+- `vlier_parser/normalize.py` bevat de normalisatielogica voor studiewijzers en wordt door beide backend-entrypoints gebruikt.
+- Dummy-implementatie is aanwezig; breid deze uit met de daadwerkelijke parser en voeg gerichte tests toe.
 
-## Reviewwizard, versiebeheer en updates
-- **Reviewwizard** – `/api/reviews` en `/api/reviews/{parseId}` leveren pending reviews met meta, regels, diff en waarschuwingen. `frontend/src/pages/Review.tsx` vormt hier de meerstapsreview rond, terwijl `frontend/src/pages/Uploads.tsx` pending reviews en hun waarschuwingen toont en naar de wizard linkt.【F:backend/app.py†L802-L918】【F:frontend/src/pages/Review.tsx†L518-L1160】【F:frontend/src/pages/Uploads.tsx†L20-L1298】
-- **Versiebeheer & diffing** – commits naar `/api/reviews/{parseId}/commit` slaan een nieuwe versie van een studiewijzer weg en updaten de diff-geschiedenis. Bestanden en metadata blijven per versie beschikbaar via `/api/docs/...`-endpoints (rows, preview, download) zodat je oudere versies kunt vergelijken.【F:backend/app.py†L723-L918】
-- **Automatische updates** – `/api/system/update` controleert op nieuwe releases, terwijl een POST naar hetzelfde endpoint een download/installer kan starten. De frontend start automatisch een check via `frontend/src/App.tsx` en biedt handmatige bediening op de instellingenpagina (`frontend/src/pages/Settings.tsx`).【F:backend/app.py†L323-L366】【F:frontend/src/App.tsx†L172-L188】【F:frontend/src/pages/Settings.tsx†L36-L396】
-- **Windows-updateflow testen** – Volg de stapsgewijze checklist in [`docs/windows-update-testing.md`](docs/windows-update-testing.md) om PyInstaller-builds te maken, de Inno Setup-installer te compileren en de automatische update in een Windows-omgeving te valideren.
+### Dataflows
+- Zowel de snelle normalisatie-API als de volledige workflow schrijven naar dezelfde opslagstructuur (`backend/storage/`).
+- Goedgekeurde versies worden per studiewijzer en versie-id opgeslagen zodat diffing en historische downloads beschikbaar blijven.
 
 ## Projectstructuur
 ```
 vlier-planner/
-  backend/      FastAPI-backend
+  backend/      FastAPI-backend en opslagservices
   frontend/     React/Vite/Tailwind frontend
-  docs/         Documentatie
-  samples/      Voorbeeldbestanden
-  tools/        Hulpscripts
+  docs/         Documentatie en handleidingen
+  samples/      Voorbeeldbestanden voor testen
+  tools/        Hulpscripts (build, utilities)
 ```
 
-## Versiebeheer
-De applicatieversie staat één keer vastgelegd in `VERSION.ini` onder de sectie `[app]`. Dit bestand wordt tijdens builds gedeeld met:
-
-- de backend (FastAPI) voor de API-responses,
-- de frontend via Vite (`__APP_VERSION__`),
-- de PyInstaller bundel en
-- het Inno Setup-installatiescript.
-
-Gebruik `npm run sync-version` (of een ander script dat `tools/sync-version.mjs` aanroept) om `package.json` en `package-lock.json` automatisch bij te werken op basis van de waarde uit `VERSION.ini`.
-
-## Installatie & development
+## Installatie en ontwikkeling
+### Basisinstallatie
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r backend/requirements.txt
@@ -85,14 +92,28 @@ npm install
 npm run dev
 ```
 
+### Versiebeheer synchroniseren
+De applicatieversie staat in `VERSION.ini` onder `[app]`. Gebruik `npm run sync-version` (of een script dat `tools/sync-version.mjs` aanroept) om `package.json` en `package-lock.json` automatisch bij te werken op basis van deze waarde.
+
 ### Tests en kwaliteitscontroles
 - Backend-tests: `pytest`
 - Frontend-tests: `npm test`
+- Specifieke parser- of normalisatietests kun je draaien met `pytest -k normalize` zodra echte parserlogica aanwezig is.
 
-### Normalisatietests draaien
-De huidige `vlier_parser.normalize` bevat een dummy-implementatie. Zodra de echte parserlogica is toegevoegd kun je specifieke normalisatietests opnemen (bijv. `tests/test_normalize.py`) en uitvoeren met `pytest -k normalize`. Gebruik de minimalistische API (`backend/main.py`) voor snelle feedback op parse-resultaten voordat je de volledige reviewflow (`backend/app.py`) doorloopt.【F:backend/main.py†L27-L118】【F:backend/app.py†L723-L918】【F:vlier_parser/normalize.py†L33-L94】
+## Gebruik van de applicatie
+1. Start de backend op poort 8000 (minimalistische API) of start `backend/app.py` voor de volledige workflow.
+2. Start de frontend op poort 5173 met `npm run dev`.
+3. Upload één of meerdere studiewijzers via het Uploads-scherm.
+4. Beheer huiswerk via Weekoverzicht of Matrix overzicht en bekijk events via het Belangrijke events-scherm.
+5. Gebruik de reviewwizard om nieuwe versies te beoordelen en committen.
 
-## Frontend build koppelen aan de backend
+## Review-, versie- en updateflows
+- **Reviewwizard** – `/api/reviews` en `/api/reviews/{parseId}` leveren pending reviews met metadata, regels, diff en waarschuwingen. De frontend toont deze in de uploads- en reviewpagina’s.
+- **Versiebeheer** – Commits naar `/api/reviews/{parseId}/commit` bewaren nieuwe versies en houden diff-geschiedenis en bestanden per versie beschikbaar via `/api/docs/...`.
+- **Automatische updates** – `/api/system/update` controleert op nieuwe releases. De frontend voert automatisch checks uit en biedt handmatige bediening via de instellingenpagina.
+- **Windows-updateflow testen** – Raadpleeg [`docs/windows-update-testing.md`](docs/windows-update-testing.md) voor het doorlopen van de volledige updateketen met PyInstaller en Inno Setup.
+
+## Frontend-build koppelen
 Gebruik het hulpscript om de Vite-build in `backend/static/dist` te plaatsen wanneer je een distributieversie wilt maken:
 
 ```bash
@@ -101,8 +122,8 @@ python tools/build_frontend.py  # optioneel: --skip-install of --no-build
 
 Het script draait standaard `npm install`, bouwt de frontend en kopieert de inhoud van `frontend/dist` naar `backend/static/dist`.
 
-## Alles-in-één backend starten (voor bundling/Windows)
-Met `run_app.py` start je uvicorn, schakel je automatisch de statische frontend-serving in en wordt een browservenster geopend.
+## Alles-in-één backend
+Met `run_app.py` start je uvicorn, wordt automatisch statische frontend-serving ingeschakeld en opent er optioneel een browservenster.
 
 ```bash
 python run_app.py
@@ -111,23 +132,21 @@ python run_app.py
 Handige omgevingsvariabelen:
 
 - `VLIER_HOST` / `VLIER_PORT` – pas host of poort aan (standaard `127.0.0.1:8000`).
-- `VLIER_OPEN_BROWSER=0` – onderdruk het automatisch openen van een browser.
-- `SERVE_FRONTEND=0` – forceer API-only modus (bijvoorbeeld voor lokale ontwikkeling met Vite).
+- `VLIER_OPEN_BROWSER=0` – onderdrukt het automatisch openen van een browser.
+- `SERVE_FRONTEND=0` – forceert API-only modus (bijvoorbeeld voor lokale ontwikkeling met Vite).
 
-## Windows distributie bouwen met PyInstaller
+## Windows distributie
 Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
 
 1. Zorg dat de frontend-build beschikbaar is in de backend:
    ```bash
    python tools/build_frontend.py
    ```
-   Dit draait `npm install`, bouwt de frontend en kopieert de output naar `backend/static/dist`.
 2. Installeer PyInstaller in je (virtuele) omgeving:
    ```bash
    pip install pyinstaller
    ```
-3. Controleer of `VERSION.ini` de juiste versie bevat. De `VlierPlanner.spec` leest deze waarde en genereert automatisch een
-   `build/file_version_info.txt` die als Windows version resource aan de executable wordt meegegeven.
+3. Controleer de waarde in `VERSION.ini`. `VlierPlanner.spec` gebruikt deze om `build/file_version_info.txt` te genereren voor de Windows-version resource.
 4. Bouw de executable vanuit de projectroot:
    ```bash
    pyinstaller run_app.py \
@@ -140,21 +159,12 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
      --collect-all vlier_parser \
      --collect-all backend.parsers
    ```
-   Pas opties als `--add-data` of `--collect-all` aan wanneer extra pakketten of assets nodig zijn. Wil je PyInstaller direct de
-   spec laten gebruiken, run dan `pyinstaller VlierPlanner.spec`; dezelfde versie-resource wordt dan automatisch toegevoegd. In
-   een eigen command-line configuratie kun je `--version-file build/file_version_info.txt` meegeven om de metadata te
-   hergebruiken.
-5. Het resultaat vind je in `dist/VlierPlanner.exe`. Kopieer dit bestand naar de Windows-machine en start het met een dubbelklik; het programma opent automatisch een browser op `http://127.0.0.1:8000`.
-
-## Gebruik
-1. Start de backend op poort 8000.
-2. Start de frontend op poort 5173.
-3. Upload één of meerdere studiewijzers via _Uploads_.
-4. Beheer huiswerk in Weekoverzicht of Matrix overzicht en bekijk events via _Belangrijke events_.
+   Pas opties als `--add-data` of `--collect-all` aan wanneer extra pakketten of assets nodig zijn. Je kunt ook `pyinstaller VlierPlanner.spec` gebruiken; dezelfde version resource wordt dan automatisch toegevoegd.
+5. Het resultaat vind je in `dist/VlierPlanner.exe`. Kopieer dit bestand naar een Windows-machine en start het met een dubbelklik; de app opent automatisch op `http://127.0.0.1:8000`.
 
 ## Onboarding tour
-- Bij het eerste bezoek start automatisch een rondleiding met zes stappen: **Uitleg**, **Upload**, **Weekoverzicht**, **Matrix overzicht**, **Belangrijke events** en **Settings**.
-- Enter of spatie gaat naar de volgende stap, Escape sluit de tour. Via het menu-item **Rondleiding** in de header kun je de tour later opnieuw starten.
+- Bij het eerste bezoek start een rondleiding met zes stappen: **Uitleg**, **Upload**, **Weekoverzicht**, **Matrix overzicht**, **Belangrijke events** en **Settings**.
+- Enter of spatie gaat naar de volgende stap, Escape sluit de tour. Via het menu-item **Rondleiding** kun je de tour later opnieuw starten.
 - De status wordt opgeslagen in `localStorage` onder de sleutel `vlier.tourDone`.
 
 ## Licentie
