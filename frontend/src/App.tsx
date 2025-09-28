@@ -171,17 +171,17 @@ export default function App() {
           import("./lib/api"),
           import("./lib/updatePrompt"),
         ]);
-        const result = await api.apiCheckForUpdate();
+        const result = await api.apiCheckUpdate();
         if (cancelled) {
           return;
         }
-        if (!result.updateAvailable || !result.latestVersion) {
+        if (!result.has_update || !result.latest) {
           return;
         }
-        if (lastPromptedVersionRef.current === result.latestVersion) {
+        if (lastPromptedVersionRef.current === result.latest) {
           return;
         }
-        lastPromptedVersionRef.current = result.latestVersion;
+        lastPromptedVersionRef.current = result.latest;
         await prompt.promptUpdateInstallation(result);
       } catch (error) {
         if (!cancelled) {

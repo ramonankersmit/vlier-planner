@@ -17,19 +17,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Final
 from urllib.error import URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from packaging import version as packaging_version
+from httpx import HTTPError
 
 try:  # pragma: no cover - allow running as module or package
-    from .version import APP_VERSION
+    from .version import __version__
+    from . import update_checker
 except ImportError:  # pragma: no cover - fallback when executed as a script
-    from version import APP_VERSION  # type: ignore
+    from version import __version__  # type: ignore
+    import update_checker  # type: ignore
+
+APP_VERSION = __version__
 
 LOGGER = logging.getLogger(__name__)
 
 REPO_SLUG: Final[str] = os.getenv("VLIER_UPDATE_REPO", "ramonankersmit/vlier-planner")
-API_LATEST: Final[str] = f"https://api.github.com/repos/{REPO_SLUG}/releases/latest"
 APP_NAME: Final[str] = os.getenv("VLIER_UPDATE_APP_NAME", "VlierPlanner")
 _CACHE_TTL_SECONDS: Final[int] = 15 * 60
 
@@ -86,13 +91,6 @@ _SILENT_INSTALL_FLAGS: Final[tuple[str, ...]] = (
 
 def _user_agent() -> str:
     return f"{APP_NAME}/update-check"
-
-
-def _http_get_json(url: str) -> Any:
-    request = Request(url, headers={"User-Agent": _user_agent()})
-    with urlopen(request, timeout=20) as response:  # noqa: S310 - controlled URL
-        data = response.read()
-    return json.loads(data.decode("utf-8"))
 
 
 def _download(url: str, destination: Path) -> Path:
@@ -170,22 +168,17 @@ def _resolve_updates_dir() -> Path:
 
 def _fetch_update_info() -> UpdateInfo | None:
     try:
-        payload = _http_get_json(API_LATEST)
-    except URLError as exc:  # pragma: no cover - netwerkafhankelijk
+        latest = update_checker.fetch_latest_release(include_prereleases=True)
+    except HTTPError as exc:  # pragma: no cover - netwerkafhankelijk
         raise UpdateError(f"Kon release-informatie niet ophalen: {exc}") from exc
-    except TimeoutError as exc:  # pragma: no cover - netwerkafhankelijk
-        raise UpdateError("Timeout bij ophalen van release-informatie") from exc
     except Exception as exc:  # pragma: no cover - defensief
         raise UpdateError(f"Onbekende fout tijdens update-check: {exc}") from exc
 
-    latest_tag = str(payload.get("tag_name", "")).strip()
-    if not latest_tag:
+    if not latest:
         return None
-    latest_version_str = latest_tag.lstrip("v")
 
-    asset = _pick_windows_asset(payload.get("assets", []) or [])
-    if not asset:
-        LOGGER.info("Geen Windows release asset gevonden in release %s", latest_tag)
+    latest_version_str = str(latest.get("version", "")).strip()
+    if not latest_version_str:
         return None
 
     latest_version = _parse_version(latest_version_str)
@@ -197,21 +190,24 @@ def _fetch_update_info() -> UpdateInfo | None:
     if latest_version <= current_version:
         return None
 
-    notes = payload.get("body")
-    checksum = _extract_sha256(notes)
-
-    download_url = str(asset.get("browser_download_url"))
+    download_url = latest.get("asset_url")
     if not download_url:
-        LOGGER.info("Release asset mist download URL")
+        LOGGER.info("Geen Windows release asset gevonden in release %s", latest_version_str)
         return None
 
-    asset_name = str(asset.get("name", "")) or f"update-{latest_version_str}.exe"
+    asset_name = latest.get("asset_name")
+    if not asset_name:
+        parsed = urlparse(str(download_url))
+        asset_name = Path(parsed.path).name or f"update-{latest_version_str}.exe"
+
+    notes = latest.get("notes")
+    checksum = _extract_sha256(notes)
 
     return UpdateInfo(
         current_version=APP_VERSION,
         latest_version=latest_version_str,
-        asset_name=asset_name,
-        download_url=download_url,
+        asset_name=str(asset_name),
+        download_url=str(download_url),
         release_notes=notes,
         sha256=checksum,
     )

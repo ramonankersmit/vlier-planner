@@ -6,7 +6,7 @@ import { useAppStore } from "../../app/store";
 import { PUBLIC_LOGO } from "../../assets/images";
 import { clamp01, withAlpha } from "../../lib/color";
 import { useOnboardingTour } from "../OnboardingTour";
-import { API_BASE } from "../../lib/api";
+import { API_BASE, apiGetVersion } from "../../lib/api";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useAppStore((state) => state.theme);
@@ -21,13 +21,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
     (async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/system/version`, {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error(`status ${response.status}`);
-        }
-        const data = (await response.json()) as { version?: string };
+        const data = await apiGetVersion();
         const reported = data?.version?.trim();
         if (!cancelled && reported) {
           setBackendVersion(reported);

@@ -1,9 +1,4 @@
-import {
-  API_BASE,
-  apiCheckForUpdate,
-  apiInstallUpdate,
-  type UpdateCheckResponse,
-} from "./api";
+import { API_BASE, apiCheckUpdate, apiInstallUpdate, type UpdateInfo } from "./api";
 
 const MAX_NOTES_LENGTH = 600;
 const UPDATE_TIMEOUT_MS = 5 * 60_000;
@@ -99,10 +94,10 @@ function startBackendRestartWatcher(targetVersion: string | undefined): void {
 }
 
 export async function promptUpdateInstallation(
-  result: UpdateCheckResponse,
+  result: UpdateInfo,
   options?: { suppressSuccessAlert?: boolean }
 ): Promise<boolean> {
-  if (!result.updateAvailable || !result.latestVersion) {
+  if (!result.has_update || !result.latest) {
     return false;
   }
 
@@ -112,8 +107,8 @@ export async function promptUpdateInstallation(
       ? `${rawNotes.slice(0, MAX_NOTES_LENGTH - 3)}...`
       : rawNotes;
 
-  let message = `Er is een nieuwe versie beschikbaar (v${result.latestVersion}).`;
-  message += `\nHuidige versie: v${result.currentVersion}.`;
+  let message = `Er is een nieuwe versie beschikbaar (v${result.latest}).`;
+  message += `\nHuidige versie: v${result.current}.`;
   if (snippet) {
     message += `\n\nWijzigingen:\n${snippet}`;
   }
@@ -125,8 +120,8 @@ export async function promptUpdateInstallation(
   }
 
   try {
-    const response = await apiInstallUpdate(result.latestVersion);
-    const targetVersion = response.targetVersion ?? result.latestVersion;
+    const response = await apiInstallUpdate(result.latest);
+    const targetVersion = response.targetVersion ?? result.latest;
 
     if (response.restartInitiated) {
       if (!options?.suppressSuccessAlert) {
@@ -152,14 +147,14 @@ export async function promptUpdateInstallation(
 export async function checkAndPromptForUpdate(
   options?: { showNoUpdateMessage?: boolean }
 ): Promise<{
-  result: UpdateCheckResponse;
+  result: UpdateInfo;
   updateStarted: boolean;
 }> {
-  const result = await apiCheckForUpdate();
+  const result = await apiCheckUpdate();
 
-  if (!result.updateAvailable || !result.latestVersion) {
+  if (!result.has_update || !result.latest) {
     if (options?.showNoUpdateMessage) {
-      window.alert(`Je gebruikt momenteel de nieuwste versie (v${result.currentVersion}).`);
+      window.alert(`Je gebruikt momenteel de nieuwste versie (v${result.current}).`);
     }
     return { result, updateStarted: false };
   }
@@ -170,7 +165,7 @@ export async function checkAndPromptForUpdate(
 
   if (options?.showNoUpdateMessage && updateStarted) {
     window.alert(
-      `De update naar v${result.latestVersion} is gestart. Sluit Vlier Planner af wanneer daarom wordt gevraagd.`
+      `De update naar v${result.latest} is gestart. Sluit Vlier Planner af wanneer daarom wordt gevraagd.`
     );
   }
 

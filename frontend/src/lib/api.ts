@@ -304,13 +304,13 @@ export async function apiCreateReviewFromVersion(
   return (await r.json()) as ReviewDraft;
 }
 
-export type UpdateCheckResponse = {
-  updateAvailable: boolean;
-  currentVersion: string;
-  latestVersion?: string;
-  assetName?: string;
+export type UpdateInfo = {
+  current: string;
+  latest: string | null;
+  has_update: boolean;
+  asset_url?: string | null;
+  asset_name?: string | null;
   notes?: string | null;
-  checksum?: string | null;
 };
 
 export type UpdateInstallResponse = {
@@ -320,8 +320,16 @@ export type UpdateInstallResponse = {
   targetVersion?: string;
 };
 
-export async function apiCheckForUpdate(): Promise<UpdateCheckResponse> {
-  const response = await fetch(`${BASE}/api/system/update`);
+export async function apiGetVersion(): Promise<{ version: string }> {
+  const response = await fetch(`${BASE}/api/system/version`, { method: "GET" });
+  if (!response.ok) {
+    throw new Error(`version_fetch failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function apiCheckUpdate(): Promise<UpdateInfo> {
+  const response = await fetch(`${BASE}/api/system/update`, { method: "GET" });
   if (!response.ok) {
     throw new Error(`update_check failed: ${response.status}`);
   }

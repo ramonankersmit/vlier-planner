@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 import backend.app as backend_app
 from backend.updater import InstallResult, UpdateInfo
+from backend.version import __version__
 
 
 @pytest.fixture()
@@ -39,20 +40,36 @@ def api_client(tmp_path):
     backend_app._load_pending()
 
 
-def test_update_check_endpoint_forces_refresh(api_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    captured_force: list[bool] = []
+def test_update_check_endpoint_returns_payload(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured_version: list[str] = []
 
-    def fake_check_for_update(*, force: bool = False):
-        captured_force.append(force)
-        return None
+    def fake_get_update_info(current: str) -> dict[str, object]:
+        captured_version.append(current)
+        return {
+            "current": current,
+            "latest": "1.4.2",
+            "has_update": True,
+            "asset_url": "https://example.invalid/VlierPlanner-Setup.exe",
+        }
 
-    monkeypatch.setattr(backend_app.updater, "check_for_update", fake_check_for_update)
+    monkeypatch.setattr(
+        backend_app.update_checker,
+        "get_update_info",
+        fake_get_update_info,
+    )
 
     response = api_client.get("/api/system/update")
     assert response.status_code == 200
     body = response.json()
-    assert body["updateAvailable"] is False
-    assert captured_force == [True]
+    assert body == {
+        "current": __version__,
+        "latest": "1.4.2",
+        "has_update": True,
+        "asset_url": "https://example.invalid/VlierPlanner-Setup.exe",
+    }
+    assert captured_version == [__version__]
 
 
 def test_update_install_endpoint_forces_refresh(
