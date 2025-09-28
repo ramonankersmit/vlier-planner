@@ -140,8 +140,9 @@ function AppContent({ hasHydratedStore }: AppContentProps) {
 export default function App() {
   const hasHydratedStore = useStoreHydration();
   const enableAutoUpdate = useAppStore((state) => state.enableAutoUpdate);
+  const availableUpdate = useAppStore((state) => state.availableUpdate);
+  const setAvailableUpdate = useAppStore((state) => state.setAvailableUpdate);
   const [shouldCheckUpdate, setShouldCheckUpdate] = React.useState(true);
-  const lastPromptedVersionRef = React.useRef<string | null>(null);
   const prevAutoUpdateRef = React.useRef(enableAutoUpdate);
 
   React.useEffect(() => {
@@ -153,9 +154,11 @@ export default function App() {
     }
     if (enableAutoUpdate) {
       setShouldCheckUpdate(true);
+    } else {
+      setAvailableUpdate(null);
     }
     prevAutoUpdateRef.current = enableAutoUpdate;
-  }, [enableAutoUpdate, hasHydratedStore]);
+  }, [enableAutoUpdate, hasHydratedStore, setAvailableUpdate]);
 
   React.useEffect(() => {
     if (!hasHydratedStore || !enableAutoUpdate || !shouldCheckUpdate) {
@@ -167,22 +170,16 @@ export default function App() {
 
     (async () => {
       try {
-        const [api, prompt] = await Promise.all([
-          import("./lib/api"),
-          import("./lib/updatePrompt"),
-        ]);
+        const api = await import("./lib/api");
         const result = await api.apiCheckUpdate();
         if (cancelled) {
           return;
         }
         if (!result.has_update || !result.latest) {
+          setAvailableUpdate(null);
           return;
         }
-        if (lastPromptedVersionRef.current === result.latest) {
-          return;
-        }
-        lastPromptedVersionRef.current = result.latest;
-        await prompt.promptUpdateInstallation(result);
+        setAvailableUpdate(result);
       } catch (error) {
         if (!cancelled) {
           console.warn("Automatische update-check mislukt:", error);
@@ -193,7 +190,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [enableAutoUpdate, hasHydratedStore, shouldCheckUpdate]);
+  }, [enableAutoUpdate, hasHydratedStore, setAvailableUpdate, shouldCheckUpdate]);
 
   // Hydrate globale docs-store vanaf de backend zodra de app mount
   useEffect(() => {
@@ -204,7 +201,7 @@ export default function App() {
     <BrowserRouter>
       <DocumentPreviewProvider>
         <OnboardingTourProvider>
-          <AppShell>
+          <AppShell pendingUpdate={availableUpdate ?? undefined}>
             <AppContent hasHydratedStore={hasHydratedStore} />
           </AppShell>
         </OnboardingTourProvider>

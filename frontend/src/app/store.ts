@@ -8,6 +8,7 @@ import type {
   ReviewDraft,
   StudyGuide,
   StudyGuideVersion,
+  UpdateInfo,
 } from "../lib/api";
 import {
   deriveIsoYearForWeek,
@@ -281,6 +282,8 @@ type State = {
   setEnableCustomHomework: (value: boolean) => void;
   enableAutoUpdate: boolean;
   setEnableAutoUpdate: (value: boolean) => void;
+  availableUpdate: UpdateInfo | null;
+  setAvailableUpdate: (info: UpdateInfo | null) => void;
 
   // ==== afvinkstatus gedeeld ====
   doneMap: Record<string, boolean>;
@@ -776,6 +779,7 @@ export const createInitialState = (): Pick<State, InitialStateKeys> => {
     enableHomeworkEditing: true,
     enableCustomHomework: true,
     enableAutoUpdate: true,
+    availableUpdate: null,
     doneMap: {},
     weekIdxWO: 0,
     niveauWO: "ALLE",
@@ -1650,6 +1654,7 @@ export const useAppStore = create<State>()(
         set(() => ({ enableCustomHomework: !!value })),
       setEnableAutoUpdate: (value) =>
         set(() => ({ enableAutoUpdate: !!value })),
+      setAvailableUpdate: (info) => set(() => ({ availableUpdate: info })),
 
       // ----------------------------
       // done-map

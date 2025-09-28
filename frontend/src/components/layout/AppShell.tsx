@@ -1,14 +1,26 @@
 import React from "react";
-import { NavLink } from "react-router-dom";
-import { Coffee, Sparkles, Info, UploadCloud, Settings as SettingsIcon } from "lucide-react";
+import { Link, NavLink } from "react-router-dom";
+import {
+  Coffee,
+  Sparkles,
+  Info,
+  UploadCloud,
+  Settings as SettingsIcon,
+  ArrowRight,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAppStore } from "../../app/store";
 import { PUBLIC_LOGO } from "../../assets/images";
 import { clamp01, withAlpha } from "../../lib/color";
 import { useOnboardingTour } from "../OnboardingTour";
-import { API_BASE, apiGetVersion } from "../../lib/api";
+import { apiGetVersion, type UpdateInfo } from "../../lib/api";
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+type AppShellProps = {
+  children: React.ReactNode;
+  pendingUpdate?: UpdateInfo;
+};
+
+export default function AppShell({ children, pendingUpdate }: AppShellProps) {
   const theme = useAppStore((state) => state.theme);
   const backgroundImage = useAppStore((state) => state.backgroundImage);
   const surfaceOpacity = useAppStore((state) => state.surfaceOpacity);
@@ -142,6 +154,33 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">
         <div className="rounded-2xl border theme-border theme-surface p-6 shadow-sm">
+          {pendingUpdate && pendingUpdate.latest ? (
+            <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 text-amber-900">
+              <Link
+                to="/settings"
+                className="group flex flex-col gap-3 rounded-xl px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 md:flex-row md:items-center md:justify-between"
+              >
+                <div className="flex items-start gap-3">
+                  <Sparkles className="mt-1 flex-shrink-0" size={20} aria-hidden="true" />
+                  <div>
+                    <div className="text-sm font-semibold">Nieuwe versie beschikbaar</div>
+                    <div className="text-sm">
+                      Versie v{pendingUpdate.latest} staat klaar. Je gebruikt nu v{pendingUpdate.current}.
+                      Klik om naar de instellingen te gaan en de update te starten.
+                    </div>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-2 text-sm font-medium">
+                  <span>Ga naar instellingen</span>
+                  <ArrowRight
+                    size={16}
+                    aria-hidden="true"
+                    className="transition-transform group-hover:translate-x-1"
+                  />
+                </span>
+              </Link>
+            </div>
+          ) : null}
           {children}
         </div>
       </main>

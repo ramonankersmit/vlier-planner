@@ -27,6 +27,8 @@ export default function Settings() {
     setEnableCustomHomework,
     enableAutoUpdate,
     setEnableAutoUpdate,
+    availableUpdate,
+    setAvailableUpdate,
     resetAppState,
   } = useAppStore();
   
@@ -36,6 +38,15 @@ export default function Settings() {
   const [updateCheckStatus, setUpdateCheckStatus] = React.useState<
     { type: "info" | "success" | "error"; message: string } | null
   >(null);
+
+  const updateNotesSnippet = React.useMemo(() => {
+    const notes = availableUpdate?.notes?.trim();
+    if (!notes) {
+      return null;
+    }
+    const limit = 300;
+    return notes.length > limit ? `${notes.slice(0, limit - 1)}…` : notes;
+  }, [availableUpdate]);
 
   const activeTheme = React.useMemo(
     () => themePresets.find((preset) => preset.id === activeThemeId),
@@ -221,6 +232,7 @@ export default function Settings() {
       ]);
       const result = await api.apiCheckUpdate();
       if (!result.has_update || !result.latest) {
+        setAvailableUpdate(null);
         setUpdateCheckStatus({
           type: "info",
           message: `Je gebruikt de nieuwste versie (v${result.current}).`,
@@ -228,11 +240,14 @@ export default function Settings() {
         return;
       }
 
+      setAvailableUpdate(result);
+
       const updateStarted = await prompt.promptUpdateInstallation(result, {
         suppressSuccessAlert: true,
       });
 
       if (updateStarted) {
+        setAvailableUpdate(null);
         setUpdateCheckStatus({
           type: "success",
           message:
@@ -250,6 +265,43 @@ export default function Settings() {
       setUpdateCheckStatus({
         type: "error",
         message: `Controle mislukt: ${message}`,
+      });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleInstallAvailableUpdate = async () => {
+    if (!availableUpdate || !availableUpdate.latest) {
+      return;
+    }
+    setIsCheckingUpdate(true);
+    setUpdateCheckStatus(null);
+    try {
+      const prompt = await import("../lib/updatePrompt");
+      const updateStarted = await prompt.promptUpdateInstallation(availableUpdate, {
+        suppressSuccessAlert: true,
+      });
+
+      if (updateStarted) {
+        setAvailableUpdate(null);
+        setUpdateCheckStatus({
+          type: "success",
+          message:
+            "De update is gestart. Laat Vlier Planner geopend; de pagina wordt automatisch vernieuwd zodra de nieuwe versie klaarstaat.",
+        });
+      } else {
+        setUpdateCheckStatus({
+          type: "info",
+          message: `Update naar v${availableUpdate.latest} is niet gestart. Je kunt het later opnieuw proberen.`,
+        });
+      }
+    } catch (error) {
+      console.error("Update starten via instellingen mislukt:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      setUpdateCheckStatus({
+        type: "error",
+        message: `Installatie mislukt: ${message}`,
       });
     } finally {
       setIsCheckingUpdate(false);
@@ -397,6 +449,29 @@ export default function Settings() {
                   </span>
                 ) : null}
               </div>
+              {availableUpdate && availableUpdate.latest ? (
+                <div className="mt-4 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                  <div className="text-sm font-medium">
+                    Update v{availableUpdate.latest} beschikbaar
+                  </div>
+                  <div className="text-xs leading-snug">
+                    Je gebruikt momenteel versie v{availableUpdate.current}. Klik hieronder om de installatie te starten.
+                  </div>
+                  {updateNotesSnippet ? (
+                    <div className="text-xs leading-snug">
+                      <span className="font-medium">Wijzigingen:</span> {updateNotesSnippet}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handleInstallAvailableUpdate}
+                    className="w-full rounded-md border border-amber-300 bg-amber-100 px-3 py-1 text-sm font-medium transition-colors hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                    disabled={isCheckingUpdate}
+                  >
+                    {isCheckingUpdate ? "Bezig..." : "Update installeren"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </label>
         </div>
