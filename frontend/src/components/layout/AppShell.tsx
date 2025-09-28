@@ -6,13 +6,43 @@ import { useAppStore } from "../../app/store";
 import { PUBLIC_LOGO } from "../../assets/images";
 import { clamp01, withAlpha } from "../../lib/color";
 import { useOnboardingTour } from "../OnboardingTour";
+import { API_BASE } from "../../lib/api";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useAppStore((state) => state.theme);
   const backgroundImage = useAppStore((state) => state.backgroundImage);
   const surfaceOpacity = useAppStore((state) => state.surfaceOpacity);
-  const appVersion = __APP_VERSION__ ?? "0.0.0";
+  const [backendVersion, setBackendVersion] = React.useState<string | null>(null);
+  const appVersion = backendVersion ?? __APP_VERSION__ ?? "0.0.0";
   const { restart: restartTour } = useOnboardingTour();
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/system/version`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error(`status ${response.status}`);
+        }
+        const data = (await response.json()) as { version?: string };
+        const reported = data?.version?.trim();
+        if (!cancelled && reported) {
+          setBackendVersion(reported);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("Kon backendversie niet ophalen:", error);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const themeStyle = React.useMemo(() => {
     const surfaceAlpha = clamp01(surfaceOpacity / 100);

@@ -72,6 +72,16 @@ _SHUTDOWN_CALLBACK: Callable[[], None] | None = None
 _FORCED_EXIT_DELAY_SECONDS: Final[float] = 30.0
 _TRUE_VALUES: Final[set[str]] = {"1", "true", "yes", "on"}
 _FALSE_VALUES: Final[set[str]] = {"0", "false", "no", "off"}
+_SILENT_INSTALL_FLAGS: Final[tuple[str, ...]] = (
+    "/VERYSILENT",
+    "/SUPPRESSMSGBOXES",
+    "/SP-",
+    "/NOCANCEL",
+    "/NORESTART",
+    "/CLOSEAPPLICATIONS",
+    "/RESTARTAPPLICATIONS=No",
+    "/LANG=nl",
+)
 
 
 def _user_agent() -> str:
@@ -249,158 +259,89 @@ def _powershell_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def _build_restart_helper_script(plan_path: Path, log_path: Path) -> str:
-    plan_literal = _powershell_quote(str(plan_path))
-    log_literal = _powershell_quote(str(log_path))
-
+def _build_restart_helper_script() -> str:
     script = textwrap.dedent(
-        f"""
-        Set-StrictMode -Version Latest
-        $ErrorActionPreference = 'Stop'
-        $PlanPath = {plan_literal}
-        $LogPath = {log_literal}
-        $ScriptPath = $MyInvocation.MyCommand.Path
+        '''
+        param([string]$PlanJsonPath)
 
-        function Write-HelperLog {{
-            param([string]$Message)
-            $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-            $line = "[{0}] {1}" -f $timestamp, $Message
-            try {{
-                $logDir = Split-Path -Path $LogPath -Parent
-                if ($logDir -and -not (Test-Path -Path $logDir)) {{
-                    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-                }}
-                $line | Out-File -FilePath $LogPath -Append -Encoding UTF8
-            }} catch {{}}
-        }}
+        $ErrorActionPreference = "Stop"
+        $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+        if (-not $PlanJsonPath) {
+          $PlanJsonPath = Get-ChildItem -LiteralPath $ScriptDir -Filter "apply-update-*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { $_.FullName }
+        }
+        if (-not (Test-Path $PlanJsonPath)) { throw "Plan JSON niet gevonden in $ScriptDir" }
 
-        function Wait-ForProcessExit {{
-            param([int]$Pid)
+        function Write-Log([string]$msg) {
+          $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+          $line = "[$ts] $msg"
+          Write-Output $line
+          if ($global:LOG_PATH) { Add-Content -LiteralPath $global:LOG_PATH -Value $line }
+        }
+        function Read-Json([string]$p) { Get-Content -LiteralPath $p -Raw | ConvertFrom-Json }
+        function Wait-For-ProcessExit([int]$pid,[int]$t=300){ if(-not $pid){return $true};$sw=[Diagnostics.Stopwatch]::StartNew();while($sw.Elapsed.TotalSeconds -lt $t){try{Get-Process -Id $pid -ErrorAction Stop|Out-Null;Start-Sleep -Milliseconds 500}catch{return $true}};return $false}
+        function Wait-For-FileUnlock([string]$path,[int]$t=120){$sw=[Diagnostics.Stopwatch]::StartNew();$dir=Split-Path -Parent $path;$tmp=Join-Path $dir ("."+[IO.Path]::GetFileName($path)+".lockcheck");while($sw.Elapsed.TotalSeconds -lt $t){try{if(Test-Path $tmp){Remove-Item $tmp -Force -ErrorAction SilentlyContinue};Rename-Item $path (Split-Path -Leaf $tmp);Rename-Item $tmp (Split-Path -Leaf $path);return $true}catch{Start-Sleep -Milliseconds 700}};return $false}
+        function Try-DeleteOrQuarantine([string]$path,[int]$t=20){if(-not(Test-Path $path)){return $true};$sw=[Diagnostics.Stopwatch]::StartNew();while($sw.Elapsed.TotalSeconds -lt $t){try{Remove-Item $path -Force;return $true}catch{try{$old="$path.old";if(Test-Path $old){Remove-Item $old -Force -ErrorAction SilentlyContinue};Move-Item $path $old -Force;return $true}catch{Start-Sleep -Milliseconds 500}}};return $false}
 
-            if ($Pid -le 0) {{
-                Write-HelperLog "Geen geldig proces-ID ontvangen; ga direct verder."
-                return
-            }}
+        # ---- Start ----
+        $Plan = Read-Json $PlanJsonPath
+        $global:LOG_PATH = if ($Plan.log_path) { $Plan.log_path } else { Join-Path $ScriptDir "restart-helper.log" }
+        "--- VlierPlanner update helper gestart ---" | Set-Content -LiteralPath $global:LOG_PATH
 
-            Write-HelperLog ("Wachten tot proces {0} wordt afgesloten." -f $Pid)
-            $deadline = (Get-Date).AddMinutes(5)
+        $originalPid      = [int]$Plan.original_pid
+        $targetExecutable = [string]$Plan.target_executable
+        $installerPath    = [string]$Plan.installer_path
 
-            while ((Get-Date) -lt $deadline) {{
-                try {{
-                    Get-Process -Id $Pid -ErrorAction Stop | Out-Null
-                    Start-Sleep -Milliseconds 500
-                }} catch {{
-                    Write-HelperLog "Origineel proces is gestopt."
-                    return
-                }}
-            }}
+        $installerLog = Join-Path $ScriptDir "installer.log"
+        $installerArgs = @("/VERYSILENT","/SUPPRESSMSGBOXES","/SP-","/NOCANCEL","/NORESTART","/CLOSEAPPLICATIONS","/RESTARTAPPLICATIONS=No","/LANG=nl","/LOG=""$installerLog"")
 
-            try {{
-                Get-Process -Id $Pid -ErrorAction Stop | Out-Null
-                Write-HelperLog "Origineel proces draait nog na wachttijd; ga verder met herstart."
-            }} catch {{
-                Write-HelperLog "Origineel proces is gestopt."
-            }}
-        }}
+        Write-Log "Plan: PID=$originalPid"
+        Write-Log "EXE : $targetExecutable"
+        Write-Log "Installer: $installerPath"
+        Write-Log "Args: $($installerArgs -join ' ')"
+        Write-Log "Installerlog: $installerLog"
 
-        try {{
-            if (-not (Test-Path -Path $PlanPath)) {{
-                Write-HelperLog ("Herstartplan niet gevonden: {0}" -f $PlanPath)
-                exit 1
-            }}
+        if ($originalPid -gt 0) {
+          Write-Log "Wachten op proces $originalPid…"
+          if (Wait-For-ProcessExit -pid $originalPid -timeoutSec 300) { Write-Log "Origineel proces is gestopt." } else { Write-Log "Time-out bij wachten op proces" }
+        }
 
-            $Plan = Get-Content -Path $PlanPath -Raw | ConvertFrom-Json
+        if ($targetExecutable -and (Test-Path $targetExecutable)) {
+          Write-Log "Controleren of $targetExecutable vrijgegeven is…"
+          if (Wait-For-FileUnlock -path $targetExecutable -timeoutSec 120) {
+            Write-Log "EXE lijkt vrij (rename-check ok). Probeer te verwijderen/verplaatsen…"
+            if (Try-DeleteOrQuarantine -path $targetExecutable -timeoutSec 20) { Write-Log "Oude EXE verwijderd of naar .old verplaatst." }
+            else { Write-Log "WAARSCHUWING: EXE blijft gelockt; installer moet het afsluiten." }
+          } else { Write-Log "WAARSCHUWING: rename-check faalde; installer moet het afsluiten." }
+        }
 
-            $TargetExecutable = [string]$Plan.target_executable
-            $InstallerPath = [string]$Plan.installer_path
-            $InstallerArgs = @()
-            if ($Plan.installer_args -is [System.Array]) {{
-                $InstallerArgs = $Plan.installer_args
-            }} elseif ($Plan.installer_args) {{
-                $InstallerArgs = @([string]$Plan.installer_args)
-            }}
+        if (-not (Test-Path $installerPath)) { throw "Installer niet gevonden: $installerPath" }
+        Write-Log "Start installer…"
+        $proc = Start-Process -FilePath $installerPath -ArgumentList $installerArgs -Wait -PassThru -ErrorAction Stop
+        $code = $proc.ExitCode
+        Write-Log "Installer exit code: $code"
 
-            Write-HelperLog ("Helper gestart. Doel: {0}; Installer: {1}" -f $TargetExecutable, $InstallerPath)
+        $cleanupTargets = @()
+        $oldCandidate = "$targetExecutable.old"
+        if (Test-Path $oldCandidate) { $cleanupTargets += $oldCandidate }
+        if (Test-Path $installerPath) { $cleanupTargets += $installerPath }
 
-            $OriginalPid = 0
-            if ($Plan.PSObject.Properties.Name -contains 'original_pid') {{
-                $OriginalPid = [int]$Plan.original_pid
-            }}
-            Wait-ForProcessExit -Pid $OriginalPid
-
-            if (-not (Test-Path -Path $InstallerPath)) {{
-                Write-HelperLog ("Installerbestand niet gevonden: {0}" -f $InstallerPath)
-            }} else {{
-                Write-HelperLog "Installer wordt gestart."
-                try {{
-                    $installerProcess = Start-Process -FilePath $InstallerPath -ArgumentList $InstallerArgs -Wait -PassThru
-                    if ($null -ne $installerProcess) {{
-                        Write-HelperLog ("Installer afgerond met exitcode {0}." -f $installerProcess.ExitCode)
-                    }} else {{
-                        Write-HelperLog "Installer afgerond."
-                    }}
-                }} catch {{
-                    Write-HelperLog ("Fout tijdens start van installer: {0}" -f $_.Exception.Message)
-                }}
-            }}
-
-            $deadline = (Get-Date).AddMinutes(5)
-            $launched = $false
-            $missingLogged = $false
-            $lockedLogged = $false
-
-            while ((Get-Date) -lt $deadline) {{
-                if (-not (Test-Path -Path $TargetExecutable)) {{
-                    if (-not $missingLogged) {{
-                        Write-HelperLog "Doelbestand nog niet gevonden; opnieuw proberen."
-                        $missingLogged = $true
-                    }}
-                    Start-Sleep -Milliseconds 500
-                    continue
-                }}
-
-                try {{
-                    $stream = [System.IO.File]::Open(
-                        $TargetExecutable,
-                        [System.IO.FileMode]::Open,
-                        [System.IO.FileAccess]::Read,
-                        [System.IO.FileShare]::Read
-                    )
-                    $stream.Close()
-                }} catch {{
-                    if (-not $lockedLogged) {{
-                        Write-HelperLog "Bestand nog vergrendeld; wachten tot het wordt vrijgegeven."
-                        $lockedLogged = $true
-                    }}
-                    Start-Sleep -Milliseconds 500
-                    continue
-                }}
-
-                try {{
-                    Start-Process -FilePath $TargetExecutable -WorkingDirectory (Split-Path -Path $TargetExecutable -Parent) | Out-Null
-                    Write-HelperLog "Herstart gelukt."
-                    $launched = $true
-                    break
-                }} catch {{
-                    Write-HelperLog ("Fout tijdens startpoging: {0}" -f $_.Exception.Message)
-                    Start-Sleep -Milliseconds 500
-                }}
-            }}
-
-            if (-not $launched) {{
-                Write-HelperLog "Kon de applicatie niet automatisch herstarten binnen de wachttijd."
-            }}
-        }} catch {{
-            Write-HelperLog ("Onverwachte fout in helper: {0}" -f $_.Exception.Message)
-        }} finally {{
-            try {{ Remove-Item -Path $PlanPath -Force -ErrorAction SilentlyContinue }} catch {{}}
-            try {{ Remove-Item -Path $ScriptPath -Force -ErrorAction SilentlyContinue }} catch {{}}
-        }}
-        """
+        if ($code -eq 0 -and $targetExecutable) {
+          try {
+            Write-Log "Start nieuwe app: $targetExecutable"
+            Start-Process -FilePath $targetExecutable | Out-Null
+            Write-Log "Herstart gelukt."
+          } catch { Write-Log "Kon app niet starten: $($_.Exception.Message)" }
+          foreach ($c in $cleanupTargets) {
+            try { Remove-Item -LiteralPath $c -Force; Write-Log "Opgeruimd: $c" } catch { Write-Log "Kon niet opruimen: $c ($($_.Exception.Message))" }
+          }
+        } else {
+          Write-Log "Installer geen succes; zie $installerLog voor detail."
+        }
+        Write-Log "--- Helper klaar ---"
+        '''
     ).strip()
 
     return script + "\n"
-
 
 def _write_restart_plan(
     target_executable: Path,
@@ -435,7 +376,7 @@ def _write_restart_plan(
         LOGGER.warning("Kon herstartplan niet schrijven: %s", exc)
         return None
 
-    script_content = _build_restart_helper_script(plan_path, log_path)
+    script_content = _build_restart_helper_script()
 
     try:
         script_path.write_text(script_content, encoding="utf-8")
@@ -734,10 +675,8 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
                 LOGGER.warning("Kon corrupt updatebestand niet verwijderen: %s", destination)
             raise UpdateError("Controle van de bestandshandtekening is mislukt")
 
-    flags: list[str] = []
     use_silent = _should_use_silent_install() if silent is None else silent
-    if use_silent:
-        flags.extend(["/VERYSILENT", "/NORESTART"])
+    flags: list[str] = list(_SILENT_INSTALL_FLAGS) if use_silent else []
 
     restart_initiated = False
     target_executable = Path(sys.executable).resolve()

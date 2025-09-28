@@ -127,7 +127,7 @@ def test_install_update_prefers_python_helper(monkeypatch, tmp_path: Path):
     assert result.restart_initiated is True
     assert result.installer_path == installer_path
     assert helper_calls and helper_calls[0][1] == installer_path
-    assert helper_calls[0][2] == ["/VERYSILENT", "/NORESTART"]
+    assert helper_calls[0][2] == list(updater._SILENT_INSTALL_FLAGS)
     assert python_helper_calls and python_helper_calls[0].plan_path == tmp_path / "restart-plan.json"
     assert powershell_calls == []
     assert popen_calls == []
@@ -205,11 +205,11 @@ def test_install_update_falls_back_when_helper_fails(monkeypatch, tmp_path: Path
     assert result.restart_initiated is False
     assert result.installer_path == installer_path
     assert helper_calls and helper_calls[0][1] == installer_path
-    assert helper_calls[0][2] == ["/VERYSILENT", "/NORESTART"]
+    assert helper_calls[0][2] == list(updater._SILENT_INSTALL_FLAGS)
     assert python_helper_calls and len(python_helper_calls) == 2
     assert python_helper_calls[0].plan_path == tmp_path / "restart-plan.json"
     assert powershell_calls and powershell_calls[0][0].plan_path == tmp_path / "restart-plan.json"
-    assert popen_calls == [[str(installer_path), "/VERYSILENT", "/NORESTART"]]
+    assert popen_calls == [[str(installer_path), *updater._SILENT_INSTALL_FLAGS]]
     assert shutdown_requests == [None]
     assert cleanup_calls and cleanup_calls[0].plan_path == tmp_path / "restart-plan.json"
 

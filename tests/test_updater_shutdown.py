@@ -93,7 +93,7 @@ def test_write_restart_plan_records_expected_metadata(monkeypatch, tmp_path: Pat
         target,
         updates_dir,
         installer,
-        ["/VERYSILENT"],
+        list(updater._SILENT_INSTALL_FLAGS),
     )
 
     assert plan_paths is not None
@@ -101,7 +101,7 @@ def test_write_restart_plan_records_expected_metadata(monkeypatch, tmp_path: Pat
     assert data["original_pid"] == 4242
     assert data["target_executable"] == str(target)
     assert data["installer_path"] == str(installer)
-    assert data["installer_args"] == ["/VERYSILENT"]
+    assert data["installer_args"] == list(updater._SILENT_INSTALL_FLAGS)
     assert Path(data["log_path"]) == updates_dir / "restart-helper.log"
     assert Path(data["script_path"]) == plan_paths.script_path
     assert plan_paths.log_path == updates_dir / "restart-helper.log"
@@ -109,5 +109,5 @@ def test_write_restart_plan_records_expected_metadata(monkeypatch, tmp_path: Pat
     assert plan_paths.plan_path.exists()
     assert plan_paths.log_path.read_text(encoding="utf-8") == ""
     script_text = plan_paths.script_path.read_text(encoding="utf-8")
-    assert str(plan_paths.plan_path) in script_text
-    assert str(plan_paths.log_path) in script_text
+    assert "Wait-For-FileUnlock" in script_text
+    assert "/SUPPRESSMSGBOXES" in script_text

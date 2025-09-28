@@ -16,13 +16,24 @@ def test_execute_update_plan_invokes_steps(monkeypatch, tmp_path: Path):
     helper_dir.mkdir()
     helper_executable = helper_dir / "python-helper.exe"
 
+    silent_args = [
+        "/VERYSILENT",
+        "/SUPPRESSMSGBOXES",
+        "/SP-",
+        "/NOCANCEL",
+        "/NORESTART",
+        "/CLOSEAPPLICATIONS",
+        "/RESTARTAPPLICATIONS=No",
+        "/LANG=nl",
+    ]
+
     plan_path.write_text(
         json.dumps(
             {
                 "original_pid": 4321,
                 "target_executable": str(target_executable),
                 "installer_path": str(installer_path),
-                "installer_args": ["/VERYSILENT"],
+                "installer_args": silent_args,
                 "log_path": str(log_path),
                 "script_path": str(script_path),
                 "python_helper_executable": str(helper_executable),
@@ -63,7 +74,7 @@ def test_execute_update_plan_invokes_steps(monkeypatch, tmp_path: Path):
 
     assert exit_code == 0
     assert wait_calls == [(4321, log_path)]
-    assert installer_calls == [(installer_path, ["/VERYSILENT"], log_path)]
+    assert installer_calls == [(installer_path, silent_args, log_path)]
     assert launch_calls == [(target_executable, log_path)]
     assert plan_path.exists() is False
     assert script_path.exists() is False
