@@ -8,3 +8,5 @@ Deze afspraken gelden voor de volledige broncode en documentatie in `vlier-plann
 - Voeg bij wijzigingen in documentatie of configuratie steeds een korte toelichting toe in dezelfde commit zodat reviewers de context hebben.
 - Draai waar mogelijk de relevante tests voor de onderdelen die je aanpast (zie de meer specifieke AGENTS in submappen) en vermeld het resultaat in je eindrapportage.
 - Werk lockfiles (`package-lock.json`, `backend/requirements.txt` e.d.) altijd mee als je afhankelijkheden wijzigt.
+- Introduceer je nieuwe functionaliteit die gebruikersdata raakt (zoals schema's, thema's of taken), zorg dan dat je de migratie
+  vanaf de laatst uitgebrachte versie bijwerkt zodat bestaande installaties correct worden meegenomen.
