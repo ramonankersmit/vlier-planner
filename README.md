@@ -203,7 +203,8 @@ python tools/build_chromeos_release.py
 Het script plaatst de output in `build/chromeos/`. Zie
 [`docs/chromeos-release.md`](docs/chromeos-release.md) voor een stap-voor-stap
 handleiding, inclusief installatie op het doelapparaat met een
-dubbelklik-installer.
+dubbelklik-installer. De ingebouwde updatecontrole downloadt op ChromeOS
+automatisch het `.deb`-pakket en opent het via de standaard pakketbeheerder.
 
 ## Licentie
 MIT

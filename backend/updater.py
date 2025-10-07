@@ -191,14 +191,28 @@ def _fetch_update_info() -> UpdateInfo | None:
         return None
 
     download_url = latest.get("asset_url")
+    asset_platform = latest.get("asset_platform")
     if not download_url:
-        LOGGER.info("Geen Windows release asset gevonden in release %s", latest_version_str)
+        if asset_platform == "linux":
+            LOGGER.info(
+                "Geen Linux (.deb) release asset gevonden in release %s",
+                latest_version_str,
+            )
+        else:
+            LOGGER.info(
+                "Geen passende release asset gevonden in release %s",
+                latest_version_str,
+            )
         return None
 
     asset_name = latest.get("asset_name")
     if not asset_name:
         parsed = urlparse(str(download_url))
-        asset_name = Path(parsed.path).name or f"update-{latest_version_str}.exe"
+        default_extension = ".exe" if sys.platform == "win32" else ".deb"
+        asset_name = (
+            Path(parsed.path).name
+            or f"update-{latest_version_str}{default_extension}"
+        )
 
     notes = latest.get("notes")
     checksum = _extract_sha256(notes)
@@ -673,13 +687,7 @@ def _request_app_shutdown() -> None:
 
 
 def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallResult:
-    """Download the installer for ``info`` and start the installation.
-
-    Returns an :class:`InstallResult` describing the started installation.
-    """
-
-    if sys.platform != "win32":
-        raise UpdateError("Automatische updates worden alleen op Windows ondersteund")
+    """Download the installer for ``info`` en start de installatie."""
 
     updates_dir = _resolve_updates_dir()
     destination = updates_dir / info.asset_name
@@ -702,68 +710,112 @@ def install_update(info: UpdateInfo, *, silent: bool | None = None) -> InstallRe
                 LOGGER.warning("Kon corrupt updatebestand niet verwijderen: %s", destination)
             raise UpdateError("Controle van de bestandshandtekening is mislukt")
 
-    use_silent = _should_use_silent_install() if silent is None else silent
-    flags: list[str] = list(_SILENT_INSTALL_FLAGS) if use_silent else []
-
     restart_initiated = False
-    target_executable = Path(sys.executable).resolve()
 
-    _cleanup_python_helper_directories(updates_dir)
+    if sys.platform == "win32":
+        use_silent = _should_use_silent_install() if silent is None else silent
+        flags: list[str] = list(_SILENT_INSTALL_FLAGS) if use_silent else []
 
-    helper_plan = _write_restart_plan(
-        target_executable,
-        updates_dir,
-        destination,
-        flags,
-    )
+        target_executable = Path(sys.executable).resolve()
 
-    if helper_plan is not None:
-        python_helper_started = _launch_python_restart_helper(helper_plan)
-        if python_helper_started:
-            restart_initiated = True
-            LOGGER.info(
-                "Automatische herstart wordt uitgevoerd door de Python-helper"
-            )
-        else:
-            powershell_started = _launch_restart_helper(helper_plan, updates_dir)
-            if powershell_started:
+        _cleanup_python_helper_directories(updates_dir)
+
+        helper_plan = _write_restart_plan(
+            target_executable,
+            updates_dir,
+            destination,
+            flags,
+        )
+
+        if helper_plan is not None:
+            python_helper_started = _launch_python_restart_helper(helper_plan)
+            if python_helper_started:
                 restart_initiated = True
                 LOGGER.info(
-                    "Automatische herstart en installatie worden uitgevoerd via %s",
-                    helper_plan.script_path,
+                    "Automatische herstart wordt uitgevoerd door de Python-helper"
                 )
             else:
-                if not helper_plan.plan_path.exists():
-                    helper_plan = _write_restart_plan(
-                        target_executable,
-                        updates_dir,
-                        destination,
-                        flags,
+                powershell_started = _launch_restart_helper(helper_plan, updates_dir)
+                if powershell_started:
+                    restart_initiated = True
+                    LOGGER.info(
+                        "Automatische herstart en installatie worden uitgevoerd via %s",
+                        helper_plan.script_path,
                     )
-
-                if helper_plan is not None:
-                    python_helper_started = _launch_python_restart_helper(helper_plan)
-                    if python_helper_started:
-                        restart_initiated = True
-                        LOGGER.info(
-                            "Automatische herstart wordt uitgevoerd door de Python-helper"
-                        )
-                    else:
-                        _cleanup_restart_plan(helper_plan)
                 else:
-                    LOGGER.warning(
-                        "Kon herstartplan niet opnieuw schrijven voor Python-helper"
-                    )
+                    if not helper_plan.plan_path.exists():
+                        helper_plan = _write_restart_plan(
+                            target_executable,
+                            updates_dir,
+                            destination,
+                            flags,
+                        )
 
-    if not restart_initiated:
-        try:
-            subprocess.Popen(  # noqa: S603,S607 - gecontroleerde command
-                [str(destination), *flags],
-                shell=False,
-                close_fds=True,
+                    if helper_plan is not None:
+                        python_helper_started = _launch_python_restart_helper(helper_plan)
+                        if python_helper_started:
+                            restart_initiated = True
+                            LOGGER.info(
+                                "Automatische herstart wordt uitgevoerd door de Python-helper"
+                            )
+                        else:
+                            _cleanup_restart_plan(helper_plan)
+                    else:
+                        LOGGER.warning(
+                            "Kon herstartplan niet opnieuw schrijven voor Python-helper"
+                        )
+
+        if not restart_initiated:
+            try:
+                subprocess.Popen(  # noqa: S603,S607 - gecontroleerde command
+                    [str(destination), *flags],
+                    shell=False,
+                    close_fds=True,
+                )
+            except Exception as exc:  # pragma: no cover - afhankelijk van platform
+                raise UpdateError(f"Kon installer niet starten: {exc}") from exc
+    elif sys.platform.startswith("linux"):
+        if destination.suffix.lower() != ".deb":
+            raise UpdateError(
+                "Onbekend Linux-installatieformaat; verwacht een .deb-bestand"
             )
-        except Exception as exc:  # pragma: no cover - afhankelijk van platform
-            raise UpdateError(f"Kon installer niet starten: {exc}") from exc
+
+        launch_commands = [
+            ["xdg-open", str(destination)],
+            ["gio", "open", str(destination)],
+            ["kde-open5", str(destination)],
+            ["kde-open", str(destination)],
+        ]
+
+        started = False
+        for command in launch_commands:
+            executable = shutil.which(command[0])
+            if not executable:
+                continue
+            cmdline = [executable, *command[1:]]
+            try:
+                subprocess.Popen(cmdline, close_fds=True)
+            except OSError as exc:
+                LOGGER.warning("Kon %s niet starten: %s", command[0], exc)
+                continue
+            else:
+                started = True
+                LOGGER.info(
+                    "Linux (.deb) update gestart via %s: %s",
+                    command[0],
+                    destination,
+                )
+                break
+
+        if not started:
+            raise UpdateError(
+                "Kon geen programma vinden om de .deb-installatie te starten;"
+                " installeer het bestand handmatig"
+            )
+    else:
+        raise UpdateError(
+            "Automatische updates worden op dit platform niet ondersteund"
+        )
 
     def _terminate() -> None:
         LOGGER.info("Applicatie wordt afgesloten voor update")

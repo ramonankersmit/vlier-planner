@@ -56,3 +56,13 @@ Gebruik de optionele vlaggen als je bepaalde stappen wilt overslaan:
 3. (Optioneel) Kopieer `vlier-planner.desktop` naar `~/.local/share/applications/`
    voor een snelkoppeling in de launcher.
 4. Start de applicatie vanuit dezelfde map met `./start-vlier-planner.sh`.
+
+## Automatische updates vanuit de app
+
+De ingebouwde updateknop in Vlier Planner ondersteunt nu de ChromeOS-build.
+Wanneer er een nieuwe release beschikbaar is downloadt de applicatie het
+`.deb`-pakket naar `~/.local/share/VlierPlanner/updates/` (of de locatie uit
+`XDG_DATA_HOME`) en opent het via `xdg-open`. De gebruiker hoeft de installatie
+alleen nog te bevestigen in de pakketbeheerder. Lukt het automatische openen
+niet, dan kan het opgeslagen `.deb`-bestand handmatig worden gestart vanuit
+deze map.

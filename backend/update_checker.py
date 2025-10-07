@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+import sys
+from typing import Any, Dict, List, Optional, Sequence
 
 import httpx
 from packaging.version import InvalidVersion, Version
@@ -11,6 +12,44 @@ from packaging.version import InvalidVersion, Version
 OWNER = "ramonankersmit"
 REPO = "vlier-planner"
 API_ROOT = "https://api.github.com"
+
+
+def _select_asset(
+    assets: Sequence[Dict[str, Any]],
+    *,
+    extensions: Sequence[str],
+    preferred_keywords: Sequence[str] = (),
+) -> Optional[Dict[str, Any]]:
+    preferred: List[Dict[str, Any]] = []
+    fallbacks: List[Dict[str, Any]] = []
+    lowered_extensions = tuple(ext.lower() for ext in extensions)
+
+    for asset in assets:
+        name = str(asset.get("name", ""))
+        lowered = name.lower()
+        if not lowered.endswith(lowered_extensions):
+            continue
+
+        if any(keyword in lowered for keyword in preferred_keywords):
+            preferred.append(asset)
+        else:
+            fallbacks.append(asset)
+
+    if preferred:
+        return preferred[0]
+
+    if fallbacks:
+        return fallbacks[0]
+
+    return None
+
+
+def _current_platform_key() -> Optional[str]:
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    return None
 
 
 def _headers() -> Dict[str, str]:
@@ -54,19 +93,25 @@ def fetch_latest_release(include_prereleases: bool = True) -> Optional[Dict[str,
             continue
 
         assets = release.get("assets") or []
-        windows_asset = next(
-            (
-                asset
-                for asset in assets
-                if str(asset.get("name", "")).lower().endswith(".exe")
-            ),
-            None,
+        windows_asset = _select_asset(
+            assets,
+            extensions=(".exe", ".msi"),
+            preferred_keywords=("setup", "installer", "win"),
+        )
+        linux_asset = _select_asset(
+            assets,
+            extensions=(".deb",),
+            preferred_keywords=("chromeos", "linux", "deb"),
         )
         candidates.append(
             {
                 "version": version,
                 "asset_url": windows_asset.get("browser_download_url") if windows_asset else None,
                 "asset_name": windows_asset.get("name") if windows_asset else None,
+                "windows_asset_url": windows_asset.get("browser_download_url") if windows_asset else None,
+                "windows_asset_name": windows_asset.get("name") if windows_asset else None,
+                "linux_asset_url": linux_asset.get("browser_download_url") if linux_asset else None,
+                "linux_asset_name": linux_asset.get("name") if linux_asset else None,
                 "notes": release.get("body"),
             }
         )
@@ -89,11 +134,28 @@ def fetch_latest_release(include_prereleases: bool = True) -> Optional[Dict[str,
         return None
 
     latest = max(candidates, key=lambda item: item["version"])
+
+    platform_key = _current_platform_key()
+    if platform_key == "windows":
+        asset_url = latest.get("windows_asset_url")
+        asset_name = latest.get("windows_asset_name")
+    elif platform_key == "linux":
+        asset_url = latest.get("linux_asset_url")
+        asset_name = latest.get("linux_asset_name")
+    else:
+        asset_url = latest.get("asset_url")
+        asset_name = latest.get("asset_name")
+
     return {
         "version": str(latest["version"]),
-        "asset_url": latest.get("asset_url"),
-        "asset_name": latest.get("asset_name"),
+        "asset_url": asset_url,
+        "asset_name": asset_name,
         "notes": latest.get("notes"),
+        "windows_asset_url": latest.get("windows_asset_url"),
+        "windows_asset_name": latest.get("windows_asset_name"),
+        "linux_asset_url": latest.get("linux_asset_url"),
+        "linux_asset_name": latest.get("linux_asset_name"),
+        "asset_platform": platform_key,
     }
 
 
@@ -113,6 +175,11 @@ def get_update_info(current_version: str) -> Dict[str, Any]:
             "has_update": False,
             "asset_url": None,
             "asset_name": None,
+            "windows_asset_url": None,
+            "windows_asset_name": None,
+            "linux_asset_url": None,
+            "linux_asset_name": None,
+            "asset_platform": None,
             "notes": None,
         }
 
@@ -125,6 +192,11 @@ def get_update_info(current_version: str) -> Dict[str, Any]:
             "has_update": False,
             "asset_url": None,
             "asset_name": None,
+            "windows_asset_url": latest.get("windows_asset_url"),
+            "windows_asset_name": latest.get("windows_asset_name"),
+            "linux_asset_url": latest.get("linux_asset_url"),
+            "linux_asset_name": latest.get("linux_asset_name"),
+            "asset_platform": latest.get("asset_platform"),
             "notes": latest.get("notes"),
         }
 
@@ -134,6 +206,11 @@ def get_update_info(current_version: str) -> Dict[str, Any]:
         "has_update": latest_version > current,
         "asset_url": latest.get("asset_url"),
         "asset_name": latest.get("asset_name"),
+        "windows_asset_url": latest.get("windows_asset_url"),
+        "windows_asset_name": latest.get("windows_asset_name"),
+        "linux_asset_url": latest.get("linux_asset_url"),
+        "linux_asset_name": latest.get("linux_asset_name"),
+        "asset_platform": latest.get("asset_platform"),
         "notes": latest.get("notes"),
     }
 
