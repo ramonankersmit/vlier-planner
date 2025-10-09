@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DIST_DIR = ROOT / "dist" / "VlierPlanner"
+DIST_ROOT = ROOT / "dist"
 BUILD_DIR = ROOT / "build" / "chromeos"
 FRONTEND_LOGO = ROOT / "frontend" / "public" / "logo.png"
 
@@ -82,24 +82,39 @@ def prepare_bundle(version: str) -> BundleInfo:
         shutil.rmtree(bundle_root)
     bundle_root.mkdir(parents=True)
 
-    if not DIST_DIR.exists():
-        raise SystemExit(
-            "PyInstaller-output niet gevonden. Draai eerst pyinstaller VlierPlanner.spec."
-        )
-
     app_target = bundle_root / "app"
-    shutil.copytree(DIST_DIR, app_target)
 
-    binary_name = None
-    for candidate in ("VlierPlanner", "VlierPlanner.exe"):
-        if (app_target / candidate).exists():
-            binary_name = candidate
-            break
+    pyinstaller_dir = DIST_ROOT / "VlierPlanner"
+    pyinstaller_exe = DIST_ROOT / "VlierPlanner.exe"
 
-    if not binary_name:
-        raise SystemExit(
-            "Kon geen PyInstaller-binary vinden in dist/VlierPlanner; verwacht 'VlierPlanner' of 'VlierPlanner.exe'."
-        )
+    if pyinstaller_dir.is_dir():
+        shutil.copytree(pyinstaller_dir, app_target)
+        binary_name = None
+        for candidate in ("VlierPlanner", "VlierPlanner.exe"):
+            if (app_target / candidate).exists():
+                binary_name = candidate
+                break
+        if binary_name is None:
+            raise SystemExit(
+                "Kon geen uitvoerbaar bestand vinden in dist/VlierPlanner;"
+                " verwacht 'VlierPlanner' of 'VlierPlanner.exe'."
+            )
+    else:
+        file_candidate = None
+        for candidate in (pyinstaller_dir, pyinstaller_exe):
+            if candidate.is_file():
+                file_candidate = candidate
+                break
+
+        if file_candidate is None:
+            raise SystemExit(
+                "PyInstaller-output niet gevonden. Draai eerst pyinstaller VlierPlanner.spec."
+            )
+
+        app_target.mkdir(parents=True, exist_ok=True)
+        destination = app_target / file_candidate.name
+        shutil.copy2(file_candidate, destination)
+        binary_name = destination.name
 
     launcher = bundle_root / "start-vlier-planner.sh"
     launcher.write_text(
