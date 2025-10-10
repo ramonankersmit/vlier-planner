@@ -514,6 +514,65 @@ def test_launch_python_restart_helper_copies_runtime(monkeypatch, tmp_path: Path
     assert plan_data["python_helper_cleanup_dir"] == str(helper_dir)
 
 
+def test_install_update_opens_deb_on_linux(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(updater.sys, "platform", "linux")
+
+    info = updater.UpdateInfo(
+        current_version="1.0.0",
+        latest_version="1.1.0",
+        asset_name="vlierplanner_1.1.0_amd64.deb",
+        download_url="https://example.invalid/vlierplanner_1.1.0_amd64.deb",
+        release_notes=None,
+        sha256=None,
+    )
+
+    updates_dir = tmp_path / "updates"
+    updates_dir.mkdir()
+    monkeypatch.setattr(updater, "_resolve_updates_dir", lambda: updates_dir)
+
+    def fake_download(url: str, destination: Path) -> Path:
+        destination.write_text("deb", encoding="utf-8")
+        return destination
+
+    monkeypatch.setattr(updater, "_download", fake_download)
+
+    def fake_which(name: str) -> str | None:
+        if name == "xdg-open":
+            return f"/usr/bin/{name}"
+        return None
+
+    monkeypatch.setattr(updater.shutil, "which", fake_which)
+
+    popen_calls: list[tuple[list[str], bool]] = []
+
+    def fake_popen(cmdline: list[str], *, close_fds: bool = False):
+        popen_calls.append((cmdline, close_fds))
+
+        class DummyProcess:
+            pass
+
+        return DummyProcess()
+
+    monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
+
+    shutdown_requests: list[None] = []
+    monkeypatch.setattr(
+        updater,
+        "_request_app_shutdown",
+        lambda: shutdown_requests.append(None),
+    )
+
+    result = updater.install_update(info)
+
+    assert result.restart_initiated is False
+    assert result.installer_path == updates_dir / info.asset_name
+    assert popen_calls == [([
+        "/usr/bin/xdg-open",
+        str(updates_dir / info.asset_name),
+    ], True)]
+    assert shutdown_requests == [None]
+
+
 def test_cleanup_restart_plan_removes_helper(tmp_path: Path):
     plan_paths = updater.RestartPlanPaths(
         plan_path=tmp_path / "restart-plan.json",
