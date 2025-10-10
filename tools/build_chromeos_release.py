@@ -2,8 +2,9 @@
 
 Dit script combineert de PyInstaller-build met een startscript, levert een
 handmatig uit te pakken `tar.gz` op en bouwt daarnaast een `.deb`-pakket voor
-Chromebooks met de Linux-omgeving. Het script veronderstelt dat Node.js,
-PyInstaller en `dpkg-deb` beschikbaar zijn in de huidige omgeving.
+Chromebooks met de Linux-omgeving. Het script veronderstelt dat Node.js en
+PyInstaller beschikbaar zijn; als `dpkg-deb` ontbreekt wordt een fallback in
+puur Python gebruikt om het Debian-pakket te assembleren.
 """
 
 from __future__ import annotations
@@ -15,6 +16,8 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,6 +62,10 @@ def resolve_tool(name: str) -> str:
     if not resolved:
         raise SystemExit(f"Kon hulpprogramma '{name}' niet vinden in PATH.")
     return resolved
+
+
+def maybe_resolve_tool(name: str) -> str | None:
+    return shutil.which(name)
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -207,6 +214,67 @@ def detect_deb_architecture(binary_path: Path) -> str:
     return "amd64"
 
 
+def _format_ar_field(value: str, width: int) -> bytes:
+    return value.encode("ascii").ljust(width, b" ")
+
+
+def write_ar_archive(target: Path, members: list[tuple[str, bytes]]) -> None:
+    with target.open("wb") as fh:
+        fh.write(b"!<arch>\n")
+        timestamp = str(int(time.time()))
+        for name, payload in members:
+            if len(name) > 15:
+                raise SystemExit(
+                    "Bestandsnaam '{name}' is te lang voor het ar-formaat in de fallback-bouwer.".format(
+                        name=name
+                    )
+                )
+            header = b"".join(
+                [
+                    _format_ar_field(f"{name}/", 16),
+                    _format_ar_field(timestamp, 12),
+                    _format_ar_field("0", 6),
+                    _format_ar_field("0", 6),
+                    _format_ar_field(format(0o100644, "o"), 8),
+                    _format_ar_field(str(len(payload)), 10),
+                    b"`\n",
+                ]
+            )
+            fh.write(header)
+            fh.write(payload)
+            if len(payload) % 2 == 1:
+                fh.write(b"\n")
+
+
+def build_deb_fallback(package_root: Path, deb_path: Path) -> None:
+    control_dir = package_root / "DEBIAN"
+    if not control_dir.is_dir():
+        raise SystemExit("Geen DEBIAN-map gevonden tijdens fallback-build van het deb-pakket.")
+
+    data_roots = [path for path in package_root.iterdir() if path.name != "DEBIAN"]
+    if not data_roots:
+        raise SystemExit("Geen data-inhoud gevonden om in het deb-pakket op te nemen.")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        control_tar = tmp_path / "control.tar.gz"
+        with tarfile.open(control_tar, "w:gz") as tar:
+            for path in sorted(control_dir.iterdir(), key=lambda p: p.name):
+                tar.add(path, arcname=path.name)
+
+        data_tar = tmp_path / "data.tar.gz"
+        with tarfile.open(data_tar, "w:gz") as tar:
+            for path in sorted(data_roots, key=lambda p: p.name):
+                tar.add(path, arcname=str(path.relative_to(package_root)))
+
+        members = [
+            ("debian-binary", b"2.0\n"),
+            ("control.tar.gz", control_tar.read_bytes()),
+            ("data.tar.gz", data_tar.read_bytes()),
+        ]
+        write_ar_archive(deb_path, members)
+
+
 def create_deb_package(bundle: BundleInfo, version: str) -> Path:
     architecture = detect_deb_architecture(bundle.app_dir / bundle.binary_name)
     package_root = BUILD_DIR / f"vlierplanner_{version}_{architecture}"
@@ -291,8 +359,14 @@ exit 0
     if deb_path.exists():
         deb_path.unlink()
 
-    dpkg_deb = resolve_tool("dpkg-deb")
-    run([dpkg_deb, "--build", str(package_root), str(deb_path)])
+    dpkg_deb = maybe_resolve_tool("dpkg-deb")
+    if dpkg_deb:
+        run([dpkg_deb, "--build", str(package_root), str(deb_path)])
+    else:
+        print(
+            "Waarschuwing: 'dpkg-deb' niet gevonden, gebruik Python-fallback om het deb-pakket te maken."
+        )
+        build_deb_fallback(package_root, deb_path)
 
     return deb_path
 

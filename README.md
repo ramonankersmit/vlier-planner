@@ -194,7 +194,10 @@ Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
 
 Chromebooks met Linux-ondersteuning kunnen dezelfde PyInstaller-build draaien.
 Gebruik `tools/build_chromeos_release.py` om zowel een `.deb`-installer als een
-handmatig uit te pakken bundel (`tar.gz`) te maken.
+handmatig uit te pakken bundel (`tar.gz`) te maken. Het `.deb`-bestand wordt met
+`dpkg-deb` gebouwd wanneer dat hulpprogramma beschikbaar is; ontbreekt het, dan
+zet het script automatisch een Python-fallback in zodat je ook op Windows een
+installatiepakket kunt opbouwen.
 
 ```bash
 python tools/build_chromeos_release.py

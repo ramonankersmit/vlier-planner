@@ -7,7 +7,10 @@ installeren door simpelweg op een pakket te dubbelklikken.
 
 ## Voorbereiding
 
-1. Zorg dat Node.js, npm, PyInstaller en `dpkg-deb` in je pad beschikbaar zijn.
+1. Zorg dat Node.js, npm en PyInstaller in je pad beschikbaar zijn. Heb je ook
+   `dpkg-deb` (beschikbaar op Linux of via WSL/WSA), dan gebruikt het script
+   die voor het bouwen van het `.deb`-pakket; ontbreekt het, dan wordt automatisch
+   een fallback in Python gebruikt.
 2. Controleer of `VERSION.ini` de juiste versie bevat. Pas je de versie aan,
    voer dan ook `npm run sync-version` uit in de map `frontend` zodat
    `package.json` en `package-lock.json` overeenkomen.
