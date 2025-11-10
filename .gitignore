@@ -45,7 +45,6 @@ Thumbs.db
 *.xlsx
 *.cache
 *.db
-!samples/
-!samples/*.pdf
-!samples/*.docx
+samples/
 !tests/fixtures/*.docx
+!tests/fixtures/*.pdf
