@@ -186,7 +186,8 @@ def main():
     if not share:
         print("[x] ONEDRIVE_SHARE_URL ontbreekt. Zet je link in .env")
         sys.exit(1)
-    print("[i] Haal OneDrive-map op…")
+    bron = "Google Drive" if is_google_drive_url(share) else "OneDrive"
+    print(f"[i] Haal {bron}-map op via gedeelde link uit ONEDRIVE_SHARE_URL…")
     zip_bytes = fetch_zip_bytes(share)
     print("[i] Pak uit…")
     unzip_bytes_into_samples(zip_bytes)
