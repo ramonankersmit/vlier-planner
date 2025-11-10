@@ -17,7 +17,7 @@ def looks_like_zip(ctype: str, payload: bytes) -> bool:
     ctype = (ctype or "").lower()
     return "zip" in ctype or "octet-stream" in ctype or payload.startswith(b"PK")
 
-def load_env():
+def load_env(*, override: bool = True):
     env_file = ROOT / ".env"
     if not env_file.exists():
         return
@@ -27,7 +27,10 @@ def load_env():
             continue
         k, _, v = line.partition("=")
         k, v = k.strip(), v.strip().strip('"').strip("'")
-        os.environ.setdefault(k, v)
+        if override or k not in os.environ:
+            os.environ[k] = v
+        else:
+            os.environ.setdefault(k, v)
 
 def http_get(url: str, timeout: int = 120, opener: urllib.request.OpenerDirector | None = None):
     opener = opener or urllib.request.build_opener()
