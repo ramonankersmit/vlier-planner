@@ -4,13 +4,15 @@ import logging
 import os
 from datetime import date
 from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from vlier_parser.normalize import parse_to_normalized
 
+from . import app as workflow_app
 from .services.data_store import data_store
 
 logger = logging.getLogger(__name__)
@@ -87,6 +89,100 @@ def get_weeks(from_: date, to: date):
         if from_ <= date.fromisoformat(w["start"]) <= to
     ]
     return weeks
+
+
+@app.get("/api/system/version")
+def api_get_version() -> dict[str, str]:
+    return workflow_app.api_get_version()
+
+
+@app.get("/api/system/update")
+def api_check_update() -> dict[str, Any]:
+    return workflow_app.api_check_update()
+
+
+@app.post("/api/system/update")
+def api_install_update(
+    payload: workflow_app.UpdateRequest = Body(...),
+) -> dict[str, Any]:
+    return workflow_app.api_install_update(payload)
+
+
+@app.get("/api/school-vacations", response_model=workflow_app.SchoolVacationResponse)
+async def api_get_school_vacations(
+    school_year: str = Query(..., alias="schoolYear"),
+) -> workflow_app.SchoolVacationResponse:
+    return await workflow_app.api_get_school_vacations(school_year=school_year)
+
+
+@app.get("/api/docs")
+def list_docs() -> list[Any]:
+    return workflow_app.list_docs()
+
+
+@app.get("/api/docs/{file_id}/rows")
+def get_doc_rows(file_id: str, versionId: int | None = None) -> list[Any]:
+    return workflow_app.get_doc_rows(file_id=file_id, versionId=versionId)
+
+
+@app.delete("/api/docs/{file_id}")
+def delete_doc(file_id: str) -> dict[str, Any]:
+    return workflow_app.delete_doc(file_id)
+
+
+@app.delete("/api/docs")
+def delete_all_docs() -> dict[str, Any]:
+    return workflow_app.delete_all_docs()
+
+
+@app.get("/api/docs/{file_id}/content")
+def get_doc_content(file_id: str, versionId: int | None = None, inline: bool = False):
+    return workflow_app.get_doc_content(file_id=file_id, versionId=versionId, inline=inline)
+
+
+@app.get("/api/docs/{file_id}/preview")
+def get_doc_preview(file_id: str, versionId: int | None = None) -> dict[str, Any]:
+    return workflow_app.get_doc_preview(file_id=file_id, versionId=versionId)
+
+
+@app.get("/api/study-guides")
+def get_study_guides():
+    return workflow_app.get_study_guides()
+
+
+@app.get("/api/study-guides/{guide_id}/versions")
+def get_study_guide_versions(guide_id: str):
+    return workflow_app.get_study_guide_versions(guide_id)
+
+
+@app.get("/api/study-guides/{guide_id}/diff/{version_id}")
+def get_study_guide_diff(guide_id: str, version_id: int):
+    return workflow_app.get_study_guide_diff(guide_id, version_id)
+
+
+@app.post("/api/reviews")
+def create_review(payload: dict[str, Any] = Body(...)):
+    return workflow_app.create_review(payload)
+
+
+@app.get("/api/reviews/{parse_id}")
+def get_review(parse_id: str):
+    return workflow_app.get_review(parse_id)
+
+
+@app.patch("/api/reviews/{parse_id}")
+def update_review(parse_id: str, payload: dict[str, Any] = Body(...)):
+    return workflow_app.update_review(parse_id, payload)
+
+
+@app.post("/api/reviews/{parse_id}/commit")
+def commit_review(parse_id: str):
+    return workflow_app.commit_review(parse_id)
+
+
+@app.delete("/api/reviews/{parse_id}")
+def delete_review(parse_id: str):
+    return workflow_app.delete_review(parse_id)
 
 
 def _normalize_period(value: object) -> int | None:

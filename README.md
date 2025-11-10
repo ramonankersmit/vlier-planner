@@ -62,11 +62,13 @@ De onderstaande voorbeelden komen uit `frontend/public` en tonen de belangrijkst
 ## Technische architectuur
 ### Backend
 - Gebouwd met FastAPI en opgesplitst in twee entrypoints:
-  - `backend/main.py` exposeert een compacte API voor de planner-weergaven met endpoints voor uploads, weekschema’s, matrixoverzichten, agenda en toetsmomenten.
-  - `backend/app.py` levert de volledige workflow voor importeren, reviewen, diffen en committen van studiewijzers, inclusief documentvoorbeelden, versiebeheer, schoolvakantie-endpoints en updatecontroles.
+  - `backend/main.py` is de standaard entrypoint voor lokale ontwikkeling. Het biedt dezelfde workflow-endpoints als `backend/app.py` door deze intern te delegeren, zodat lokale `uvicorn backend.main:app --reload` sessies hetzelfde gedrag vertonen als de Windows-build.
+  - `backend/app.py` bevat de oorspronkelijke all-in-one workflow (docs, reviews, updates, schoolvakanties) en wordt direct geladen door `run_app.py` wanneer de Windows `.exe` draait.
 - `backend/services/data_store.py` beheert de opslag van uploads, pending parses, genormaliseerde modellen en het state-bestand. Via `VLIER_DATA_DIR` of `VLIER_STORAGE_DIR` kan de opslaglocatie worden geconfigureerd.
 - `backend/school_vacations.py` haalt vakantieperiodes op bij rijksoverheid.nl met `httpx` en `lxml`, structureert de uitkomsten en levert ze via `/api/school-vacations` aan de frontend.
 - `backend/update_checker.py` en `backend/updater.py` verzorgen versiecontrole en het uitvoeren van applicatie-updates vanuit de UI.
+
+Dankzij deze opzet krijgt de Windows-build (die via `run_app.py` altijd `backend/app.py` laadt) exact dezelfde API-endpoints als een lokale ontwikkelserver die `backend/main.py` draait. Dit voorkomt 404-fouten bij routes zoals `/api/system/version` en `/api/school-vacations` tijdens lokale ontwikkeling.
 
 ### Frontend
 - Gebouwd met React, Vite en Tailwind CSS.
@@ -116,7 +118,7 @@ De applicatieversie staat in `VERSION.ini` onder `[app]`. Gebruik `npm run sync-
 ## Gebruik van de applicatie
 
 ### Eerste keer opstarten
-1. Start de backend op poort 8000 (minimalistische API) of kies `backend/app.py` voor de volledige workflow met reviews en versies.
+1. Start de backend op poort 8000 via `uvicorn backend.main:app --reload`. Deze entrypoint levert dezelfde API’s als de Windows-versie doordat de workflowroutes uit `backend/app.py` intern gedelegeerd worden.
 2. Start de frontend op poort 5173 met `npm run dev` en open `http://localhost:5173`.
    Krijg je een verbinding geweigerd, start dan met `npm run dev -- --host 0.0.0.0`
    of navigeer expliciet naar `http://127.0.0.1:5173` zodat zowel IPv4- als IPv6-
