@@ -8,3 +8,4 @@ Deze aanwijzingen gelden voor alle bestanden in `backend/`.
 - Bij nieuwe afhankelijkheden update je `backend/requirements.txt` en beschrijf je in de commit waarom ze nodig zijn.
 - Schrijf waar mogelijk doctests of unit-tests in `tests/` (pytest). Als testen niet haalbaar zijn, motiveer dat in de PR-beschrijving.
 - Respecteer de bestaande fallback-imports voor bundling; voeg geen nieuwe `try/except` rond imports toe tenzij het platformverschillen oplost.
+- Houd de API altijd backwards compatible; introduceer breaking changes alleen via een uitgewerkt migratieplan met versiecommunicatie.
