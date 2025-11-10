@@ -26,6 +26,7 @@ backend/storage/uploads/
 # Generated data
 uploads/**
 data/**
+backend/storage/**
 
 # Build artifacts
 *.egg-info/
