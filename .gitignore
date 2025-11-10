@@ -48,3 +48,6 @@ Thumbs.db
 samples/
 !tests/fixtures/*.docx
 !tests/fixtures/*.pdf
+
+# Config
+.env
