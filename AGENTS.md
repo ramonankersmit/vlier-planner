@@ -10,3 +10,4 @@ Deze afspraken gelden voor de volledige broncode en documentatie in `vlier-plann
 - Werk lockfiles (`package-lock.json`, `backend/requirements.txt` e.d.) altijd mee als je afhankelijkheden wijzigt.
 - Introduceer je nieuwe functionaliteit die gebruikersdata raakt (zoals schema's, thema's of taken), zorg dan dat je de migratie
   vanaf de laatst uitgebrachte versie bijwerkt zodat bestaande installaties correct worden meegenomen.
+- Heb je samplebestanden nodig, haal deze dan op met `tools/fetch_onedrive_folder.py` zodat ze automatisch in `/samples` terechtkomen.
