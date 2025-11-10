@@ -118,6 +118,9 @@ De applicatieversie staat in `VERSION.ini` onder `[app]`. Gebruik `npm run sync-
 ### Eerste keer opstarten
 1. Start de backend op poort 8000 (minimalistische API) of kies `backend/app.py` voor de volledige workflow met reviews en versies.
 2. Start de frontend op poort 5173 met `npm run dev` en open `http://localhost:5173`.
+   Krijg je een verbinding geweigerd, start dan met `npm run dev -- --host 0.0.0.0`
+   of navigeer expliciet naar `http://127.0.0.1:5173` zodat zowel IPv4- als IPv6-
+   verbindingen werken.
 3. Bij de eerste sessie start automatisch de onboarding-tour die de belangrijkste schermen toelicht; je kunt deze later opnieuw openen via het menu **Rondleiding**.
 
 ### Studiewijzer importeren en plannen
