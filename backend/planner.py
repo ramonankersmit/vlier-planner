@@ -1,3 +1,10 @@
+"""Planner-focused FastAPI application used in default development mode.
+
+This module exposes the lightweight planning and normalization endpoints that
+previously lived in ``backend.main``. Workflow-specific routes stay available
+through :mod:`backend.app` and can be toggled via :mod:`backend.server`.
+"""
+
 from __future__ import annotations
 
 import logging

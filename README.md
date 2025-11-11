@@ -61,15 +61,16 @@ De onderstaande voorbeelden komen uit `frontend/public` en tonen de belangrijkst
 
 ## Technische architectuur
 ### Backend
-- Gebouwd met FastAPI en aangestuurd via één gedeelde entrypoint:
-  - `backend/server.py` kiest op basis van `VLIER_BACKEND_MODE` of de planner-API (`planner`) of de workflow-API (`workflow`) geladen wordt.
-  - `backend/planner.py` levert de snelle normalisatie-endpoints voor lokale ontwikkeling. Dit is de standaardmodus, zodat `uvicorn backend.server:app --reload` direct de planner-API start.
-  - `backend/app.py` bevat de oorspronkelijke all-in-one workflow (docs, reviews, updates, schoolvakanties) en wordt geladen zodra `VLIER_BACKEND_MODE=workflow` is ingesteld (bijvoorbeeld via `run_app.py` in de Windows-build).
+- Gebouwd met FastAPI en aangestuurd via één gedeeld entrypoint:
+  - `backend/server.py` leest `VLIER_BACKEND_MODE` uit en importeert vervolgens de juiste applicatie. Zo heb je één aanspreekpunt voor zowel ontwikkel- als distributiesessies.
+  - `backend/planner.py` is de zogeheten *planner-backend*. Deze variant exposeert de snelle normalisatie- en planningsroutes waarmee je studiewijzers kunt uploaden, plannen en bekijken. Dit is de standaardmodus zodat `uvicorn backend.server:app --reload` direct dezelfde API’s levert als voorheen.
+  - `backend/app.py` is de oorspronkelijke *workflow-backend*. Deze bundelt naast de planner-routes ook de reviewwizard, documentdownloads en updatecontrole. De Windows-executable start deze variant doordat `run_app.py` automatisch `VLIER_BACKEND_MODE=workflow` zet.
+- In beide modi worden dezelfde models, services en opslag gebruikt; alleen het aantal geactiveerde routes verschilt. Daardoor blijft de Windows-build volledig compatibel met lokale ontwikkeling en kun je via `VLIER_BACKEND_MODE=workflow uvicorn backend.server:app --reload` alle workflowroutes lokaal testen.
 - `backend/services/data_store.py` beheert de opslag van uploads, pending parses, genormaliseerde modellen en het state-bestand. Via `VLIER_DATA_DIR` of `VLIER_STORAGE_DIR` kan de opslaglocatie worden geconfigureerd.
 - `backend/school_vacations.py` haalt vakantieperiodes op bij rijksoverheid.nl met `httpx` en `lxml`, structureert de uitkomsten en levert ze via `/api/school-vacations` aan de frontend.
 - `backend/update_checker.py` en `backend/updater.py` verzorgen versiecontrole en het uitvoeren van applicatie-updates vanuit de UI.
 
-Dankzij deze opzet krijgen zowel lokale ontwikkelsessies als de Windows-build dezelfde routes en configuratie, terwijl je met `VLIER_BACKEND_MODE` kunt wisselen tussen de planner- en workflowmodus zonder importpaden aan te passen.
+Deze tweedeling draait dus niet om twee gescheiden codebases, maar om één backend die je in twee standen kunt starten. De planner-stand focust op dagelijkse ontwikkeling, de workflow-stand schakelt de volledige review- en updateflow erbij. De Windows-executable gebruikt dezelfde gedeelde code omdat `run_app.py` simpelweg de workflow-stand van `backend/server.py` activeert.
 
 ### Frontend
 - Gebouwd met React, Vite en Tailwind CSS.

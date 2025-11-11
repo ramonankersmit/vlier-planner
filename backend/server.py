@@ -1,4 +1,10 @@
-"""Unified backend entrypoint that supports planner and workflow modes."""
+"""Unified backend entrypoint for both planner- and workflow-modes.
+
+The Windows executable launches ``run_app.py`` which sets
+``VLIER_BACKEND_MODE=workflow`` before importing this module. Local
+development keeps the default (``planner``) so ``uvicorn backend.server:app``
+starts the lightweight planning API unless you opt in to the workflow routes.
+"""
 
 from __future__ import annotations
 
