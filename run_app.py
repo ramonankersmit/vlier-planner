@@ -20,6 +20,8 @@ import uvicorn
 from uvicorn.config import LOGGING_CONFIG
 from uvicorn.main import STARTUP_FAILURE
 
+os.environ.setdefault("VLIER_BACKEND_MODE", "workflow")
+
 try:  # pragma: no cover - afhankelijk van platform
     import pystray
 except Exception:  # pragma: no cover - afhankelijk van platform
@@ -224,7 +226,7 @@ def _ensure_version_env() -> None:
 _ensure_version_env()
 _configure_logging()
 
-from backend import app as backend_app
+from backend import server as backend_app
 from backend import updater as backend_updater
 
 LOGGER = logging.getLogger(__name__)

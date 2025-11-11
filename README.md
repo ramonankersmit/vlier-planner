@@ -61,14 +61,15 @@ De onderstaande voorbeelden komen uit `frontend/public` en tonen de belangrijkst
 
 ## Technische architectuur
 ### Backend
-- Gebouwd met FastAPI en opgesplitst in twee entrypoints:
-  - `backend/main.py` is de standaard entrypoint voor lokale ontwikkeling. Het biedt dezelfde workflow-endpoints als `backend/app.py` door deze intern te delegeren, zodat lokale `uvicorn backend.main:app --reload` sessies hetzelfde gedrag vertonen als de Windows-build.
-  - `backend/app.py` bevat de oorspronkelijke all-in-one workflow (docs, reviews, updates, schoolvakanties) en wordt direct geladen door `run_app.py` wanneer de Windows `.exe` draait.
+- Gebouwd met FastAPI en aangestuurd via één gedeelde entrypoint:
+  - `backend/server.py` kiest op basis van `VLIER_BACKEND_MODE` of de planner-API (`planner`) of de workflow-API (`workflow`) geladen wordt.
+  - `backend/planner.py` levert de snelle normalisatie-endpoints voor lokale ontwikkeling. Dit is de standaardmodus, zodat `uvicorn backend.server:app --reload` direct de planner-API start.
+  - `backend/app.py` bevat de oorspronkelijke all-in-one workflow (docs, reviews, updates, schoolvakanties) en wordt geladen zodra `VLIER_BACKEND_MODE=workflow` is ingesteld (bijvoorbeeld via `run_app.py` in de Windows-build).
 - `backend/services/data_store.py` beheert de opslag van uploads, pending parses, genormaliseerde modellen en het state-bestand. Via `VLIER_DATA_DIR` of `VLIER_STORAGE_DIR` kan de opslaglocatie worden geconfigureerd.
 - `backend/school_vacations.py` haalt vakantieperiodes op bij rijksoverheid.nl met `httpx` en `lxml`, structureert de uitkomsten en levert ze via `/api/school-vacations` aan de frontend.
 - `backend/update_checker.py` en `backend/updater.py` verzorgen versiecontrole en het uitvoeren van applicatie-updates vanuit de UI.
 
-Dankzij deze opzet krijgt de Windows-build (die via `run_app.py` altijd `backend/app.py` laadt) exact dezelfde API-endpoints als een lokale ontwikkelserver die `backend/main.py` draait. Dit voorkomt 404-fouten bij routes zoals `/api/system/version` en `/api/school-vacations` tijdens lokale ontwikkeling.
+Dankzij deze opzet krijgen zowel lokale ontwikkelsessies als de Windows-build dezelfde routes en configuratie, terwijl je met `VLIER_BACKEND_MODE` kunt wisselen tussen de planner- en workflowmodus zonder importpaden aan te passen.
 
 ### Frontend
 - Gebouwd met React, Vite en Tailwind CSS.
@@ -100,7 +101,7 @@ vlier-planner/
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r backend/requirements.txt
-uvicorn backend.main:app --reload
+uvicorn backend.server:app --reload
 
 cd frontend
 npm install
@@ -118,7 +119,8 @@ De applicatieversie staat in `VERSION.ini` onder `[app]`. Gebruik `npm run sync-
 ## Gebruik van de applicatie
 
 ### Eerste keer opstarten
-1. Start de backend op poort 8000 via `uvicorn backend.main:app --reload`. Deze entrypoint levert dezelfde API’s als de Windows-versie doordat de workflowroutes uit `backend/app.py` intern gedelegeerd worden.
+1. Start de backend op poort 8000 via `uvicorn backend.server:app --reload`. Zonder extra configuratie draait dit de planner-modus met dezelfde API’s als voorheen.
+   Wil je lokaal juist de workflow-routes draaien, gebruik dan `VLIER_BACKEND_MODE=workflow uvicorn backend.server:app --reload` (of stel de variabele vooraf in).
 2. Start de frontend op poort 5173 met `npm run dev` en open `http://localhost:5173`.
    Krijg je een verbinding geweigerd, start dan met `npm run dev -- --host 0.0.0.0`
    of navigeer expliciet naar `http://127.0.0.1:5173` zodat zowel IPv4- als IPv6-

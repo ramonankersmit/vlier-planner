@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from vlier_parser.normalize import parse_to_normalized
-from backend.main import app
+from backend.server import app
 
 
 def setup_module(module):

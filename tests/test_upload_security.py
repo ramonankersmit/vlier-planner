@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-import backend.main as backend_app
+import backend.planner as planner_app
 
 
 class _DummyWarning:
@@ -26,9 +26,9 @@ def test_upload_sanitizes_and_streams(tmp_path: Path, monkeypatch: pytest.Monkey
         captured["path"] = path
         return "parse-id", SimpleNamespace(warnings=[_DummyWarning()])
 
-    monkeypatch.setattr(backend_app, "parse_to_normalized", fake_parse_to_normalized)
+    monkeypatch.setattr(planner_app, "parse_to_normalized", fake_parse_to_normalized)
 
-    client = TestClient(backend_app.app)
+    client = TestClient(planner_app.app)
 
     response = client.post(
         "/api/uploads",

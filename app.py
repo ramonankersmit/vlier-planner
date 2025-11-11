@@ -2,10 +2,10 @@
 
 Deze module bestaat om bestaande documentatie/commando's als
 ``uvicorn app:app --reload`` te laten blijven werken nu de eigenlijke
-FastAPI-applicatie in ``backend.app`` leeft.
+FastAPI-applicatie via ``backend.server`` wordt aangemaakt.
 """
 
-from backend.app import app
+from backend.server import app
 
 __all__ = ["app"]
 
