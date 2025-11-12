@@ -641,7 +641,22 @@ const computeWeekAggregation = (
         });
 
         const anchor = resolvedWeeks[0];
-        const { weekId: anchorWeekId, vakMap } = ensureWeek(anchor.week, anchor.isoYear);
+        const accumulatorEntries = resolvedWeeks.map((info) => {
+          const { weekId, vakMap } = ensureWeek(info.week, info.isoYear);
+          const accum =
+            vakMap[doc.vak] ??
+            (vakMap[doc.vak] = {
+              lesstof: [],
+              huiswerk: [],
+              huiswerkItems: [],
+              deadlines: [],
+              opmerkingen: [],
+              dates: [],
+            });
+          return { weekId, accum };
+        });
+
+        const anchorWeekId = accumulatorEntries[0].weekId;
         if (
           vacationWeekSet.size > 0 &&
           vacationWeekSet.has(anchorWeekId) &&
@@ -649,16 +664,6 @@ const computeWeekAggregation = (
         ) {
           continue;
         }
-        const accum =
-          vakMap[doc.vak] ??
-          (vakMap[doc.vak] = {
-            lesstof: [],
-            huiswerk: [],
-            huiswerkItems: [],
-            deadlines: [],
-            opmerkingen: [],
-            dates: [],
-          });
 
         const addUnique = (arr: string[], value: string) => {
           if (!arr.includes(value)) {
@@ -666,29 +671,51 @@ const computeWeekAggregation = (
           }
         };
 
-        const addNormalized = (arr: string[], value?: string | null, options?: NormalizeOptions) => {
+        const applyToAccumulators = (fn: (accum: WeekAccumulator) => void) => {
+          for (const entry of accumulatorEntries) {
+            fn(entry.accum);
+          }
+        };
+
+        const addNormalized = (
+          value: string | null | undefined,
+          options?: NormalizeOptions,
+          apply: (accum: WeekAccumulator, normalized: string) => void,
+        ) => {
           const normalized = normalizeText(value, options);
           if (normalized) {
-            addUnique(arr, normalized);
+            applyToAccumulators((accum) => apply(accum, normalized));
           }
           return normalized;
         };
 
         let vakantieOutsideHomework = false;
 
-        const normalizedLesstof = addNormalized(accum.lesstof, row.onderwerp || row.les);
+        const normalizedLesstof = addNormalized(
+          row.onderwerp || row.les,
+          undefined,
+          (accum, normalized) => {
+            addUnique(accum.lesstof, normalized);
+          },
+        );
         if (normalizedLesstof?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
           vakantieOutsideHomework = true;
         }
         if ((!row.onderwerp && !row.les) && row.leerdoelen?.length) {
-          const leerdoelText = addNormalized(accum.lesstof, row.leerdoelen.join("; "));
+          const leerdoelText = addNormalized(
+            row.leerdoelen.join("; "),
+            undefined,
+            (accum, normalized) => {
+              addUnique(accum.lesstof, normalized);
+            },
+          );
           if (leerdoelText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
             vakantieOutsideHomework = true;
           }
         }
 
         const addHomework = (value?: string | null) => {
-          const normalized = addNormalized(accum.huiswerk, value, { preserveLineBreaks: true });
+          const normalized = normalizeText(value, { preserveLineBreaks: true });
           if (
             normalized &&
             normalized.toLocaleLowerCase("nl-NL").includes("vakantie") &&
@@ -698,9 +725,12 @@ const computeWeekAggregation = (
           }
           if (!normalized) return;
           const items = splitHomeworkItems(normalized);
-          for (const item of items) {
-            addUnique(accum.huiswerkItems, item);
-          }
+          applyToAccumulators((accum) => {
+            addUnique(accum.huiswerk, normalized);
+            for (const item of items) {
+              addUnique(accum.huiswerkItems, item);
+            }
+          });
         };
 
         const toetsType = row.toets?.type;
@@ -714,24 +744,36 @@ const computeWeekAggregation = (
             const label = normalizedWeight
               ? `${normalizedType} (weging ${normalizedWeight})`
               : normalizedType;
-            addUnique(accum.deadlines, label);
+            applyToAccumulators((accum) => {
+              addUnique(accum.deadlines, label);
+            });
           }
         }
 
         const recordDate = (value?: string | null) => {
           const normalized = normalizeText(value);
           if (!normalized) return;
-          addUnique(accum.dates, normalized);
+          applyToAccumulators((accum) => {
+            addUnique(accum.dates, normalized);
+          });
         };
 
         const normalizedInlever = normalizeText(row.inleverdatum);
         if (normalizedInlever) {
-          addUnique(accum.deadlines, `Inleveren ${normalizedInlever}`);
+          applyToAccumulators((accum) => {
+            addUnique(accum.deadlines, `Inleveren ${normalizedInlever}`);
+          });
           recordDate(normalizedInlever);
         }
 
         recordDate(row.datum);
-        const opmerkingenText = addNormalized(accum.opmerkingen, row.notities);
+        const opmerkingenText = addNormalized(
+          row.notities,
+          undefined,
+          (accum, normalized) => {
+            addUnique(accum.opmerkingen, normalized);
+          },
+        );
         if (opmerkingenText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
           vakantieOutsideHomework = true;
         }

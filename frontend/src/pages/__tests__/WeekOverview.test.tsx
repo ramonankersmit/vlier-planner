@@ -44,7 +44,7 @@ describe("WeekOverview", () => {
     }
   });
 
-  it("toont melding voor doorlopende toetsweek", () => {
+  it("toont doorlopend huiswerk zonder extra multiweekmelding", () => {
     const store = useAppStore.getState();
     const meta = makeMeta();
     store.setDocs([meta]);
@@ -56,6 +56,8 @@ describe("WeekOverview", () => {
       </DocumentPreviewProvider>,
     );
 
-    expect(screen.getByText(/vervolg van 3\/4/i)).toBeInTheDocument();
+    expect(screen.queryByText(/vervolg van 3\/4/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/loopt door tot week/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/leren hoofdstuk 3/i).length).toBeGreaterThan(0);
   });
 });

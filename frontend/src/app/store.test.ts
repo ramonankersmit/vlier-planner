@@ -295,8 +295,13 @@ describe("useAppStore", () => {
     const anchorData = state.weekData.byWeek?.[anchorWeek!.id]?.[meta.vak];
     const followData = state.weekData.byWeek?.[followWeek!.id]?.[meta.vak];
 
-    expect(anchorData?.multiWeekSpans?.some((span) => span.role === "start" && span.toWeek === 4)).toBe(true);
-    expect(followData?.multiWeekSpans?.some((span) => span.role === "continue" && span.fromWeek === 3)).toBe(true);
-    expect(followData?.huiswerk).toBeUndefined();
+    expect(
+      anchorData?.multiWeekSpans?.some((span) => span.role === "start" && span.toWeek === 4),
+    ).toBe(true);
+    expect(
+      followData?.multiWeekSpans?.some((span) => span.role === "continue" && span.fromWeek === 3),
+    ).toBe(true);
+    expect(anchorData?.huiswerk).toContain("Leren hoofdstuk 3");
+    expect(followData?.huiswerk).toContain("Leren hoofdstuk 3");
   });
 });

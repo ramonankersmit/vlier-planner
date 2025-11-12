@@ -197,6 +197,9 @@ function Card({
   ];
   const hasAnyItems = combinedItems.length > 0;
   const hasCustomItems = customItems.length > 0;
+  const hasRegularContent =
+    hasLesstof || hasOpmerkingen || hasDeadlines || hasAggregatedHomework || hasAnyItems;
+  const shouldShowMultiWeekInfo = hasMultiWeekInfo && !hasRegularContent;
 
   const startAdd = () => {
     if (!enableCustomHomework) {
@@ -376,7 +379,7 @@ function Card({
         </div>
       </div>
 
-      {hasMultiWeekInfo && (
+      {shouldShowMultiWeekInfo && (
         <div className="flex flex-col gap-2 text-sm">
           {startSpanMessages.map((span, idx) => (
             <div
