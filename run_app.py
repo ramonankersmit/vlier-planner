@@ -20,8 +20,6 @@ import uvicorn
 from uvicorn.config import LOGGING_CONFIG
 from uvicorn.main import STARTUP_FAILURE
 
-os.environ.setdefault("VLIER_BACKEND_MODE", "workflow")
-
 try:  # pragma: no cover - afhankelijk van platform
     import pystray
 except Exception:  # pragma: no cover - afhankelijk van platform

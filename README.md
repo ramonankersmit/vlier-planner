@@ -63,14 +63,14 @@ De onderstaande voorbeelden komen uit `frontend/public` en tonen de belangrijkst
 ### Backend
 - Gebouwd met FastAPI en aangestuurd via één gedeeld entrypoint:
   - `backend/server.py` leest `VLIER_BACKEND_MODE` uit en importeert vervolgens de juiste applicatie. Zo heb je één aanspreekpunt voor zowel ontwikkel- als distributiesessies.
-  - `backend/planner.py` is de zogeheten *planner-backend*. Deze variant exposeert de snelle normalisatie- en planningsroutes waarmee je studiewijzers kunt uploaden, plannen en bekijken. Dit is de standaardmodus zodat `uvicorn backend.server:app --reload` direct dezelfde API’s levert als voorheen.
-  - `backend/app.py` is de oorspronkelijke *workflow-backend*. Deze bundelt naast de planner-routes ook de reviewwizard, documentdownloads en updatecontrole. De Windows-executable start deze variant doordat `run_app.py` automatisch `VLIER_BACKEND_MODE=workflow` zet.
-- In beide modi worden dezelfde models, services en opslag gebruikt; alleen het aantal geactiveerde routes verschilt. Daardoor blijft de Windows-build volledig compatibel met lokale ontwikkeling en kun je via `VLIER_BACKEND_MODE=workflow uvicorn backend.server:app --reload` alle workflowroutes lokaal testen.
+  - `backend/planner.py` is de standaard-*planner-backend*. Deze variant exposeert de normalisatie- en planningsroutes en bevat delegaties naar de workflowfeatures, zodat zowel lokale ontwikkeling als de Windows-build dezelfde API’s leveren.
+  - `backend/app.py` blijft beschikbaar als legacy *workflow-backend* voor tooling die nog rechtstreeks deze module importeert. Via `VLIER_BACKEND_MODE=workflow` kun je die versie toch afdwingen.
+- In beide modi worden dezelfde models, services en opslag gebruikt; alleen het aantal geactiveerde routes verschilt. Standaard gebruiken zowel lokale ontwikkeling als de Windows-build de planner-variant; alleen specifieke legacy-scripts hoeven nog naar de workflow-stand te schakelen.
 - `backend/services/data_store.py` beheert de opslag van uploads, pending parses, genormaliseerde modellen en het state-bestand. Via `VLIER_DATA_DIR` of `VLIER_STORAGE_DIR` kan de opslaglocatie worden geconfigureerd.
 - `backend/school_vacations.py` haalt vakantieperiodes op bij rijksoverheid.nl met `httpx` en `lxml`, structureert de uitkomsten en levert ze via `/api/school-vacations` aan de frontend.
 - `backend/update_checker.py` en `backend/updater.py` verzorgen versiecontrole en het uitvoeren van applicatie-updates vanuit de UI.
 
-Deze tweedeling draait dus niet om twee gescheiden codebases, maar om één backend die je in twee standen kunt starten. De planner-stand focust op dagelijkse ontwikkeling, de workflow-stand schakelt de volledige review- en updateflow erbij. De Windows-executable gebruikt dezelfde gedeelde code omdat `run_app.py` simpelweg de workflow-stand van `backend/server.py` activeert.
+Deze tweedeling draait dus niet om twee gescheiden codebases, maar om één backend die je in twee standen kunt starten. De planner-stand is de standaard voor zowel dagelijkse ontwikkeling als de Windows-executable; de workflow-stand blijft beschikbaar voor tooling die nog rechtstreeks `backend.app` aanspreekt.
 
 ### Frontend
 - Gebouwd met React, Vite en Tailwind CSS.
@@ -120,8 +120,8 @@ De applicatieversie staat in `VERSION.ini` onder `[app]`. Gebruik `npm run sync-
 ## Gebruik van de applicatie
 
 ### Eerste keer opstarten
-1. Start de backend op poort 8000 via `uvicorn backend.server:app --reload`. Zonder extra configuratie draait dit de planner-modus met dezelfde API’s als voorheen.
-   Wil je lokaal juist de workflow-routes draaien, gebruik dan `VLIER_BACKEND_MODE=workflow uvicorn backend.server:app --reload` (of stel de variabele vooraf in).
+1. Start de backend op poort 8000 via `uvicorn backend.server:app --reload`. Zonder extra configuratie draait dit dezelfde planner-modus als de Windows-versie.
+   Heeft een legacy script specifiek de workflow-app nodig, gebruik dan `VLIER_BACKEND_MODE=workflow uvicorn backend.server:app --reload` (of stel de variabele vooraf in).
 2. Start de frontend op poort 5173 met `npm run dev` en open `http://localhost:5173`.
    Krijg je een verbinding geweigerd, start dan met `npm run dev -- --host 0.0.0.0`
    of navigeer expliciet naar `http://127.0.0.1:5173` zodat zowel IPv4- als IPv6-

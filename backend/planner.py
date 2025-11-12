@@ -1,4 +1,4 @@
-"""Planner-focused FastAPI application used in default development mode.
+"""Planner-focused FastAPI application used in the default runtime mode.
 
 This module exposes the lightweight planning and normalization endpoints that
 previously lived in ``backend.main``. Workflow-specific routes stay available
