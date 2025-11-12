@@ -229,6 +229,24 @@ def _detect_primary_periode(doc: Document) -> Optional[int]:
     return None
 
 
+def _parse_periode_from_filename(filename: str) -> Optional[int]:
+    base = filename.rsplit(".", 1)[0]
+    base = base.replace("_", " ").replace("-", " ")
+    m = re.search(r"(?i)\bp\s*([1-4])\b", base)
+    if m:
+        try:
+            return int(m.group(1))
+        except ValueError:
+            return None
+    m = re.search(r"(?i)periode\s*([1-4])", base)
+    if m:
+        try:
+            return int(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
 def _table_period_from_cells(tbl) -> Optional[int]:
     """Zoek naar een periodevermelding in de eerste rijen/kolommen van een tabel."""
     try:
@@ -364,11 +382,11 @@ def _parse_schooljaar_from_doc(doc: Document) -> Optional[str]:
     blob = " | ".join(t for t in texts if t)
     return extract_schooljaar_from_text(blob)
 
-def _parse_footer_meta(doc: Document) -> Tuple[str, str, int, Optional[str]]:
+def _parse_footer_meta(doc: Document) -> Tuple[str, str, Optional[int], Optional[str]]:
     """Heuristiek uit footer: niveau (HAVO/VWO), leerjaar (1-6), periode (1-4), schooljaar (YYYY/YYYY, indien aanwezig)."""
     niveau = "VWO"
     leerjaar = "4"
-    periode = 1
+    periode: Optional[int] = None
     schooljaar = None
     try:
         sec = doc.sections[0]
@@ -531,7 +549,7 @@ def _parse_week_range(
             if week_col is None:
                 continue
 
-            allow_wrap = marker is not None
+            allow_wrap = (marker is not None) or (periode == 2)
             for r in rows[1:]:
                 if stop:
                     break
@@ -573,6 +591,7 @@ class _DocParseContext:
     niveau: Optional[str]
     leerjaar: Optional[str]
     periode_footer: Optional[int]
+    periode_filename: Optional[int]
     schooljaar_footer: Optional[str]
     periode_text: Optional[int]
     schooljaar: Optional[str]
@@ -584,6 +603,7 @@ def _build_doc_context(path: str, filename: str) -> _DocParseContext:
     table_markers = _table_period_markers(doc)
     niveau, leerjaar, periode_footer, schooljaar_footer = _parse_footer_meta(doc)
     periode_text = _detect_primary_periode(doc)
+    periode_filename = _parse_periode_from_filename(filename)
     schooljaar = (
         schooljaar_footer
         or _parse_schooljaar_from_doc(doc)
@@ -597,6 +617,7 @@ def _build_doc_context(path: str, filename: str) -> _DocParseContext:
         niveau=niveau,
         leerjaar=leerjaar,
         periode_footer=periode_footer,
+        periode_filename=periode_filename,
         schooljaar_footer=schooljaar_footer,
         periode_text=periode_text,
         schooljaar=schooljaar,
@@ -607,9 +628,22 @@ def _build_doc_context(path: str, filename: str) -> _DocParseContext:
 def _extract_meta_from_context(
     ctx: _DocParseContext, target_periode: Optional[int] = None
 ) -> Optional[DocMeta]:
-    periode = target_periode or ctx.periode_text or ctx.periode_footer
+    periode = (
+        target_periode
+        or ctx.periode_footer
+        or ctx.periode_filename
+        or ctx.periode_text
+    )
     begin_week, eind_week = _parse_week_range(ctx.doc, periode, ctx.table_markers)
     file_id = re.sub(r"[^a-zA-Z0-9]+", "-", ctx.filename)[:40]
+
+    final_periode = (
+        periode
+        or ctx.periode_footer
+        or ctx.periode_filename
+        or ctx.periode_text
+        or 1
+    )
 
     return DocMeta(
         fileId=file_id,
@@ -617,7 +651,7 @@ def _extract_meta_from_context(
         vak=ctx.vak,
         niveau=ctx.niveau,
         leerjaar=ctx.leerjaar,
-        periode=periode or ctx.periode_footer,
+        periode=final_periode,
         beginWeek=begin_week,
         eindWeek=eind_week,
         schooljaar=ctx.schooljaar,
@@ -792,7 +826,12 @@ def parse_toets_cell(text: str) -> Optional[Dict[str, Optional[str]]]:
 def _extract_rows_from_context(
     ctx: _DocParseContext, target_periode: Optional[int] = None
 ) -> List[DocRow]:
-    periode = target_periode or ctx.periode_text or ctx.periode_footer
+    periode = (
+        target_periode
+        or ctx.periode_footer
+        or ctx.periode_filename
+        or ctx.periode_text
+    )
     schooljaar = ctx.schooljaar
     results: List[DocRow] = []
 
@@ -822,7 +861,7 @@ def _extract_rows_from_context(
         klas_col = find_header_idx(headers, KLAS_HEADERS)
         loc_col = find_header_idx(headers, LOCATIE_HEADERS)
 
-        allow_wrap = marker is not None
+        allow_wrap = (marker is not None) or (periode == 2)
         for r in rows[1:]:
             if stop:
                 break
@@ -944,7 +983,11 @@ def extract_all_periods_from_docx(
             periods.append(marker)
             seen.add(marker)
 
-    for candidate in (ctx.periode_text, ctx.periode_footer):
+    for candidate in (
+        ctx.periode_footer,
+        ctx.periode_filename,
+        ctx.periode_text,
+    ):
         if candidate is None:
             continue
         if candidate not in seen:

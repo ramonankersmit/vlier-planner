@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Iterable
 
 import pytest
 
@@ -7,6 +8,32 @@ from backend.parsers.parser_docx import (
     extract_rows_from_docx,
     extract_all_periods_from_docx,
 )
+
+
+def _make_period_2_sample(tmp_path: Path, weeks: Iterable[int]) -> Path:
+    from docx import Document
+
+    doc = Document()
+    # Plaats een misleidende verwijzing naar periode 1 in de hoofdtekst.
+    doc.add_paragraph("Terugblik Periode 1")
+    # De daadwerkelijke periode 2 staat verderop, waardoor de eerste match verkeerd kan zijn.
+    doc.add_paragraph("Planning Periode 2")
+
+    table_weeks = list(weeks)
+    table = doc.add_table(rows=len(table_weeks) + 1, cols=2)
+    table.style = "Table Grid"
+    table.cell(0, 0).text = "Week"
+    table.cell(0, 1).text = "Onderwerp"
+    for idx, week in enumerate(table_weeks, start=1):
+        table.cell(idx, 0).text = str(week)
+        table.cell(idx, 1).text = f"Les {week}"
+
+    footer = doc.sections[0].footer
+    footer.paragraphs[0].text = "4 vwo · Periode 2"
+
+    sample_path = tmp_path / "Maatschappijleer_4vwo_p2.docx"
+    doc.save(sample_path)
+    return sample_path
 
 
 def test_latijnse_taal_en_cultuur_period_1_stops_before_period_2():
@@ -77,3 +104,18 @@ def test_schooljaar_is_detected_for_samples(filename: str) -> None:
 
     meta = extract_meta_from_docx(str(sample), sample.name)
     assert meta.schooljaar == "2025/2026"
+
+
+def test_periode_detections_use_footer_and_filename(tmp_path: Path) -> None:
+    weeks = list(range(46, 53)) + list(range(1, 5))
+    sample = _make_period_2_sample(tmp_path, weeks)
+
+    meta = extract_meta_from_docx(str(sample), "Aardrijkskunde_4V_P2_2025-2026.docx")
+    assert meta.periode == 2
+    assert meta.beginWeek == 46
+    assert meta.eindWeek == 4
+
+    rows = extract_rows_from_docx(str(sample), "Aardrijkskunde_4V_P2_2025-2026.docx")
+    extracted_weeks = [row.week for row in rows]
+    assert set(range(46, 53)).issubset(extracted_weeks)
+    assert set(range(1, 5)).issubset(extracted_weeks)
