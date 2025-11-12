@@ -115,6 +115,19 @@ export const getIsoWeekEnd = (isoYear: number, week: number): Date => {
   return end;
 };
 
+export const canonicalizeIsoWeek = (
+  week: number,
+  isoYear: number,
+): { week: number; isoYear: number } => {
+  if (!Number.isFinite(week) || !Number.isFinite(isoYear)) {
+    return { week, isoYear };
+  }
+  const start = getIsoWeekStart(isoYear, week);
+  const canonicalWeek = getIsoWeek(start);
+  const canonicalYear = getIsoWeekYear(start);
+  return { week: canonicalWeek, isoYear: canonicalYear };
+};
+
 export const formatIsoDate = (date: Date): string => {
   const yr = date.getUTCFullYear();
   const month = pad2(date.getUTCMonth() + 1);
@@ -177,7 +190,7 @@ export const resolveWeekIdentifier = (
 
     const exact = candidateInfos.find((info) => info.isoWeek === normalized);
     if (exact) {
-      return { week: normalized, isoYear: exact.isoYear };
+      return canonicalizeIsoWeek(normalized, exact.isoYear);
     }
 
     const best = candidateInfos
@@ -193,14 +206,14 @@ export const resolveWeekIdentifier = (
       })[0];
 
     if (best) {
-      return { week: best.isoWeek, isoYear: best.isoYear };
+      return canonicalizeIsoWeek(best.isoWeek, best.isoYear);
     }
   }
 
   const schooljaarStart = parseSchoolyearStart(schooljaar);
   if (typeof schooljaarStart === "number") {
     const isoYear = fallbackWeek >= 30 ? schooljaarStart : schooljaarStart + 1;
-    return { week: fallbackWeek, isoYear };
+    return canonicalizeIsoWeek(fallbackWeek, isoYear);
   }
 
   const base = today
@@ -218,5 +231,5 @@ export const resolveWeekIdentifier = (
       bestYear = isoYear;
     }
   }
-  return { week: fallbackWeek, isoYear: bestYear };
+  return canonicalizeIsoWeek(fallbackWeek, bestYear);
 };

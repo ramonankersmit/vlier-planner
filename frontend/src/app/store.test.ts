@@ -176,7 +176,7 @@ describe("useAppStore", () => {
         .getState()
         .weekData.weeks?.map((w) => `${w.isoYear}-W${String(w.nr).padStart(2, "0")}`) ?? [];
 
-    const expected2025 = Array.from({ length: 8 }, (_, idx) =>
+    const expected2025 = Array.from({ length: 7 }, (_, idx) =>
       `2025-W${String(46 + idx).padStart(2, "0")}`,
     );
     const expected2026 = Array.from({ length: 5 }, (_, idx) =>
@@ -222,6 +222,42 @@ describe("useAppStore", () => {
     const weekData = weekOne ? state.weekData.byWeek?.[weekOne.id]?.[meta.vak] : undefined;
     expect(weekData?.huiswerk).toContain("Leren hoofdstuk 5");
     expect(weekData?.huiswerk).toContain("Maak opdrachten 1-4");
+  });
+
+  it("normaliseert kalenderweken ook zonder datums in alle rijen", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-gap",
+      guideId: "guide-gap",
+      beginWeek: 53,
+      eindWeek: 2,
+      schooljaar: "2023/2024",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-gap", [
+      {
+        week: 53,
+        onderwerp: "Voorbereiding",
+      },
+      {
+        week: 1,
+        datum: "2024-01-05",
+        onderwerp: "Start nieuwe periode",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const weeks = state.weekData.weeks ?? [];
+
+    expect(weeks.some((info) => info.isoYear === 2023 && info.nr === 53)).toBe(false);
+
+    const weekOne = weeks.find((info) => info.isoYear === 2024 && info.nr === 1);
+    expect(weekOne).toBeDefined();
+
+    const data = weekOne ? state.weekData.byWeek?.[weekOne.id]?.[meta.vak] : undefined;
+    expect(data?.lesstof).toContain("Voorbereiding");
+    expect(data?.lesstof).toContain("Start nieuwe periode");
   });
 
   it("registreert multiweek informatie voor vervolgweken", () => {

@@ -16,6 +16,7 @@ import {
   getIsoWeekEnd,
   getIsoWeekStart,
   getIsoWeekYear,
+  canonicalizeIsoWeek,
   makeWeekId,
   parseIsoDate,
   resolveWeekIdentifier,
@@ -436,14 +437,15 @@ const computeWeekAggregation = (
   const byWeek = new Map<string, Record<string, WeekAccumulator>>();
   const multiWeekByWeek = new Map<string, Record<string, MultiWeekSpanInfo[]>>();
   const ensureWeek = (weekNr: number, isoYear: number) => {
-    const weekId = makeWeekId(isoYear, weekNr);
+    const { week, isoYear: canonicalYear } = canonicalizeIsoWeek(weekNr, isoYear);
+    const weekId = makeWeekId(canonicalYear, week);
     if (!weekInfoMap.has(weekId)) {
-      const startDate = getIsoWeekStart(isoYear, weekNr);
-      const endDate = getIsoWeekEnd(isoYear, weekNr);
+      const startDate = getIsoWeekStart(canonicalYear, week);
+      const endDate = getIsoWeekEnd(canonicalYear, week);
       weekInfoMap.set(weekId, {
         id: weekId,
-        nr: weekNr,
-        isoYear,
+        nr: week,
+        isoYear: canonicalYear,
         start: formatIsoDate(startDate),
         end: formatIsoDate(endDate),
       });
@@ -480,11 +482,12 @@ const computeWeekAggregation = (
   const vacationWeekSet = new Set<string>();
 
   const registerVacationWeek = (isoYear: number, week: number, vacation: SchoolVacation) => {
-    const weekId = makeWeekId(isoYear, week);
+    const { week: canonicalWeek, isoYear: canonicalYear } = canonicalizeIsoWeek(week, isoYear);
+    const weekId = makeWeekId(canonicalYear, canonicalWeek);
     vacationWeekRegistrations.push({
       weekId,
-      isoYear,
-      week,
+      isoYear: canonicalYear,
+      week: canonicalWeek,
       info: {
         id: vacation.id,
         name: vacation.name,
