@@ -186,6 +186,44 @@ describe("useAppStore", () => {
     expect(weekIds).toEqual([...expected2025, ...expected2026]);
   });
 
+  it("voegt weken met verschillende nummering samen op basis van datums", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-alias",
+      guideId: "guide-alias",
+      beginWeek: 52,
+      eindWeek: 2,
+      schooljaar: "2023/2024",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-alias", [
+      {
+        week: 53,
+        datum: "2024-01-03",
+        onderwerp: "Toetsweek",
+        huiswerk: "Leren hoofdstuk 5",
+      },
+      {
+        week: 1,
+        datum: "2024-01-04",
+        onderwerp: "Herhaling",
+        huiswerk: "Maak opdrachten 1-4",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const weeks = state.weekData.weeks ?? [];
+    expect(weeks.some((info) => info.isoYear === 2023 && info.nr === 53)).toBe(false);
+
+    const weekOne = weeks.find((info) => info.isoYear === 2024 && info.nr === 1);
+    expect(weekOne).toBeDefined();
+
+    const weekData = weekOne ? state.weekData.byWeek?.[weekOne.id]?.[meta.vak] : undefined;
+    expect(weekData?.huiswerk).toContain("Leren hoofdstuk 5");
+    expect(weekData?.huiswerk).toContain("Maak opdrachten 1-4");
+  });
+
   it("registreert multiweek informatie voor vervolgweken", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({

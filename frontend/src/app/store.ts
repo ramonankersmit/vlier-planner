@@ -10,7 +10,6 @@ import type {
   StudyGuideVersion,
 } from "../lib/api";
 import {
-  deriveIsoYearForWeek,
   expandWeekRange,
   formatIsoDate,
   getIsoWeek,
@@ -19,6 +18,7 @@ import {
   getIsoWeekYear,
   makeWeekId,
   parseIsoDate,
+  resolveWeekIdentifier,
 } from "../lib/calendar";
 import { splitHomeworkItems } from "../lib/textUtils";
 
@@ -564,26 +564,18 @@ const computeWeekAggregation = (
     if (!doc.enabled) {
       continue;
     }
-    const weekRange = expandWeekRange(doc.beginWeek, doc.eindWeek);
-    for (const wk of weekRange) {
-      const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar, today });
-      ensureWeek(wk, isoYear);
-    }
+    const rows = docRows[doc.fileId] ?? [];
+    const activeRows = rows.filter((row) => row && row.enabled !== false);
 
-    const rows = docRows[doc.fileId];
-    if (!rows?.length) {
-      continue;
-    }
+    const weekOverrides = new Map<number, { week: number; isoYear: number }>();
 
-    for (const row of rows) {
-      if (row && row.enabled === false) {
-        continue;
-      }
-      const weekCandidates: number[] = [];
-      if (Array.isArray(row.weeks)) {
-        for (const value of row.weeks) {
-          if (typeof value === "number") {
-            weekCandidates.push(value);
+    if (activeRows.length) {
+      for (const row of activeRows) {
+        const weekCandidates: number[] = [];
+        if (Array.isArray(row.weeks)) {
+          for (const value of row.weeks) {
+            if (typeof value === "number") {
+              weekCandidates.push(value);
           }
         }
       }
@@ -603,149 +595,197 @@ const computeWeekAggregation = (
       if (!uniqueWeeks.length) {
         continue;
       }
-      const anchorWeek = uniqueWeeks[0];
-      const spanEndWeek = uniqueWeeks[uniqueWeeks.length - 1];
-      const spanStart = typeof row.week_span_start === "number" ? row.week_span_start : anchorWeek;
-      const spanEnd = typeof row.week_span_end === "number" ? row.week_span_end : spanEndWeek;
 
-      const isoYearByWeek = new Map<number, number>();
-      for (const wk of uniqueWeeks) {
-        const candidateDates: (string | null | undefined)[] = [];
-        if (wk === anchorWeek && row.datum) {
-          candidateDates.push(row.datum);
-        }
-        if (wk === spanEndWeek && row.datum_eind) {
-          candidateDates.push(row.datum_eind);
-        }
+      const candidateDates: (string | null | undefined)[] = [];
+      if (row.datum) {
+        candidateDates.push(row.datum);
+      }
+      if (row.datum_eind) {
+        candidateDates.push(row.datum_eind);
+      }
+      if (row.inleverdatum) {
         candidateDates.push(row.inleverdatum);
-        const isoYear = deriveIsoYearForWeek(wk, {
-          schooljaar: doc.schooljaar,
-          candidateDates,
-          today,
-        });
-        isoYearByWeek.set(wk, isoYear);
-        ensureWeek(wk, isoYear);
       }
 
-      const isoYear = isoYearByWeek.get(anchorWeek)!;
-      const { weekId, vakMap } = ensureWeek(anchorWeek, isoYear);
-      if (
-        vacationWeekSet.size > 0 &&
-        vacationWeekSet.has(weekId) &&
-        rowContainsVakantie(row)
-      ) {
-        continue;
-      }
-      const accum =
-        vakMap[doc.vak] ??
-        (vakMap[doc.vak] = {
-          lesstof: [],
-          huiswerk: [],
-          huiswerkItems: [],
-          deadlines: [],
-          opmerkingen: [],
-          dates: [],
-        });
-
-      const addUnique = (arr: string[], value: string) => {
-        if (!arr.includes(value)) {
-          arr.push(value);
+        const resolvedWeeks: { sourceWeek: number; week: number; isoYear: number; weekId: string }[] = [];
+        const seenWeekIds = new Set<string>();
+        for (const sourceWeek of uniqueWeeks) {
+          const { week: canonicalWeek, isoYear } = resolveWeekIdentifier(sourceWeek, {
+            schooljaar: doc.schooljaar,
+            candidateDates,
+            today,
+          });
+          const weekId = makeWeekId(isoYear, canonicalWeek);
+          if (seenWeekIds.has(weekId)) {
+            continue;
+          }
+          seenWeekIds.add(weekId);
+          ensureWeek(canonicalWeek, isoYear);
+          resolvedWeeks.push({ sourceWeek, week: canonicalWeek, isoYear, weekId });
+          if (!weekOverrides.has(sourceWeek)) {
+            weekOverrides.set(sourceWeek, { week: canonicalWeek, isoYear });
+          }
         }
-      };
 
-      const addNormalized = (arr: string[], value?: string | null, options?: NormalizeOptions) => {
-        const normalized = normalizeText(value, options);
-        if (normalized) {
-          addUnique(arr, normalized);
+        if (!resolvedWeeks.length) {
+          continue;
         }
-        return normalized;
-      };
 
-      let vakantieOutsideHomework = false;
+        resolvedWeeks.sort((a, b) => {
+          if (a.isoYear !== b.isoYear) return a.isoYear - b.isoYear;
+          if (a.week !== b.week) return a.week - b.week;
+          return a.weekId.localeCompare(b.weekId);
+        });
 
-      const normalizedLesstof = addNormalized(accum.lesstof, row.onderwerp || row.les);
-      if (normalizedLesstof?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
-        vakantieOutsideHomework = true;
-      }
-      if ((!row.onderwerp && !row.les) && row.leerdoelen?.length) {
-        const leerdoelText = addNormalized(accum.lesstof, row.leerdoelen.join("; "));
-        if (leerdoelText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
+        const anchor = resolvedWeeks[0];
+        const { weekId: anchorWeekId, vakMap } = ensureWeek(anchor.week, anchor.isoYear);
+        if (
+          vacationWeekSet.size > 0 &&
+          vacationWeekSet.has(anchorWeekId) &&
+          rowContainsVakantie(row)
+        ) {
+          continue;
+        }
+        const accum =
+          vakMap[doc.vak] ??
+          (vakMap[doc.vak] = {
+            lesstof: [],
+            huiswerk: [],
+            huiswerkItems: [],
+            deadlines: [],
+            opmerkingen: [],
+            dates: [],
+          });
+
+        const addUnique = (arr: string[], value: string) => {
+          if (!arr.includes(value)) {
+            arr.push(value);
+          }
+        };
+
+        const addNormalized = (arr: string[], value?: string | null, options?: NormalizeOptions) => {
+          const normalized = normalizeText(value, options);
+          if (normalized) {
+            addUnique(arr, normalized);
+          }
+          return normalized;
+        };
+
+        let vakantieOutsideHomework = false;
+
+        const normalizedLesstof = addNormalized(accum.lesstof, row.onderwerp || row.les);
+        if (normalizedLesstof?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
           vakantieOutsideHomework = true;
         }
-      }
-
-      const addHomework = (value?: string | null) => {
-        const normalized = addNormalized(accum.huiswerk, value, { preserveLineBreaks: true });
-        if (
-          normalized &&
-          normalized.toLocaleLowerCase("nl-NL").includes("vakantie") &&
-          vakantieOutsideHomework
-        ) {
-          return;
-        }
-        if (!normalized) return;
-        const items = splitHomeworkItems(normalized);
-        for (const item of items) {
-          addUnique(accum.huiswerkItems, item);
-        }
-      };
-
-      const toetsType = row.toets?.type;
-      if (toetsType) {
-        const normalizedType = normalizeText(toetsType);
-        const normalizedWeight = normalizeText(row.toets?.weging ?? undefined);
-        if (normalizedType) {
-          if (normalizedType.toLocaleLowerCase("nl-NL").includes("vakantie")) {
+        if ((!row.onderwerp && !row.les) && row.leerdoelen?.length) {
+          const leerdoelText = addNormalized(accum.lesstof, row.leerdoelen.join("; "));
+          if (leerdoelText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
             vakantieOutsideHomework = true;
           }
-          const label = normalizedWeight
-            ? `${normalizedType} (weging ${normalizedWeight})`
-            : normalizedType;
-          addUnique(accum.deadlines, label);
         }
-      }
 
-      const recordDate = (value?: string | null) => {
-        const normalized = normalizeText(value);
-        if (!normalized) return;
-        addUnique(accum.dates, normalized);
-      };
-
-      const normalizedInlever = normalizeText(row.inleverdatum);
-      if (normalizedInlever) {
-        addUnique(accum.deadlines, `Inleveren ${normalizedInlever}`);
-        recordDate(normalizedInlever);
-      }
-
-      recordDate(row.datum);
-      const opmerkingenText = addNormalized(accum.opmerkingen, row.notities);
-      if (opmerkingenText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
-        vakantieOutsideHomework = true;
-      }
-
-      addHomework(row.huiswerk);
-      addHomework(row.opdracht);
-
-      if (uniqueWeeks.length > 1) {
-        const baseSpan: MultiWeekSpanInfo = {
-          sourceRowId: row.source_row_id ?? undefined,
-          label: row.week_label ?? undefined,
-          fromWeek: spanStart,
-          toWeek: spanEnd,
-          role: "start",
-          startDate: row.datum ?? undefined,
-          endDate: row.datum_eind ?? undefined,
+        const addHomework = (value?: string | null) => {
+          const normalized = addNormalized(accum.huiswerk, value, { preserveLineBreaks: true });
+          if (
+            normalized &&
+            normalized.toLocaleLowerCase("nl-NL").includes("vakantie") &&
+            vakantieOutsideHomework
+          ) {
+            return;
+          }
+          if (!normalized) return;
+          const items = splitHomeworkItems(normalized);
+          for (const item of items) {
+            addUnique(accum.huiswerkItems, item);
+          }
         };
-        registerMultiWeekSpan(weekId, doc.vak, baseSpan);
-        for (let idxWeek = 1; idxWeek < uniqueWeeks.length; idxWeek += 1) {
-          const wk = uniqueWeeks[idxWeek];
-          const isoYearForWeek = isoYearByWeek.get(wk)!;
-          const { weekId: spanWeekId } = ensureWeek(wk, isoYearForWeek);
-          registerMultiWeekSpan(spanWeekId, doc.vak, {
-            ...baseSpan,
-            role: "continue",
-          });
+
+        const toetsType = row.toets?.type;
+        if (toetsType) {
+          const normalizedType = normalizeText(toetsType);
+          const normalizedWeight = normalizeText(row.toets?.weging ?? undefined);
+          if (normalizedType) {
+            if (normalizedType.toLocaleLowerCase("nl-NL").includes("vakantie")) {
+              vakantieOutsideHomework = true;
+            }
+            const label = normalizedWeight
+              ? `${normalizedType} (weging ${normalizedWeight})`
+              : normalizedType;
+            addUnique(accum.deadlines, label);
+          }
         }
+
+        const recordDate = (value?: string | null) => {
+          const normalized = normalizeText(value);
+          if (!normalized) return;
+          addUnique(accum.dates, normalized);
+        };
+
+        const normalizedInlever = normalizeText(row.inleverdatum);
+        if (normalizedInlever) {
+          addUnique(accum.deadlines, `Inleveren ${normalizedInlever}`);
+          recordDate(normalizedInlever);
+        }
+
+        recordDate(row.datum);
+        const opmerkingenText = addNormalized(accum.opmerkingen, row.notities);
+        if (opmerkingenText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
+          vakantieOutsideHomework = true;
+        }
+
+        addHomework(row.huiswerk);
+        addHomework(row.opdracht);
+
+        if (resolvedWeeks.length > 1) {
+          const spanStartResolution =
+            typeof row.week_span_start === "number"
+              ? resolveWeekIdentifier(row.week_span_start, {
+                  schooljaar: doc.schooljaar,
+                  candidateDates,
+                  today,
+                }).week
+              : anchor.week;
+          const spanEndResolution =
+            typeof row.week_span_end === "number"
+              ? resolveWeekIdentifier(row.week_span_end, {
+                  schooljaar: doc.schooljaar,
+                  candidateDates,
+                  today,
+                }).week
+              : resolvedWeeks[resolvedWeeks.length - 1].week;
+
+          const baseSpan: MultiWeekSpanInfo = {
+            sourceRowId: row.source_row_id ?? undefined,
+            label: row.week_label ?? undefined,
+            fromWeek: spanStartResolution,
+            toWeek: spanEndResolution,
+            role: "start",
+            startDate: row.datum ?? undefined,
+            endDate: row.datum_eind ?? undefined,
+          };
+          registerMultiWeekSpan(anchorWeekId, doc.vak, baseSpan);
+          for (let idxWeek = 1; idxWeek < resolvedWeeks.length; idxWeek += 1) {
+            const spanWeek = resolvedWeeks[idxWeek];
+            registerMultiWeekSpan(spanWeek.weekId, doc.vak, {
+              ...baseSpan,
+              role: "continue",
+            });
+          }
+        }
+      }
+    }
+
+    const weekRange = expandWeekRange(doc.beginWeek, doc.eindWeek);
+    for (const wk of weekRange) {
+      const override = weekOverrides.get(wk);
+      if (override) {
+        ensureWeek(override.week, override.isoYear);
+      } else {
+        const { week: canonicalWeek, isoYear } = resolveWeekIdentifier(wk, {
+          schooljaar: doc.schooljaar,
+          today,
+        });
+        ensureWeek(canonicalWeek, isoYear);
       }
     }
   }
