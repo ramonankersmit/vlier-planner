@@ -76,6 +76,30 @@ _VAK_STOPWORDS = re.compile(
     r"(?i)\b(studiewijzer|planner|periode|week|huiswerk|opmerkingen|lesstof|toetsen|deadlines?)\b"
 )
 
+_HEADER_KEYWORD_GROUPS = (
+    WEEK_HEADER_KEYWORDS,
+    DATE_HEADER_KEYWORDS,
+    LES_HEADER_KEYWORDS,
+    ONDERWERP_HEADERS,
+    LEERDOEL_HEADERS,
+    HUISWERK_HEADERS,
+    OPDRACHT_HEADERS,
+    INLEVER_HEADERS,
+    TOETS_HEADERS,
+    BRON_HEADERS,
+    NOTITIE_HEADERS,
+    KLAS_HEADERS,
+    LOCATIE_HEADERS,
+)
+
+_TABLE_HEADER_TOKENS = {
+    part
+    for group in _HEADER_KEYWORD_GROUPS
+    for keyword in group
+    for part in re.split(r"[^A-Za-zÀ-ÿ0-9]+", keyword.lower())
+    if part
+}
+
 
 def _clean_vak_label(label: str) -> str:
     cleaned = normalize_text(label)
@@ -101,6 +125,28 @@ def _clean_vak_label(label: str) -> str:
     return cleaned.strip()
 
 
+def _looks_like_table_header(line: str) -> bool:
+    tokens = [t for t in re.split(r"[^A-Za-zÀ-ÿ0-9]+", line.lower()) if t]
+    if not tokens:
+        return False
+    hits = sum(1 for token in tokens if token in _TABLE_HEADER_TOKENS)
+    if hits >= 2:
+        return True
+    if hits and hits == len(tokens):
+        return True
+    return False
+
+
+def _is_generic_vak_label(candidate: str) -> bool:
+    tokens = [t for t in re.split(r"\s+", candidate.strip()) if t]
+    if not tokens:
+        return True
+    lower_tokens = [t.lower() for t in tokens]
+    if all(token in _TABLE_HEADER_TOKENS for token in lower_tokens):
+        return True
+    return False
+
+
 def _guess_vak(first_text: str, filename: str) -> str:
     m = RE_ANY_BRACKET_VAK.search(first_text)
     if m:
@@ -111,19 +157,17 @@ def _guess_vak(first_text: str, filename: str) -> str:
 
     seen_table_header = False
     for line in first_text.splitlines():
+        if seen_table_header:
+            break
         clean = normalize_text(line)
         if not clean:
             continue
-        low = clean.lower()
-        if re.search(r"\bweek\b", low) or any(
-            word in low for word in ("huiswerk", "opmerkingen", "lesstof", "toetsen")
-        ):
+        if _looks_like_table_header(clean):
             seen_table_header = True
+            continue
         candidate = _clean_vak_label(clean)
-        if candidate:
+        if candidate and not _is_generic_vak_label(candidate):
             return candidate
-        if seen_table_header:
-            break
 
     fallback = vak_from_filename(filename) or "Onbekend"
     return _clean_vak_label(fallback)
