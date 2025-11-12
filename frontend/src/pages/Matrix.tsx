@@ -27,7 +27,7 @@ import {
 } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
-import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
+import { expandWeekRange, deriveIsoYearForWeek, isWeekInRange, makeWeekId } from "../lib/calendar";
 import { hasMeaningfulContent } from "../lib/contentUtils";
 import { withAlpha } from "../lib/color";
 
@@ -687,10 +687,8 @@ export default function Matrix() {
   const allowedWeekIdSet = React.useMemo(() => {
     const ids = new Set<string>();
     for (const doc of filteredDocs) {
-      const start = Math.min(doc.beginWeek, doc.eindWeek);
-      const end = Math.max(doc.beginWeek, doc.eindWeek);
-      for (let wk = start; wk <= end; wk++) {
-        if (wk < 1 || wk > 53) continue;
+      const weekRange = expandWeekRange(doc.beginWeek, doc.eindWeek);
+      for (const wk of weekRange) {
         const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar });
         ids.add(makeWeekId(isoYear, wk));
       }
@@ -767,9 +765,7 @@ export default function Matrix() {
     (docsForVak: DocRecord[], info: WeekInfo) => {
       if (!info || docsForVak.length === 0) return docsForVak[0];
       const matched = docsForVak.find((doc) => {
-        const minWeek = Math.min(doc.beginWeek, doc.eindWeek);
-        const maxWeek = Math.max(doc.beginWeek, doc.eindWeek);
-        if (info.nr < minWeek || info.nr > maxWeek) return false;
+        if (!isWeekInRange(info.nr, doc.beginWeek, doc.eindWeek)) return false;
         const isoYear = deriveIsoYearForWeek(info.nr, { schooljaar: doc.schooljaar });
         return isoYear === info.isoYear;
       });

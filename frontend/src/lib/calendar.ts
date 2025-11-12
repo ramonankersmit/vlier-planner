@@ -5,6 +5,70 @@ const pad2 = (value: number) => value.toString().padStart(2, "0");
 export const makeWeekId = (isoYear: number, week: number): string =>
   `${isoYear}-W${pad2(Math.max(1, Math.min(week, 53)))}`;
 
+const normalizeWeekNumber = (value: number | null | undefined): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  const truncated = Math.trunc(value);
+  if (truncated < 1 || truncated > 53) {
+    return null;
+  }
+  return truncated;
+};
+
+export const expandWeekRange = (
+  beginWeek?: number | null,
+  endWeek?: number | null,
+): number[] => {
+  const start = normalizeWeekNumber(beginWeek);
+  const end = normalizeWeekNumber(endWeek);
+
+  if (start == null && end == null) {
+    return [];
+  }
+
+  if (start != null && end == null) {
+    return [start];
+  }
+
+  if (start == null && end != null) {
+    return [end];
+  }
+
+  if (start === end) {
+    return [start];
+  }
+
+  const result: number[] = [];
+  if (start! < end!) {
+    for (let wk = start!; wk <= end!; wk++) {
+      result.push(wk);
+    }
+    return result;
+  }
+
+  for (let wk = start!; wk <= 53; wk++) {
+    result.push(wk);
+  }
+  for (let wk = 1; wk <= end!; wk++) {
+    result.push(wk);
+  }
+  return result;
+};
+
+export const isWeekInRange = (
+  week: number | null | undefined,
+  beginWeek?: number | null,
+  endWeek?: number | null,
+): boolean => {
+  const normalized = normalizeWeekNumber(week);
+  if (normalized == null) {
+    return false;
+  }
+  const range = expandWeekRange(beginWeek, endWeek);
+  return range.includes(normalized);
+};
+
 export const parseSchoolyearStart = (value?: string | null): number | undefined => {
   if (!value) return undefined;
   const match = String(value).match(/\d{4}/);
