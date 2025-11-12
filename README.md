@@ -62,15 +62,14 @@ De onderstaande voorbeelden komen uit `frontend/public` en tonen de belangrijkst
 ## Technische architectuur
 ### Backend
 - Gebouwd met FastAPI en aangestuurd via één gedeeld entrypoint:
-  - `backend/server.py` leest `VLIER_BACKEND_MODE` uit en importeert vervolgens de juiste applicatie. Zo heb je één aanspreekpunt voor zowel ontwikkel- als distributiesessies.
-  - `backend/planner.py` is de standaard-*planner-backend*. Deze variant exposeert de normalisatie- en planningsroutes en bevat delegaties naar de workflowfeatures, zodat zowel lokale ontwikkeling als de Windows-build dezelfde API’s leveren.
-  - `backend/app.py` blijft beschikbaar als legacy *workflow-backend* voor tooling die nog rechtstreeks deze module importeert. Via `VLIER_BACKEND_MODE=workflow` kun je die versie toch afdwingen.
-- In beide modi worden dezelfde models, services en opslag gebruikt; alleen het aantal geactiveerde routes verschilt. Standaard gebruiken zowel lokale ontwikkeling als de Windows-build de planner-variant; alleen specifieke legacy-scripts hoeven nog naar de workflow-stand te schakelen.
+  - `backend/app.py` bevat de volledige workflow-backend inclusief normalisatie, studiewijzerbeheer, updates en vakantie-endpoints. Deze module wordt rechtstreeks gebruikt door zowel de Windows-executable (`run_app.py`) als lokale `uvicorn`-sessies.
+  - `backend/main.py` levert de afgeslankte *planner-API* voor scripts die uitsluitend de genormaliseerde data en agenda-/matrixoverzichten nodig hebben. De module deelt opslag en helpers met `backend.app`, waardoor beide varianten dezelfde data zien.
+- Dankzij dit onderscheid kies je bewust welke API je start, zonder verschillende codepaden of compatibiliteitslagen in stand te houden.
 - `backend/services/data_store.py` beheert de opslag van uploads, pending parses, genormaliseerde modellen en het state-bestand. Via `VLIER_DATA_DIR` of `VLIER_STORAGE_DIR` kan de opslaglocatie worden geconfigureerd.
 - `backend/school_vacations.py` haalt vakantieperiodes op bij rijksoverheid.nl met `httpx` en `lxml`, structureert de uitkomsten en levert ze via `/api/school-vacations` aan de frontend.
 - `backend/update_checker.py` en `backend/updater.py` verzorgen versiecontrole en het uitvoeren van applicatie-updates vanuit de UI.
 
-Deze tweedeling draait dus niet om twee gescheiden codebases, maar om één backend die je in twee standen kunt starten. De planner-stand is de standaard voor zowel dagelijkse ontwikkeling als de Windows-executable; de workflow-stand blijft beschikbaar voor tooling die nog rechtstreeks `backend.app` aanspreekt.
+Beide modules gebruiken dezelfde code en opslag; je kiest per scenario welke API het beste past. Voor dagelijks gebruik en distributies draait alles op `backend.app:app`, terwijl `backend.main:app` handig is voor geautomatiseerde normalisatie of analyse-scripts.
 
 ### Frontend
 - Gebouwd met React, Vite en Tailwind CSS.
@@ -102,7 +101,7 @@ vlier-planner/
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r backend/requirements.txt
-uvicorn backend.server:app --reload
+uvicorn backend.app:app --reload
 
 cd frontend
 npm install
@@ -120,8 +119,8 @@ De applicatieversie staat in `VERSION.ini` onder `[app]`. Gebruik `npm run sync-
 ## Gebruik van de applicatie
 
 ### Eerste keer opstarten
-1. Start de backend op poort 8000 via `uvicorn backend.server:app --reload`. Zonder extra configuratie draait dit dezelfde planner-modus als de Windows-versie.
-   Heeft een legacy script specifiek de workflow-app nodig, gebruik dan `VLIER_BACKEND_MODE=workflow uvicorn backend.server:app --reload` (of stel de variabele vooraf in).
+1. Start de backend op poort 8000 via `uvicorn backend.app:app --reload`. Dit is dezelfde FastAPI-app als die in de Windows-versie verpakt zit.
+   Heb je enkel de genormaliseerde planner-API nodig, gebruik dan `uvicorn backend.main:app --reload` in een aparte sessie.
 2. Start de frontend op poort 5173 met `npm run dev` en open `http://localhost:5173`.
    Krijg je een verbinding geweigerd, start dan met `npm run dev -- --host 0.0.0.0`
    of navigeer expliciet naar `http://127.0.0.1:5173` zodat zowel IPv4- als IPv6-

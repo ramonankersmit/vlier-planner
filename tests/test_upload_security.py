@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-import backend.planner as planner_app
+import backend.main as planner_app
 
 
 class _DummyWarning:

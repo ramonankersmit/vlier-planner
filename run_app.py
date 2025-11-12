@@ -224,7 +224,7 @@ def _ensure_version_env() -> None:
 _ensure_version_env()
 _configure_logging()
 
-from backend import server as backend_app
+from backend import app as backend_app
 from backend import updater as backend_updater
 
 LOGGER = logging.getLogger(__name__)

@@ -9,7 +9,7 @@ sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 
 from vlier_parser.normalize import DATA_DIR
-from backend.server import app
+from backend.main import app
 
 
 client = TestClient(app)

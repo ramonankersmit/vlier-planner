@@ -45,9 +45,9 @@ def api_client(app_test_env):
 
 @pytest.fixture()
 def normalized_api_client(app_test_env):
-    from backend.server import app as planner_app
+    from backend.main import app as normalized_app
 
-    return TestClient(planner_app)
+    return TestClient(normalized_app)
 
 
 def _scenario_initial() -> tuple[DocMeta, list[DocRow]]:
