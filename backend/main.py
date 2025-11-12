@@ -19,7 +19,6 @@ from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from vlier_parser.normalize import parse_to_normalized as _real_parse_to_normalized
 
 from . import app as workflow_app
 from .services.data_store import data_store
@@ -42,37 +41,9 @@ def _load_latest() -> dict:
     return data_store.load_latest_normalized()
 
 
-def parse_to_normalized(path: str):
-    target = Path(path)
-    if not target.is_absolute():
-        target = data_store.base_path / target
-    return _real_parse_to_normalized(str(target))
-
-
 @app.post("/api/uploads")
 async def upload(file: UploadFile = File(...)):
-
-    if not file.filename:
-        raise HTTPException(400, "Missing filename")
-
-    base_path = data_store.base_path
-    cwd = Path.cwd()
-    if not base_path.is_relative_to(cwd):
-        data_store.set_base_path(cwd)
-    data_store.ensure_ready()
-    uploads_dir = data_store.uploads_dir
-    safe_name = Path(file.filename).name
-    tmp_path = uploads_dir / safe_name
-    with tmp_path.open("wb") as fh:
-        while chunk := await file.read(65536):
-            fh.write(chunk)
-    relative_path = Path("uploads") / safe_name
-    parse_id, model = parse_to_normalized(str(relative_path))
-    return {
-        "parse_id": parse_id,
-        "status": "ready",
-        "warnings": [w.model_dump() for w in model.warnings],
-    }
+    return await workflow_app.upload_doc(file)
 
 
 @app.get("/api/parses/{parse_id}")
