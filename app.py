@@ -1,8 +1,8 @@
 """Compatibiliteitsmodule voor traditionele ``uvicorn`` commando's.
 
-Deze module bestaat om bestaande documentatie/commando's als
-``uvicorn app:app --reload`` te laten blijven werken nu de eigenlijke
-FastAPI-applicatie in ``backend.app`` leeft.
+``uvicorn app:app --reload`` blijft dankzij deze module werken. De
+onderliggende FastAPI-app wordt direct uit :mod:`backend.app`
+geëxporteerd.
 """
 
 from backend.app import app

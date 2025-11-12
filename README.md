@@ -61,12 +61,15 @@ De onderstaande voorbeelden komen uit `frontend/public` en tonen de belangrijkst
 
 ## Technische architectuur
 ### Backend
-- Gebouwd met FastAPI en opgesplitst in twee entrypoints:
-  - `backend/main.py` exposeert een compacte API voor de planner-weergaven met endpoints voor uploads, weekschema’s, matrixoverzichten, agenda en toetsmomenten.
-  - `backend/app.py` levert de volledige workflow voor importeren, reviewen, diffen en committen van studiewijzers, inclusief documentvoorbeelden, versiebeheer, schoolvakantie-endpoints en updatecontroles.
+- Gebouwd met FastAPI en aangestuurd via één gedeeld entrypoint:
+  - `backend/app.py` bevat de volledige workflow-backend inclusief normalisatie, studiewijzerbeheer, updates en vakantie-endpoints. Deze module wordt rechtstreeks gebruikt door zowel de Windows-executable (`run_app.py`) als lokale `uvicorn`-sessies.
+  - `backend/main.py` levert de afgeslankte *planner-API* voor scripts die uitsluitend de genormaliseerde data en agenda-/matrixoverzichten nodig hebben. De module deelt opslag en helpers met `backend.app`, waardoor beide varianten dezelfde data zien.
+- Dankzij dit onderscheid kies je bewust welke API je start, zonder verschillende codepaden of compatibiliteitslagen in stand te houden.
 - `backend/services/data_store.py` beheert de opslag van uploads, pending parses, genormaliseerde modellen en het state-bestand. Via `VLIER_DATA_DIR` of `VLIER_STORAGE_DIR` kan de opslaglocatie worden geconfigureerd.
 - `backend/school_vacations.py` haalt vakantieperiodes op bij rijksoverheid.nl met `httpx` en `lxml`, structureert de uitkomsten en levert ze via `/api/school-vacations` aan de frontend.
 - `backend/update_checker.py` en `backend/updater.py` verzorgen versiecontrole en het uitvoeren van applicatie-updates vanuit de UI.
+
+Beide modules gebruiken dezelfde code en opslag; je kiest per scenario welke API het beste past. Voor dagelijks gebruik en distributies draait alles op `backend.app:app`, terwijl `backend.main:app` handig is voor geautomatiseerde normalisatie of analyse-scripts.
 
 ### Frontend
 - Gebouwd met React, Vite en Tailwind CSS.
@@ -98,7 +101,7 @@ vlier-planner/
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r backend/requirements.txt
-uvicorn backend.main:app --reload
+uvicorn backend.app:app --reload
 
 cd frontend
 npm install
@@ -116,7 +119,8 @@ De applicatieversie staat in `VERSION.ini` onder `[app]`. Gebruik `npm run sync-
 ## Gebruik van de applicatie
 
 ### Eerste keer opstarten
-1. Start de backend op poort 8000 (minimalistische API) of kies `backend/app.py` voor de volledige workflow met reviews en versies.
+1. Start de backend op poort 8000 via `uvicorn backend.app:app --reload`. Dit is dezelfde FastAPI-app als die in de Windows-versie verpakt zit.
+   Heb je enkel de genormaliseerde planner-API nodig, gebruik dan `uvicorn backend.main:app --reload` in een aparte sessie.
 2. Start de frontend op poort 5173 met `npm run dev` en open `http://localhost:5173`.
    Krijg je een verbinding geweigerd, start dan met `npm run dev -- --host 0.0.0.0`
    of navigeer expliciet naar `http://127.0.0.1:5173` zodat zowel IPv4- als IPv6-
