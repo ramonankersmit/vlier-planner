@@ -49,7 +49,7 @@ from .parser_docx import (
     vak_from_filename,
 )
 
-RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ\s\-\&]+?)\s*\]")
+RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ0-9\s\-\&]+?)\s*\]")
 RE_AFTER_DASH = re.compile(r"Studiewijzer\s*[-–]\s*(.+)", re.I)
 
 PDF_TABLE_SETTINGS = {
@@ -72,9 +72,32 @@ def _append_text(existing: Optional[str], new_text: str) -> Optional[str]:
     return new_norm
 
 
+_VAK_STOPWORDS = re.compile(
+    r"(?i)\b(studiewijzer|planner|periode|week|huiswerk|opmerkingen|lesstof|toetsen|deadlines?)\b"
+)
+
+
 def _clean_vak_label(label: str) -> str:
     cleaned = normalize_text(label)
-    cleaned = re.sub(r"(?i)^(vwo|havo)\s+", "", cleaned)
+    if not cleaned:
+        return ""
+
+    cleaned = _VAK_STOPWORDS.sub(" ", cleaned)
+    cleaned = re.sub(r"(?i)\b(havo|vwo)\b", " ", cleaned)
+    cleaned = re.sub(r"\b\d+\b", " ", cleaned)
+    cleaned = re.sub(r"[,:;/]+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return ""
+
+    tokens = cleaned.split()
+    if len(tokens) >= 4 and tokens[: len(tokens) // 2] == tokens[len(tokens) // 2 :]:
+        cleaned = " ".join(tokens[: len(tokens) // 2])
+        tokens = cleaned.split()
+
+    if len(tokens) >= 2 and len(tokens[0]) == 1:
+        cleaned = " ".join(tokens[1:])
+
     return cleaned.strip()
 
 
@@ -86,17 +109,21 @@ def _guess_vak(first_text: str, filename: str) -> str:
     if m:
         return _clean_vak_label(m.group(1))
 
+    seen_table_header = False
     for line in first_text.splitlines():
         clean = normalize_text(line)
         if not clean:
             continue
         low = clean.lower()
-        if any(word in low for word in ("studiewijzer", "planner", "periode")):
-            continue
-        if re.search(r"\bweek\b", low):
-            continue
-        if re.fullmatch(r"[a-zà-ÿ\s\-&]+", low):
-            return _clean_vak_label(clean)
+        if re.search(r"\bweek\b", low) or any(
+            word in low for word in ("huiswerk", "opmerkingen", "lesstof", "toetsen")
+        ):
+            seen_table_header = True
+        candidate = _clean_vak_label(clean)
+        if candidate:
+            return candidate
+        if seen_table_header:
+            break
 
     fallback = vak_from_filename(filename) or "Onbekend"
     return _clean_vak_label(fallback)

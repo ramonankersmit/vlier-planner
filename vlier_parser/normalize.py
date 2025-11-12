@@ -103,8 +103,27 @@ def _ensure_weeks(
         year = _resolve_year_for_week(week, school_year, reference_date)
         if (week, year) in existing:
             continue
-        start, end = _week_bounds(year, week)
+        try:
+            start, end = _week_bounds(year, week)
+        except ValueError:
+            continue
         existing[(week, year)] = Week(week=week, year=year, start=start, end=end)
+
+
+def _iter_weeks_from_meta(begin: int, end: int) -> Iterable[int]:
+    if begin <= 0 or end <= 0:
+        return []
+    if begin <= end:
+        return range(begin, end + 1)
+    return list(range(begin, 54)) + list(range(1, end + 1))
+
+
+def _week_in_meta_range(week: int, begin: int, end: int) -> bool:
+    if begin <= 0 or end <= 0:
+        return True
+    if begin <= end:
+        return begin <= week <= end
+    return week >= begin or week <= end
 
 
 def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
@@ -195,7 +214,12 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
 
     weeks: Dict[Tuple[int, int], Week] = {}
     if meta:
-        _ensure_weeks(weeks, range(meta.beginWeek, meta.eindWeek + 1), school_year, None)
+        _ensure_weeks(
+            weeks,
+            _iter_weeks_from_meta(meta.beginWeek, meta.eindWeek),
+            school_year,
+            None,
+        )
 
     sessions: List[Session] = []
     assessments: List[Assessment] = []
@@ -219,7 +243,7 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
             )
             continue
 
-        if meta and (week < meta.beginWeek or week > meta.eindWeek):
+        if meta and not _week_in_meta_range(week, meta.beginWeek, meta.eindWeek):
             warnings.append(
                 Warning(
                     code="WEEK_OUT_OF_RANGE",
@@ -319,7 +343,7 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
                 )
             )
 
-    weeks_sorted = [weeks[key] for key in sorted(weeks)]
+    weeks_sorted = sorted(weeks.values(), key=lambda item: (item.year, item.week))
 
     model = NormalizedModel(
         meta={"source": source, "parsed_at": parsed_at},
