@@ -630,14 +630,20 @@ def _extract_meta_from_context(
 ) -> Optional[DocMeta]:
     periode = (
         target_periode
-        or ctx.periode_text
         or ctx.periode_footer
         or ctx.periode_filename
+        or ctx.periode_text
     )
     begin_week, eind_week = _parse_week_range(ctx.doc, periode, ctx.table_markers)
     file_id = re.sub(r"[^a-zA-Z0-9]+", "-", ctx.filename)[:40]
 
-    final_periode = periode or ctx.periode_footer or ctx.periode_filename or 1
+    final_periode = (
+        periode
+        or ctx.periode_footer
+        or ctx.periode_filename
+        or ctx.periode_text
+        or 1
+    )
 
     return DocMeta(
         fileId=file_id,
@@ -822,9 +828,9 @@ def _extract_rows_from_context(
 ) -> List[DocRow]:
     periode = (
         target_periode
-        or ctx.periode_text
         or ctx.periode_footer
         or ctx.periode_filename
+        or ctx.periode_text
     )
     schooljaar = ctx.schooljaar
     results: List[DocRow] = []
@@ -977,7 +983,11 @@ def extract_all_periods_from_docx(
             periods.append(marker)
             seen.add(marker)
 
-    for candidate in (ctx.periode_text, ctx.periode_footer, ctx.periode_filename):
+    for candidate in (
+        ctx.periode_footer,
+        ctx.periode_filename,
+        ctx.periode_text,
+    ):
         if candidate is None:
             continue
         if candidate not in seen:
