@@ -4,7 +4,6 @@ import sys, pathlib; sys.path.append(str(pathlib.Path(__file__).resolve().parent
 
 import io
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,21 +11,27 @@ from fastapi.testclient import TestClient
 import backend.main as planner_app
 
 
-class _DummyWarning:
-    def model_dump(self) -> dict[str, str]:
-        return {"warning": "dummy"}
-
-
 def test_upload_sanitizes_and_streams(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
-    captured: dict[str, str] = {}
+    captured: dict[str, object] = {}
 
-    def fake_parse_to_normalized(path: str):
-        captured["path"] = path
-        return "parse-id", SimpleNamespace(warnings=[_DummyWarning()])
+    async def fake_upload_doc(file):
+        captured["filename"] = file.filename
+        captured["content"] = await file.read()
+        return [
+            {
+                "parseId": "parse-id",
+                "warnings": [{"warning": "dummy"}],
+                "meta": {"bestand": "Studiewijzer"},
+                "rows": [],
+                "diffSummary": {},
+                "diff": [],
+                "fileName": "Studiewijzer.docx",
+            }
+        ]
 
-    monkeypatch.setattr(planner_app, "parse_to_normalized", fake_parse_to_normalized)
+    monkeypatch.setattr(planner_app.workflow_app, "upload_doc", fake_upload_doc)
 
     client = TestClient(planner_app.app)
 
@@ -43,14 +48,17 @@ def test_upload_sanitizes_and_streams(tmp_path: Path, monkeypatch: pytest.Monkey
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload == {"parse_id": "parse-id", "status": "ready", "warnings": [{"warning": "dummy"}]}
+    assert payload == [
+        {
+            "parseId": "parse-id",
+            "warnings": [{"warning": "dummy"}],
+            "meta": {"bestand": "Studiewijzer"},
+            "rows": [],
+            "diffSummary": {},
+            "diff": [],
+            "fileName": "Studiewijzer.docx",
+        }
+    ]
 
-    assert "path" in captured
-
-    saved_path = Path(captured["path"])
-    assert saved_path.parent == Path("uploads")
-    assert saved_path.name == "evil.docx"
-
-    resolved_path = saved_path.resolve()
-    assert resolved_path.parent == tmp_path / "uploads"
-    assert resolved_path.read_bytes() == b"malicious"
+    assert captured["filename"] == "../evil.docx"
+    assert captured["content"] == b"malicious"
