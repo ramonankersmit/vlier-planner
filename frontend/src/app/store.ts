@@ -32,6 +32,16 @@ export type DocRecord = DocMeta & { enabled: boolean };
 
 export type WeekInfo = { id: string; nr: number; isoYear: number; start: string; end: string };
 
+export type MultiWeekSpanInfo = {
+  sourceRowId?: string;
+  label?: string;
+  fromWeek: number;
+  toWeek: number;
+  role: "start" | "continue";
+  startDate?: string;
+  endDate?: string;
+};
+
 export type WeekData = {
   lesstof?: string;
   huiswerk?: string;
@@ -39,6 +49,7 @@ export type WeekData = {
   deadlines?: string;
   opmerkingen?: string;
   date?: string;
+  multiWeekSpans?: MultiWeekSpanInfo[];
 };
 
 export type VacationWeekInfo = {
@@ -423,6 +434,7 @@ const computeWeekAggregation = (
 
   const weekInfoMap = new Map<string, WeekInfo>();
   const byWeek = new Map<string, Record<string, WeekAccumulator>>();
+  const multiWeekByWeek = new Map<string, Record<string, MultiWeekSpanInfo[]>>();
   const ensureWeek = (weekNr: number, isoYear: number) => {
     const weekId = makeWeekId(isoYear, weekNr);
     if (!weekInfoMap.has(weekId)) {
@@ -440,6 +452,22 @@ const computeWeekAggregation = (
       byWeek.set(weekId, {});
     }
     return { weekId, vakMap: byWeek.get(weekId)! };
+  };
+  const registerMultiWeekSpan = (
+    weekId: string,
+    vak: string,
+    info: MultiWeekSpanInfo,
+  ) => {
+    const entry = multiWeekByWeek.get(weekId) ?? {};
+    const list = entry[vak] ?? [];
+    const exists = list.some(
+      (span) => span.sourceRowId === info.sourceRowId && span.role === info.role,
+    );
+    if (!exists) {
+      list.push(info);
+    }
+    entry[vak] = list;
+    multiWeekByWeek.set(weekId, entry);
   };
   const today = new Date();
 
@@ -551,16 +579,56 @@ const computeWeekAggregation = (
       if (row && row.enabled === false) {
         continue;
       }
-      const wk = typeof row.week === "number" ? row.week : undefined;
-      if (!wk || wk < 1 || wk > 53) {
+      const weekCandidates: number[] = [];
+      if (Array.isArray(row.weeks)) {
+        for (const value of row.weeks) {
+          if (typeof value === "number") {
+            weekCandidates.push(value);
+          }
+        }
+      }
+      if (typeof row.week === "number") {
+        weekCandidates.push(row.week);
+      }
+      const uniqueWeeks: number[] = [];
+      const seenWeeks = new Set<number>();
+      for (const candidate of weekCandidates) {
+        if (!Number.isFinite(candidate)) continue;
+        const normalized = Math.trunc(candidate);
+        if (normalized < 1 || normalized > 53) continue;
+        if (seenWeeks.has(normalized)) continue;
+        seenWeeks.add(normalized);
+        uniqueWeeks.push(normalized);
+      }
+      if (!uniqueWeeks.length) {
         continue;
       }
-      const isoYear = deriveIsoYearForWeek(wk, {
-        schooljaar: doc.schooljaar,
-        candidateDates: [row.datum, row.inleverdatum],
-        today,
-      });
-      const { weekId, vakMap } = ensureWeek(wk, isoYear);
+      const anchorWeek = uniqueWeeks[0];
+      const spanEndWeek = uniqueWeeks[uniqueWeeks.length - 1];
+      const spanStart = typeof row.week_span_start === "number" ? row.week_span_start : anchorWeek;
+      const spanEnd = typeof row.week_span_end === "number" ? row.week_span_end : spanEndWeek;
+
+      const isoYearByWeek = new Map<number, number>();
+      for (const wk of uniqueWeeks) {
+        const candidateDates: (string | null | undefined)[] = [];
+        if (wk === anchorWeek && row.datum) {
+          candidateDates.push(row.datum);
+        }
+        if (wk === spanEndWeek && row.datum_eind) {
+          candidateDates.push(row.datum_eind);
+        }
+        candidateDates.push(row.inleverdatum);
+        const isoYear = deriveIsoYearForWeek(wk, {
+          schooljaar: doc.schooljaar,
+          candidateDates,
+          today,
+        });
+        isoYearByWeek.set(wk, isoYear);
+        ensureWeek(wk, isoYear);
+      }
+
+      const isoYear = isoYearByWeek.get(anchorWeek)!;
+      const { weekId, vakMap } = ensureWeek(anchorWeek, isoYear);
       if (
         vacationWeekSet.size > 0 &&
         vacationWeekSet.has(weekId) &&
@@ -657,6 +725,28 @@ const computeWeekAggregation = (
 
       addHomework(row.huiswerk);
       addHomework(row.opdracht);
+
+      if (uniqueWeeks.length > 1) {
+        const baseSpan: MultiWeekSpanInfo = {
+          sourceRowId: row.source_row_id ?? undefined,
+          label: row.week_label ?? undefined,
+          fromWeek: spanStart,
+          toWeek: spanEnd,
+          role: "start",
+          startDate: row.datum ?? undefined,
+          endDate: row.datum_eind ?? undefined,
+        };
+        registerMultiWeekSpan(weekId, doc.vak, baseSpan);
+        for (let idxWeek = 1; idxWeek < uniqueWeeks.length; idxWeek += 1) {
+          const wk = uniqueWeeks[idxWeek];
+          const isoYearForWeek = isoYearByWeek.get(wk)!;
+          const { weekId: spanWeekId } = ensureWeek(wk, isoYearForWeek);
+          registerMultiWeekSpan(spanWeekId, doc.vak, {
+            ...baseSpan,
+            role: "continue",
+          });
+        }
+      }
     }
   }
 
@@ -670,22 +760,39 @@ const computeWeekAggregation = (
   }
 
   const resultByWeek: Record<string, Record<string, WeekData>> = {};
-  for (const [weekId, vakMap] of byWeek.entries()) {
+  const allWeekIds = new Set<string>([
+    ...byWeek.keys(),
+    ...multiWeekByWeek.keys(),
+  ]);
+  for (const weekId of allWeekIds) {
+    const vakMap = byWeek.get(weekId) ?? {};
+    const spanMap = multiWeekByWeek.get(weekId) ?? {};
+    const vakKeys = new Set<string>([
+      ...Object.keys(vakMap),
+      ...Object.keys(spanMap),
+    ]);
     const entries: Record<string, WeekData> = {};
-    for (const [vak, acc] of Object.entries(vakMap)) {
-      const uniqJoin = (values: string[], sep: string) => {
-        const unique = Array.from(new Set(values));
-        return unique.length ? unique.join(sep) : undefined;
-      };
-      const sortedDates = Array.from(new Set(acc.dates)).sort();
-      entries[vak] = {
-        lesstof: uniqJoin(acc.lesstof, "\n"),
-        huiswerk: uniqJoin(acc.huiswerk, "\n"),
-        huiswerkItems: acc.huiswerkItems.length ? [...acc.huiswerkItems] : undefined,
-        deadlines: uniqJoin(acc.deadlines, "; "),
-        opmerkingen: uniqJoin(acc.opmerkingen, "\n"),
-        date: sortedDates[0],
-      };
+    for (const vak of vakKeys) {
+      const acc = vakMap[vak];
+      const data: WeekData = {};
+      if (acc) {
+        const uniqJoin = (values: string[], sep: string) => {
+          const unique = Array.from(new Set(values));
+          return unique.length ? unique.join(sep) : undefined;
+        };
+        const sortedDates = Array.from(new Set(acc.dates)).sort();
+        data.lesstof = uniqJoin(acc.lesstof, "\n");
+        data.huiswerk = uniqJoin(acc.huiswerk, "\n");
+        data.huiswerkItems = acc.huiswerkItems.length ? [...acc.huiswerkItems] : undefined;
+        data.deadlines = uniqJoin(acc.deadlines, "; ");
+        data.opmerkingen = uniqJoin(acc.opmerkingen, "\n");
+        data.date = sortedDates[0];
+      }
+      const spans = spanMap[vak];
+      if (spans?.length) {
+        data.multiWeekSpans = spans.map((span) => ({ ...span }));
+      }
+      entries[vak] = data;
     }
     resultByWeek[weekId] = entries;
   }

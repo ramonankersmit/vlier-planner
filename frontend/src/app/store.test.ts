@@ -185,4 +185,44 @@ describe("useAppStore", () => {
 
     expect(weekIds).toEqual([...expected2025, ...expected2026]);
   });
+
+  it("registreert multiweek informatie voor vervolgweken", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-multi",
+      guideId: "guide-multi",
+      beginWeek: 3,
+      eindWeek: 4,
+      schooljaar: "2024/2025",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-multi", [
+      {
+        week: 3,
+        weeks: [3, 4],
+        week_span_start: 3,
+        week_span_end: 4,
+        week_label: "3/4",
+        datum: "2025-01-15",
+        datum_eind: "2025-01-24",
+        onderwerp: "Toetsweek",
+        huiswerk: "Leren hoofdstuk 3",
+        source_row_id: "row-1",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const anchorWeek = state.weekData.weeks?.find((info) => info.nr === 3);
+    const followWeek = state.weekData.weeks?.find((info) => info.nr === 4);
+    expect(anchorWeek).toBeDefined();
+    expect(followWeek).toBeDefined();
+
+    const anchorData = state.weekData.byWeek?.[anchorWeek!.id]?.[meta.vak];
+    const followData = state.weekData.byWeek?.[followWeek!.id]?.[meta.vak];
+
+    expect(anchorData?.multiWeekSpans?.some((span) => span.role === "start" && span.toWeek === 4)).toBe(true);
+    expect(followData?.multiWeekSpans?.some((span) => span.role === "continue" && span.fromWeek === 3)).toBe(true);
+    expect(followData?.huiswerk).toBeUndefined();
+  });
 });

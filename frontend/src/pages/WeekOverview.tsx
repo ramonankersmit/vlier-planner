@@ -19,6 +19,7 @@ import {
   type WeekData,
   type CustomHomeworkEntry,
   type VacationWeekInfo,
+  type MultiWeekSpanInfo,
 } from "../app/store";
 import { formatRange, calcCurrentWeekIdx } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
@@ -85,6 +86,10 @@ function Card({
   const updateCustomHomework = useAppStore((s) => s.updateCustomHomework);
   const enableHomeworkEditing = useAppStore((s) => s.enableHomeworkEditing);
   const enableCustomHomework = useAppStore((s) => s.enableCustomHomework);
+  const multiWeekSpans = Array.isArray(data?.multiWeekSpans) ? data!.multiWeekSpans : [];
+  const startSpanMessages = multiWeekSpans.filter((span) => span.role === "start");
+  const continueSpanMessages = multiWeekSpans.filter((span) => span.role === "continue");
+  const hasMultiWeekInfo = startSpanMessages.length > 0 || continueSpanMessages.length > 0;
   const storedItems =
     Array.isArray(data?.huiswerkItems) && data?.huiswerkItems.length
       ? data.huiswerkItems
@@ -282,6 +287,23 @@ function Card({
     }
   };
 
+  const makeSpanKey = (span: MultiWeekSpanInfo, idx: number, prefix: string) =>
+    `${prefix}-${span.sourceRowId ?? "unknown"}-${span.fromWeek}-${span.toWeek}-${idx}`;
+
+  const formatSpanMessage = (span: MultiWeekSpanInfo) => {
+    const label = span.label?.trim();
+    if (span.role === "start") {
+      if (span.toWeek !== span.fromWeek) {
+        return label
+          ? `${label} – loopt door tot week ${span.toWeek}`
+          : `Loopt door tot week ${span.toWeek}`;
+      }
+      return label ?? `Week ${span.fromWeek}`;
+    }
+    const base = label ? label : `week ${span.fromWeek}`;
+    return `Vervolg van ${base}`;
+  };
+
   React.useEffect(() => {
     if (!enableCustomHomework) {
       setAdding(false);
@@ -353,6 +375,29 @@ function Card({
           </button>
         </div>
       </div>
+
+      {hasMultiWeekInfo && (
+        <div className="flex flex-col gap-2 text-sm">
+          {startSpanMessages.map((span, idx) => (
+            <div
+              key={makeSpanKey(span, idx, "start")}
+              className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-slate-700"
+            >
+              <CalendarClock size={16} aria-hidden="true" className="text-slate-500" />
+              <span>{formatSpanMessage(span)}</span>
+            </div>
+          ))}
+          {continueSpanMessages.map((span, idx) => (
+            <div
+              key={makeSpanKey(span, idx, "continue")}
+              className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-amber-700"
+            >
+              <CalendarClock size={16} aria-hidden="true" className="text-amber-500" />
+              <span>{formatSpanMessage(span)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="theme-divider" aria-hidden="true" />
 
