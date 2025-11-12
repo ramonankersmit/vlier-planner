@@ -11,6 +11,7 @@ import type {
 } from "../lib/api";
 import {
   deriveIsoYearForWeek,
+  expandWeekRange,
   formatIsoDate,
   getIsoWeek,
   getIsoWeekEnd,
@@ -535,10 +536,8 @@ const computeWeekAggregation = (
     if (!doc.enabled) {
       continue;
     }
-    const start = Math.min(doc.beginWeek, doc.eindWeek);
-    const end = Math.max(doc.beginWeek, doc.eindWeek);
-    for (let wk = start; wk <= end; wk++) {
-      if (wk < 1 || wk > 53) continue;
+    const weekRange = expandWeekRange(doc.beginWeek, doc.eindWeek);
+    for (const wk of weekRange) {
       const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar, today });
       ensureWeek(wk, isoYear);
     }

@@ -146,4 +146,43 @@ describe("useAppStore", () => {
     const state = useAppStore.getState();
     expect(state.selectedVersionId).toBe(1);
   });
+
+  it("bouwt weekreeksen over jaargrenzen correct op", () => {
+    const store = useAppStore.getState();
+    const crossYearDoc = makeMeta({
+      fileId: "guide-cross",
+      guideId: "guide-cross",
+      beginWeek: 46,
+      eindWeek: 5,
+      schooljaar: "2025/2026",
+    });
+
+    store.setDocs([crossYearDoc]);
+    store.setDocRows("guide-cross", [
+      {
+        week: 46,
+        datum: "2025-11-12",
+        les: "Intro",
+      },
+      {
+        week: 4,
+        datum: "2026-01-22",
+        les: "Vervolg",
+      },
+    ]);
+
+    const weekIds =
+      useAppStore
+        .getState()
+        .weekData.weeks?.map((w) => `${w.isoYear}-W${String(w.nr).padStart(2, "0")}`) ?? [];
+
+    const expected2025 = Array.from({ length: 8 }, (_, idx) =>
+      `2025-W${String(46 + idx).padStart(2, "0")}`,
+    );
+    const expected2026 = Array.from({ length: 5 }, (_, idx) =>
+      `2026-W${String(idx + 1).padStart(2, "0")}`,
+    );
+
+    expect(weekIds).toEqual([...expected2025, ...expected2026]);
+  });
 });

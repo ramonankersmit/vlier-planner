@@ -8,7 +8,7 @@ import {
   formatWeekDateRange,
 } from "../lib/weekUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
-import { deriveIsoYearForWeek, makeWeekId } from "../lib/calendar";
+import { deriveIsoYearForWeek, expandWeekRange, isWeekInRange, makeWeekId } from "../lib/calendar";
 
 type Item = {
   id: string;
@@ -87,10 +87,8 @@ export default function Deadlines() {
   const allowedWeekIds = React.useMemo(() => {
     const ids = new Set<string>();
     for (const doc of filteredDocs) {
-      const start = Math.min(doc.beginWeek, doc.eindWeek);
-      const end = Math.max(doc.beginWeek, doc.eindWeek);
-      for (let wk = start; wk <= end; wk++) {
-        if (wk < 1 || wk > 53) continue;
+      const weekRange = expandWeekRange(doc.beginWeek, doc.eindWeek);
+      for (const wk of weekRange) {
         const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar });
         ids.add(makeWeekId(isoYear, wk));
       }
@@ -143,9 +141,7 @@ export default function Deadlines() {
       const docsForVak = docsByVak.get(vakNaam);
       if (!docsForVak?.length) return undefined;
       const matched = docsForVak.find((doc) => {
-        const minWeek = Math.min(doc.beginWeek, doc.eindWeek);
-        const maxWeek = Math.max(doc.beginWeek, doc.eindWeek);
-        if (info.nr < minWeek || info.nr > maxWeek) return false;
+        if (!isWeekInRange(info.nr, doc.beginWeek, doc.eindWeek)) return false;
         const isoYear = deriveIsoYearForWeek(info.nr, { schooljaar: doc.schooljaar });
         return isoYear === info.isoYear;
       });
