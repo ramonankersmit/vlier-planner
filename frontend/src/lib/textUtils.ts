@@ -42,10 +42,55 @@ const VERB_AFTER_COMMA_WORDS = [
   "present",
   "presenteren",
 ];
-const COMMA_VERB_SPLIT_RE = new RegExp(
-  `,\\s+(?=\\b(?:${VERB_AFTER_COMMA_WORDS.join("|")})\\b)`,
+const VERB_WORD_RE = new RegExp(
+  `\\b(?:${VERB_AFTER_COMMA_WORDS.join("|")})\\b`,
   "gi"
 );
+const TRAILING_VERB_SEPARATOR_RE = /\s*(?:,|\ben\b|\bof\b|&|\+|\/|-)\s*$/i;
+
+function stripTrailingVerbSeparator(value: string): string {
+  let current = value;
+  while (current) {
+    const next = current.replace(TRAILING_VERB_SEPARATOR_RE, "");
+    if (next === current) {
+      break;
+    }
+    current = next;
+  }
+  return current.trim();
+}
+
+function splitOnHomeworkVerbs(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  VERB_WORD_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let verbCount = 0;
+  let lastIndex = 0;
+  const parts: string[] = [];
+
+  while ((match = VERB_WORD_RE.exec(trimmed)) !== null) {
+    verbCount += 1;
+    if (verbCount === 1) continue;
+
+    const beforeVerb = trimmed.slice(lastIndex, match.index);
+    const cleaned = stripTrailingVerbSeparator(beforeVerb);
+    if (cleaned) {
+      parts.push(cleaned);
+    }
+    lastIndex = match.index;
+  }
+
+  const remainder = trimmed.slice(lastIndex).trim();
+  if (verbCount <= 1) {
+    return remainder ? [remainder] : [];
+  }
+  if (remainder) {
+    parts.push(remainder);
+  }
+  return parts;
+}
 const KEYWORD_PATTERNS = [
   "Opg\\.?\\s*\\d+(?:\\.\\d+)*[a-z]?",
   "Opgaven\\s+\\d+",
@@ -92,15 +137,7 @@ export function splitHomeworkItems(raw?: string | null): string[] {
         return pieces.length > 1 ? pieces : [trimmed];
       });
     }
-    segments = segments.flatMap((segment) => {
-      const trimmed = segment.trim();
-      if (!trimmed) return [];
-      const pieces = trimmed
-        .split(COMMA_VERB_SPLIT_RE)
-        .map((piece) => piece.trim())
-        .filter(Boolean);
-      return pieces.length > 1 ? pieces : [trimmed];
-    });
+    segments = segments.flatMap((segment) => splitOnHomeworkVerbs(segment));
     return segments;
   });
 

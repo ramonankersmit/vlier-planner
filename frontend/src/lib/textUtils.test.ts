@@ -17,6 +17,16 @@ describe("splitHomeworkItems", () => {
     ]);
   });
 
+  it("splitst ook wanneer de komma ontbreekt maar een nieuw werkwoord volgt", () => {
+    const input = "Bestudeer paragraaf 4 maak opdrachten 2 en leer woordjes";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "Bestudeer paragraaf 4",
+      "maak opdrachten 2",
+      "leer woordjes",
+    ]);
+  });
+
   it("laat komma's staan wanneer er geen werkwoord volgt", () => {
     const result = splitHomeworkItems("Lees paragraaf 4, pagina 12-13");
     expect(result).toEqual(["Lees paragraaf 4, pagina 12-13"]);
