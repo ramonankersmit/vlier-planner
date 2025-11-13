@@ -33,7 +33,7 @@ import {
   apiDeleteReview,
   apiCreateReviewFromVersion,
 } from "../lib/api";
-import { parseIsoDate } from "../lib/calendar";
+import { expandWeekRange, parseIsoDate } from "../lib/calendar";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
 import SchoolVacationManager from "../components/SchoolVacationManager";
 import { useFocusTrap } from "../lib/useFocusTrap";
@@ -69,25 +69,29 @@ function isValidWeek(value: unknown): value is number {
 }
 
 function expandWeeksFromMeta(doc: DocRecord): number[] {
-  const start = isValidWeek(doc.beginWeek) ? doc.beginWeek : undefined;
-  const end = isValidWeek(doc.eindWeek) ? doc.eindWeek : undefined;
-  if (start === undefined || end === undefined) {
-    return [];
-  }
-  const weeks: number[] = [];
-  if (start <= end) {
-    for (let wk = start; wk <= end; wk++) {
-      weeks.push(wk);
+  return expandWeekRange(doc.beginWeek, doc.eindWeek);
+}
+
+function collectWeeksFromRow(row: DocRow): number[] {
+  const collected = new Set<number>();
+  const addWeek = (value?: number | null) => {
+    if (isValidWeek(value)) {
+      collected.add(value);
     }
-    return weeks;
+  };
+
+  row.weeks?.forEach(addWeek);
+  addWeek(row.week);
+
+  if (collected.size) {
+    addWeek(row.week_span_start);
+    addWeek(row.week_span_end);
+  } else {
+    const expanded = expandWeekRange(row.week_span_start, row.week_span_end);
+    expanded.forEach(addWeek);
   }
-  for (let wk = start; wk <= 53; wk++) {
-    weeks.push(wk);
-  }
-  for (let wk = 1; wk <= end; wk++) {
-    weeks.push(wk);
-  }
-  return weeks;
+
+  return Array.from(collected);
 }
 
 function groupWeeks(sortedWeeks: number[]): WeekSegment[] {
@@ -122,12 +126,10 @@ function formatSegments(segments: WeekSegment[]): string {
     .join(" · ");
 }
 
-function computeDocWeekInfo(doc: DocRecord, rows?: DocRow[]) {
+export function computeDocWeekInfo(doc: DocRecord, rows?: DocRow[]) {
   const weekSet = new Set<number>();
   rows?.forEach((row) => {
-    if (isValidWeek(row.week)) {
-      weekSet.add(row.week);
-    }
+    collectWeeksFromRow(row).forEach((wk) => weekSet.add(wk));
   });
 
   if (!weekSet.size) {
