@@ -27,7 +27,12 @@ export type DocResource = {
 
 export type DocRow = {
   week?: number | null;
+  weeks?: number[] | null;
+  week_span_start?: number | null;
+  week_span_end?: number | null;
+  week_label?: string | null;
   datum?: string | null;
+  datum_eind?: string | null;
   les?: string | null;
   onderwerp?: string | null;
   leerdoelen?: string[] | null;
@@ -40,6 +45,7 @@ export type DocRow = {
   klas_of_groep?: string | null;
   locatie?: string | null;
   enabled?: boolean | null;
+  source_row_id?: string | null;
 };
 
 export type DiffStatus = "added" | "removed" | "changed" | "unchanged";

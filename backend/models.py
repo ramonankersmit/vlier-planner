@@ -30,7 +30,12 @@ class WeekItem(BaseModel):
 
 class DocRow(BaseModel):
     week: Optional[int] = None
+    weeks: Optional[List[int]] = None
+    week_span_start: Optional[int] = None
+    week_span_end: Optional[int] = None
+    week_label: Optional[str] = None
     datum: Optional[str] = None
+    datum_eind: Optional[str] = None
     les: Optional[str] = None
     onderwerp: Optional[str] = None
     leerdoelen: Optional[List[str]] = None
@@ -42,4 +47,5 @@ class DocRow(BaseModel):
     notities: Optional[str] = None
     klas_of_groep: Optional[str] = None
     locatie: Optional[str] = None
+    source_row_id: Optional[str] = None
     enabled: bool = True

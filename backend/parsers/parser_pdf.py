@@ -43,6 +43,7 @@ from .parser_docx import (
     find_urls,
     normalize_text,
     parse_date_cell,
+    parse_date_range_cell,
     parse_toets_cell,
     parse_week_cell,
     split_bullets,
@@ -262,9 +263,11 @@ def _collect_weeks_from_pages(pages: List[Tuple[int, int, str]]) -> List[int]:
 def _update_pdf_entry(entry: dict, row: List[str], idx: dict, schooljaar: Optional[str]) -> None:
     date_col = idx.get("date")
     if date_col is not None and date_col < len(row):
-        candidate = parse_date_cell(row[date_col], schooljaar)
-        if candidate and not entry.get("datum"):
-            entry["datum"] = candidate
+        start_candidate, end_candidate = parse_date_range_cell(row[date_col], schooljaar)
+        if start_candidate and not entry.get("datum"):
+            entry["datum"] = start_candidate
+        if end_candidate and end_candidate != entry.get("datum"):
+            entry["datum_eind"] = end_candidate
 
     les_col = idx.get("les")
     if les_col is not None and les_col < len(row):
@@ -322,8 +325,19 @@ def _update_pdf_entry(entry: dict, row: List[str], idx: dict, schooljaar: Option
 
 
 def _flush_pdf_entry(entry: dict, schooljaar: Optional[str]) -> List[DocRow]:
-    weeks = [w for w in entry.get("weeks", []) if 1 <= w <= 53]
-    if not weeks:
+    weeks_raw = [w for w in entry.get("weeks", []) if isinstance(w, int) and 1 <= w <= 53]
+    if not weeks_raw:
+        return []
+
+    unique_weeks: List[int] = []
+    seen: set[int] = set()
+    for value in weeks_raw:
+        if value in seen:
+            continue
+        seen.add(value)
+        unique_weeks.append(value)
+
+    if not unique_weeks:
         return []
 
     onderwerp = entry.get("onderwerp") or entry.get("les")
@@ -345,40 +359,50 @@ def _flush_pdf_entry(entry: dict, schooljaar: Optional[str]) -> List[DocRow]:
 
     bronnen = find_urls(bronnen_text) if bronnen_text else None
 
-    rows: List[DocRow] = []
-    for w in weeks:
-        rows.append(
-            DocRow(
-                week=w,
-                datum=entry.get("datum"),
-                les=entry.get("les"),
-                onderwerp=onderwerp,
-                leerdoelen=list(leerdoelen) if leerdoelen else None,
-                huiswerk=huiswerk,
-                opdracht=opdracht,
-                inleverdatum=inleverdatum,
-                toets=dict(toets_info) if isinstance(toets_info, dict) else None,
-                bronnen=[dict(b) for b in bronnen] if bronnen else None,
-                notities=entry.get("notities"),
-                klas_of_groep=entry.get("klas"),
-                locatie=entry.get("locatie"),
-            )
-        )
-    return rows
+    datum = entry.get("datum")
+    datum_eind = entry.get("datum_eind")
+    if datum_eind == datum:
+        datum_eind = None
+
+    row = DocRow(
+        week=unique_weeks[0],
+        weeks=unique_weeks,
+        week_span_start=unique_weeks[0],
+        week_span_end=unique_weeks[-1],
+        week_label=entry.get("week_label"),
+        datum=datum,
+        datum_eind=datum_eind,
+        les=entry.get("les"),
+        onderwerp=onderwerp,
+        leerdoelen=list(leerdoelen) if leerdoelen else None,
+        huiswerk=huiswerk,
+        opdracht=opdracht,
+        inleverdatum=inleverdatum,
+        toets=dict(toets_info) if isinstance(toets_info, dict) else None,
+        bronnen=[dict(b) for b in bronnen] if bronnen else None,
+        notities=entry.get("notities"),
+        klas_of_groep=entry.get("klas"),
+        locatie=entry.get("locatie"),
+        source_row_id=entry.get("source_row_id"),
+    )
+    return [row]
 
 
-def _extract_rows_with_tables(path: str, schooljaar: Optional[str]) -> List[DocRow]:
+def _extract_rows_with_tables(
+    path: str, schooljaar: Optional[str], source_label: Optional[str] = None
+) -> List[DocRow]:
     if pdfplumber is None:
         return []
 
     results: List[DocRow] = []
-    for tbl in _iter_pdf_tables(path):
+    row_counter = 0
+    for table_index, tbl in enumerate(_iter_pdf_tables(path)):
         if len(tbl) < 2:
             continue
 
         headers = [normalize_text(c or "") for c in tbl[0]]
         week_col = find_header_idx(headers, WEEK_HEADER_KEYWORDS)
-        date_col = None if week_col is not None else find_header_idx(headers, DATE_HEADER_KEYWORDS)
+        date_col = find_header_idx(headers, DATE_HEADER_KEYWORDS)
         les_col = find_header_idx(headers, LES_HEADER_KEYWORDS)
         ond_col = find_header_idx(headers, ONDERWERP_HEADERS)
         leer_col = find_header_idx(headers, LEERDOEL_HEADERS)
@@ -407,7 +431,7 @@ def _extract_rows_with_tables(path: str, schooljaar: Optional[str]) -> List[DocR
         }
 
         current: Optional[dict] = None
-        for raw_row in tbl[1:]:
+        for _, raw_row in enumerate(tbl[1:], start=1):
             if not any(cell for cell in raw_row if cell):
                 continue
 
@@ -445,14 +469,26 @@ def _extract_rows_with_tables(path: str, schooljaar: Optional[str]) -> List[DocR
                     continue
                 if current:
                     results.extend(_flush_pdf_entry(current, schooljaar))
+                row_counter += 1
                 datum = None
+                datum_eind = None
                 if date_col is not None and date_col < len(row):
-                    datum = parse_date_cell(row[date_col], schooljaar)
+                    start_candidate, end_candidate = parse_date_range_cell(row[date_col], schooljaar)
+                    datum = start_candidate or datum
+                    if end_candidate and end_candidate != datum:
+                        datum_eind = end_candidate
                 if not datum and week_text:
-                    datum = parse_date_cell(week_text, schooljaar)
+                    start_candidate, end_candidate = parse_date_range_cell(week_text, schooljaar)
+                    datum = start_candidate or datum
+                    if not datum_eind and end_candidate and end_candidate != datum:
+                        datum_eind = end_candidate
+                if datum_eind == datum:
+                    datum_eind = None
                 current = {
                     "weeks": filtered,
+                    "week_label": (week_text or "").strip() or None,
                     "datum": datum,
+                    "datum_eind": datum_eind,
                     "les": None,
                     "onderwerp": None,
                     "leerdoelen": None,
@@ -464,15 +500,18 @@ def _extract_rows_with_tables(path: str, schooljaar: Optional[str]) -> List[DocR
                     "notities": None,
                     "klas": None,
                     "locatie": None,
+                    "source_row_id": f"{source_label or path}:t{table_index}:r{row_counter}",
                 }
                 _update_pdf_entry(current, row, idx, schooljaar)
             else:
                 if current is None:
                     continue
-                if week_text and not current.get("datum"):
-                    candidate = parse_date_cell(week_text, schooljaar)
-                    if candidate:
-                        current["datum"] = candidate
+                if week_text:
+                    start_candidate, end_candidate = parse_date_range_cell(week_text, schooljaar)
+                    if start_candidate and not current.get("datum"):
+                        current["datum"] = start_candidate
+                    if end_candidate and end_candidate != current.get("datum"):
+                        current["datum_eind"] = end_candidate
                 _update_pdf_entry(current, row, idx, schooljaar)
 
         if current:
@@ -521,11 +560,12 @@ def extract_rows_from_pdf(path: str, filename: str) -> List[DocRow]:
     full_text = " ".join(txt for _, _, txt in pages if txt)
     schooljaar = _guess_schooljaar(full_text, filename)
 
-    table_rows = _extract_rows_with_tables(path, schooljaar)
+    table_rows = _extract_rows_with_tables(path, schooljaar, filename)
     if table_rows:
         return table_rows
 
     rows: List[DocRow] = []
+    line_counter = 0
     for idx, total_pages, txt in pages:
         page_pat = re.compile(rf"^\s*{idx}\s*[/\-]\s*{total_pages}\s*$")
         for line in txt.splitlines():
@@ -548,13 +588,21 @@ def extract_rows_from_pdf(path: str, filename: str) -> List[DocRow]:
                 continue
 
             rest = normalize_text(line[match.end():])
-            datum = parse_date_cell(line, schooljaar)
+            datum, datum_eind = parse_date_range_cell(line, schooljaar)
+            if datum_eind == datum:
+                datum_eind = None
 
             for w in weeks:
+                line_counter += 1
                 rows.append(
                     DocRow(
                         week=w,
+                        weeks=[w],
+                        week_span_start=w,
+                        week_span_end=w,
+                        week_label=match.group(0).strip() if match.group(0) else None,
                         datum=datum,
+                        datum_eind=datum_eind,
                         les=None,
                         onderwerp=rest or None,
                         leerdoelen=None,
@@ -566,6 +614,7 @@ def extract_rows_from_pdf(path: str, filename: str) -> List[DocRow]:
                         notities=None,
                         klas_of_groep=None,
                         locatie=None,
+                        source_row_id=f"{filename}:p{idx}:l{line_counter}",
                     )
                 )
 

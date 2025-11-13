@@ -497,6 +497,32 @@ def _weeks_from_week_cell(txt: str) -> List[int]:
     return ordered
 
 
+@dataclass
+class WeekCellParseResult:
+    weeks: List[int]
+    week_span_start: Optional[int]
+    week_span_end: Optional[int]
+    label: Optional[str]
+
+
+def parse_week_cell_details(text: Optional[str]) -> WeekCellParseResult:
+    return _make_week_result(_weeks_from_week_cell(text or ""), (text or "").strip() or None)
+
+
+def _make_week_result(weeks: Iterable[int], label: Optional[str]) -> WeekCellParseResult:
+    ordered = list(weeks)
+    unique: List[int] = []
+    seen: set[int] = set()
+    for value in ordered:
+        if value in seen:
+            continue
+        seen.add(value)
+        unique.append(value)
+    start = unique[0] if unique else None
+    end = unique[-1] if unique else None
+    return WeekCellParseResult(unique, start, end, label)
+
+
 def _is_new_period(
     prev_week: Optional[int], current_week: int, *, allow_wrap: bool = False
 ) -> bool:
@@ -729,56 +755,80 @@ def parse_week_cell(text: str) -> List[int]:
     return _weeks_from_week_cell(text)
 
 
-def parse_date_cell(text: str, schooljaar: Optional[str]) -> Optional[str]:
+def _extract_dates_from_text(text: Optional[str], schooljaar: Optional[str]) -> List[str]:
     if not text:
-        return None
-    t = normalize_text(text)
-    m = re.search(r"(\d{1,2})[\-/](\d{1,2})[\-/](\d{2,4})", t)
-    if m:
-        d, mth, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        if not (1 <= mth <= 12 and 1 <= d <= 31):
-            return None
-        if y < 100:
-            y += 2000
-        return f"{y:04d}-{mth:02d}-{d:02d}"
-    m = re.search(r"(\d{1,2})[\-/](\d{1,2})", t)
-    if m:
-        d, mth = int(m.group(1)), int(m.group(2))
-        if not (1 <= mth <= 12 and 1 <= d <= 31):
-            return None
-        year = None
+        return []
+    normalized = normalize_text(text)
+    if not normalized:
+        return []
+
+    pattern_numeric = re.compile(r"(\d{1,2})[\-/](\d{1,2})(?:[\-/](\d{2,4}))?")
+    matches: List[Tuple[int, str]] = []
+
+    def _resolve_year(month: int, explicit: Optional[str]) -> Optional[int]:
+        if explicit:
+            try:
+                year = int(explicit)
+            except ValueError:
+                return None
+            if year < 100:
+                year += 2000
+            if year < 1900 or year > 2100:
+                return None
+            return year
         if schooljaar:
             try:
-                a, b = schooljaar.split("/")
-                a, b = int(a), int(b)
-                year = a if mth >= 8 else b
+                a_str, b_str = schooljaar.split("/")
+                a_val, b_val = int(a_str), int(b_str)
+                return a_val if month >= 8 else b_val
             except Exception:
                 pass
+        return date.today().year
+
+    for match in pattern_numeric.finditer(normalized):
+        day = int(match.group(1))
+        month = int(match.group(2))
+        if not (1 <= day <= 31 and 1 <= month <= 12):
+            continue
+        year = _resolve_year(month, match.group(3))
         if year is None:
-            year = date.today().year
-        return f"{year:04d}-{mth:02d}-{d:02d}"
-    m = re.search(r"(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?", t, re.I)
-    if m:
-        d = int(m.group(1))
-        mn = MONTHS_NL.get(m.group(2).lower())
-        if mn:
-            if not (1 <= d <= 31):
-                return None
-            y = m.group(3)
-            if y:
-                year = int(y)
-            else:
-                year = None
-                if schooljaar:
-                    try:
-                        a, b = [int(x) for x in schooljaar.split("/")]
-                        year = a if mn >= 8 else b
-                    except Exception:
-                        pass
-                if year is None:
-                    year = date.today().year
-            return f"{year:04d}-{mn:02d}-{d:02d}"
-    return None
+            continue
+        matches.append((match.start(), f"{year:04d}-{month:02d}-{day:02d}"))
+
+    for match in RE_DATE_TEXTUAL.finditer(normalized):
+        day = int(match.group(1))
+        month = MONTHS_NL.get(match.group(2).lower())
+        if not month or not (1 <= day <= 31):
+            continue
+        year_fragment = match.group(3)
+        year = _resolve_year(month, year_fragment)
+        if year is None:
+            continue
+        matches.append((match.start(), f"{year:04d}-{month:02d}-{day:02d}"))
+
+    matches.sort(key=lambda item: item[0])
+    seen: Set[str] = set()
+    ordered: List[str] = []
+    for _, iso in matches:
+        if iso in seen:
+            continue
+        seen.add(iso)
+        ordered.append(iso)
+    return ordered
+
+
+def parse_date_cell(text: str, schooljaar: Optional[str]) -> Optional[str]:
+    dates = _extract_dates_from_text(text, schooljaar)
+    return dates[0] if dates else None
+
+
+def parse_date_range_cell(text: Optional[str], schooljaar: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    dates = _extract_dates_from_text(text, schooljaar)
+    if not dates:
+        return None, None
+    if len(dates) == 1:
+        return dates[0], None
+    return dates[0], dates[-1]
 
 
 def find_urls(text: str) -> Optional[List[Dict[str, str]]]:
@@ -838,7 +888,7 @@ def _extract_rows_from_context(
     prev_week: Optional[int] = None
     stop = False
 
-    for tbl, marker in ctx.table_markers:
+    for table_index, (tbl, marker) in enumerate(ctx.table_markers):
         if not _table_matches_period(marker, periode):
             continue
         if stop:
@@ -848,7 +898,7 @@ def _extract_rows_from_context(
             continue
         headers = rows[0]
         week_col = _find_week_column(headers)
-        date_col = None if week_col is not None else find_header_idx(headers, DATE_HEADER_KEYWORDS)
+        date_col = find_header_idx(headers, DATE_HEADER_KEYWORDS)
         les_col = find_header_idx(headers, LES_HEADER_KEYWORDS)
         ond_col = find_header_idx(headers, ONDERWERP_HEADERS)
         leer_col = find_header_idx(headers, LEERDOEL_HEADERS)
@@ -862,31 +912,40 @@ def _extract_rows_from_context(
         loc_col = find_header_idx(headers, LOCATIE_HEADERS)
 
         allow_wrap = (marker is not None) or (periode == 2)
-        for r in rows[1:]:
+        for row_index, r in enumerate(rows[1:], start=1):
             if stop:
                 break
-            weeks: List[int] = []
             week_text = None
+            week_info = WeekCellParseResult([], None, None, None)
             if week_col is not None and week_col < len(r):
                 week_text = r[week_col]
-                weeks = parse_week_cell(week_text)
+                week_info = parse_week_cell_details(week_text)
             elif date_col is not None and date_col < len(r):
                 iso = parse_date_cell(r[date_col], schooljaar)
                 if iso:
                     try:
                         wk = date.fromisoformat(iso).isocalendar().week
                         if 1 <= wk <= 53:
-                            weeks = [wk]
+                            week_info = _make_week_result([wk], None)
                     except Exception:
                         pass
-            if not weeks:
+            if not week_info.weeks:
                 continue
 
             datum = None
+            datum_eind = None
             if date_col is not None and date_col < len(r):
-                datum = parse_date_cell(r[date_col], schooljaar)
+                start_candidate, end_candidate = parse_date_range_cell(r[date_col], schooljaar)
+                datum = start_candidate or datum
+                if end_candidate and end_candidate != datum:
+                    datum_eind = end_candidate
             if not datum and week_text:
-                datum = parse_date_cell(week_text, schooljaar)
+                start_candidate, end_candidate = parse_date_range_cell(week_text, schooljaar)
+                datum = start_candidate or datum
+                if not datum_eind and end_candidate and end_candidate != datum:
+                    datum_eind = end_candidate
+            if datum_eind == datum:
+                datum_eind = None
 
             base: Dict[str, Optional[str]] = {}
             base_list: Dict[str, Optional[List[str]]] = {}
@@ -929,7 +988,7 @@ def _extract_rows_from_context(
                     base["inleverdatum"] = candidate
 
             accepted_weeks: List[int] = []
-            for w in weeks:
+            for w in week_info.weeks:
                 if not (1 <= w <= 53):
                     continue
                 if _is_new_period(prev_week, w, allow_wrap=allow_wrap):
@@ -941,23 +1000,30 @@ def _extract_rows_from_context(
             if stop or not accepted_weeks:
                 continue
 
-            for w in accepted_weeks:
-                dr = DocRow(
-                    week=w,
-                    datum=datum,
-                    les=base.get("les"),
-                    onderwerp=base.get("onderwerp"),
-                    leerdoelen=base_list.get("leerdoelen"),
-                    huiswerk=base.get("huiswerk"),
-                    opdracht=base.get("opdracht"),
-                    inleverdatum=base.get("inleverdatum"),
-                    toets=base_dict.get("toets"),
-                    bronnen=base_list.get("bronnen"),
-                    notities=base.get("notities"),
-                    klas_of_groep=base.get("klas_of_groep"),
-                    locatie=base.get("locatie"),
-                )
-                results.append(dr)
+            final_week_info = _make_week_result(accepted_weeks, week_info.label)
+            anchor_week = final_week_info.week_span_start
+            dr = DocRow(
+                week=anchor_week,
+                weeks=final_week_info.weeks or None,
+                week_span_start=final_week_info.week_span_start,
+                week_span_end=final_week_info.week_span_end,
+                week_label=final_week_info.label,
+                datum=datum,
+                datum_eind=datum_eind,
+                les=base.get("les"),
+                onderwerp=base.get("onderwerp"),
+                leerdoelen=base_list.get("leerdoelen"),
+                huiswerk=base.get("huiswerk"),
+                opdracht=base.get("opdracht"),
+                inleverdatum=base.get("inleverdatum"),
+                toets=base_dict.get("toets"),
+                bronnen=base_list.get("bronnen"),
+                notities=base.get("notities"),
+                klas_of_groep=base.get("klas_of_groep"),
+                locatie=base.get("locatie"),
+                source_row_id=f"{ctx.filename}:t{table_index}:r{row_index}",
+            )
+            results.append(dr)
 
     return results
 

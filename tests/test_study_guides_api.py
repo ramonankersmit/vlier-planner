@@ -109,6 +109,26 @@ def _scenario_week_duplicate() -> tuple[DocMeta, list[DocRow]]:
     return meta, rows
 
 
+def _scenario_identical_duplicate() -> tuple[DocMeta, list[DocRow]]:
+    meta = DocMeta(
+        fileId="guide-identical",
+        bestand="week-identical.docx",
+        vak="Biologie",
+        niveau="VWO",
+        leerjaar="4",
+        periode=1,
+        beginWeek=40,
+        eindWeek=46,
+        schooljaar="2025/2026",
+    )
+    rows = [
+        DocRow(week=44, datum="2025-10-28", onderwerp="Week 44"),
+        DocRow(week=44, datum="2025-10-28", onderwerp="Week 44"),
+        DocRow(week=45, datum="2025-11-04", onderwerp="Week 45"),
+    ]
+    return meta, rows
+
+
 def _configure_parser(monkeypatch: pytest.MonkeyPatch, scenarios: Iterator[tuple[DocMeta, list[DocRow]]]) -> None:
     def fake_extract_all(path: str, name: str):
         try:
@@ -150,7 +170,7 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
     assert parse_data["warnings"]["duplicateWeek"] is False
     assert parse_data["diffSummary"]["added"] == 2
     assert parse_data["rows"][0]["enabled"] is True
-    assert parse_data["rows"][1]["enabled"] is False
+    assert parse_data["rows"][1]["enabled"] is True
 
     parse_id = parse_data["parseId"]
     review_data = api_client.get(f"/api/reviews/{parse_id}").json()
@@ -304,10 +324,50 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
     assert version_three_file.exists()
 
 
-def test_week_duplicate_rows_are_disabled(
+def test_rows_with_same_week_remain_enabled(
     api_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
     scenarios = iter([_scenario_week_duplicate()])
+    _configure_parser(monkeypatch, scenarios)
+
+    upload_payload = _upload_file(api_client)
+    assert len(upload_payload) == 1
+    parse = upload_payload[0]
+
+    enabled_flags = [row["enabled"] for row in parse["rows"]]
+    assert enabled_flags == [True, True, True]
+    assert parse["warnings"] == {
+        "unknownSubject": False,
+        "missingWeek": False,
+        "duplicateDate": False,
+        "duplicateWeek": False,
+    }
+
+    parse_id = parse["parseId"]
+    commit_response = api_client.post(f"/api/reviews/{parse_id}/commit")
+    assert commit_response.status_code == 200
+    commit_data = commit_response.json()
+    assert commit_data["version"]["diffSummary"]["added"] == 3
+    assert commit_data["version"]["warnings"] == {
+        "unknownSubject": False,
+        "missingWeek": False,
+        "duplicateDate": False,
+        "duplicateWeek": False,
+    }
+
+    guides = api_client.get("/api/study-guides").json()
+    assert guides[0]["latestVersion"]["warnings"] == {
+        "unknownSubject": False,
+        "missingWeek": False,
+        "duplicateDate": False,
+        "duplicateWeek": False,
+    }
+
+
+def test_identical_rows_are_disabled(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    scenarios = iter([_scenario_identical_duplicate()])
     _configure_parser(monkeypatch, scenarios)
 
     upload_payload = _upload_file(api_client)
@@ -345,8 +405,11 @@ def test_week_duplicate_rows_are_disabled(
 
 
 def test_normalized_api_uses_shared_store(
-    app_test_env, normalized_api_client: TestClient
+    app_test_env, normalized_api_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
+    scenarios = iter([_scenario_initial()])
+    _configure_parser(monkeypatch, scenarios)
+
     response = normalized_api_client.post(
         "/api/uploads",
         files={
@@ -359,7 +422,19 @@ def test_normalized_api_uses_shared_store(
     )
     assert response.status_code == 200
     payload = response.json()
-    parse_id = payload["parse_id"]
+    assert isinstance(payload, list) and payload
+    parse_entry = payload[0]
+    parse_id = parse_entry["parseId"]
+
+    normalized_payload = {
+        "meta": {"source": "normalized.docx"},
+        "warnings": [],
+        "study_units": [{"id": "unit-1", "name": "Demo", "lessons": []}],
+        "sessions": [],
+        "weeks": [],
+    }
+    data_store.write_normalized_model(parse_id, normalized_payload)
+    data_store.append_normalized_index_entry({"id": parse_id, "source": "normalized.docx"})
 
     parse_response = normalized_api_client.get(f"/api/parses/{parse_id}")
     assert parse_response.status_code == 200

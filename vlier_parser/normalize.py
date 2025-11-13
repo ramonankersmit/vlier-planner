@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, Set
 from uuid import uuid4
 
 from backend.models import DocMeta, DocRow
@@ -23,6 +23,8 @@ from backend.schemas.normalized import (
 )
 
 from backend.services.data_store import data_store
+
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 def _parse_school_year(value: Optional[str]) -> Optional[Tuple[int, int]]:
@@ -227,47 +229,83 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
     assessment_counter = 0
 
     for row in rows:
-        week = row.week
-        if week is None and row.datum:
+        week_candidates: List[int] = []
+        if isinstance(row.weeks, list):
+            for value in row.weeks:
+                if isinstance(value, int):
+                    week_candidates.append(value)
+        if row.week is not None:
+            week_candidates.append(row.week)
+
+        normalized_weeks: List[int] = []
+        seen_weeks: Set[int] = set()
+        for candidate in week_candidates:
+            if not isinstance(candidate, int):
+                continue
+            if 1 <= candidate <= 53 and candidate not in seen_weeks:
+                seen_weeks.add(candidate)
+                normalized_weeks.append(candidate)
+
+        week_numbers = normalized_weeks
+        if not week_numbers and row.datum:
             try:
-                week = date.fromisoformat(row.datum).isocalendar().week
+                derived = date.fromisoformat(row.datum).isocalendar().week
+                if 1 <= derived <= 53:
+                    week_numbers = [derived]
             except ValueError:
-                week = None
-        if week is None:
+                week_numbers = []
+
+        if not week_numbers:
             warnings.append(
                 Warning(
                     code="WEEK_MISSING",
                     message="Lesregel zonder weeknummer gevonden.",
-                    context={"source": source},
+                    context={"source": source, "rowId": row.source_row_id},
                 )
             )
             continue
 
-        if meta and not _week_in_meta_range(week, meta.beginWeek, meta.eindWeek):
-            warnings.append(
-                Warning(
-                    code="WEEK_OUT_OF_RANGE",
-                    message="Week valt buiten de periode van de studiewijzer.",
-                    context={"week": week, "begin": meta.beginWeek, "end": meta.eindWeek},
-                )
-            )
+        anchor_week = week_numbers[0]
 
-        reference_date = row.datum
-        if not reference_date:
+        if meta:
+            out_of_range = [wk for wk in week_numbers if not _week_in_meta_range(wk, meta.beginWeek, meta.eindWeek)]
+            if out_of_range:
+                warnings.append(
+                    Warning(
+                        code="WEEK_OUT_OF_RANGE",
+                        message="Week valt buiten de periode van de studiewijzer.",
+                        context={
+                            "weeks": out_of_range,
+                            "begin": meta.beginWeek,
+                            "end": meta.eindWeek,
+                            "rowId": row.source_row_id,
+                        },
+                    )
+                )
+
+        if not (row.datum or row.datum_eind):
             warnings.append(
                 Warning(
                     code="SESSION_DATE_MISSING",
                     message="Geen datum gevonden voor week.",
-                    context={"week": week, "source": source},
+                    context={"weeks": week_numbers, "source": source, "rowId": row.source_row_id},
                 )
             )
 
-        year = _resolve_year_for_week(week, school_year, reference_date)
-        start, _ = _week_bounds(year, week)
-        _ensure_weeks(weeks, [week], school_year, reference_date)
+        week_dates: Dict[int, Optional[str]] = {}
+        if row.datum:
+            week_dates[anchor_week] = row.datum
+        if row.datum_eind:
+            week_dates[week_numbers[-1]] = row.datum_eind
 
-        session_counter += 1
-        session_id = f"{study_unit_id}-S{session_counter:03d}"
+        for wk in week_numbers:
+            ref = week_dates.get(wk)
+            if ref is None and row.datum_eind and wk == week_numbers[-1]:
+                ref = row.datum_eind
+            if ref is None:
+                ref = row.datum
+            _ensure_weeks(weeks, [wk], school_year, ref)
+
         session_type = "lecture"
         if row.toets:
             session_type = "exam"
@@ -276,10 +314,9 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
         elif row.huiswerk or row.opdracht:
             session_type = "workshop"
 
-        session_date = reference_date or start
         topic = row.onderwerp or row.les
 
-        resources = []
+        resources: List[Dict[str, str]] = []
         if row.bronnen:
             for item in row.bronnen:
                 if not isinstance(item, dict):
@@ -290,19 +327,32 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
                 label = item.get("title") or url
                 resources.append({"label": label, "url": url})
 
-        sessions.append(
-            Session(
-                id=session_id,
-                study_unit_id=study_unit_id,
-                week=week,
-                year=year,
-                date=session_date,
-                type=session_type,
-                topic=topic,
-                location=row.locatie,
-                resources=resources,
+        session_dates: Dict[int, str] = {}
+        for wk in week_numbers:
+            ref = week_dates.get(wk)
+            if ref is None and row.datum_eind and wk == week_numbers[-1]:
+                ref = row.datum_eind
+            if ref is None:
+                ref = row.datum
+            iso_year = _resolve_year_for_week(wk, school_year, ref)
+            start, _ = _week_bounds(iso_year, wk)
+            session_date = ref or start
+            session_counter += 1
+            session_id = f"{study_unit_id}-S{session_counter:03d}"
+            sessions.append(
+                Session(
+                    id=session_id,
+                    study_unit_id=study_unit_id,
+                    week=wk,
+                    year=iso_year,
+                    date=session_date,
+                    type=session_type,
+                    topic=topic,
+                    location=row.locatie,
+                    resources=resources,
+                )
             )
-        )
+            session_dates[wk] = session_date
 
         toets_info = row.toets if isinstance(row.toets, dict) else None
         if toets_info or row.inleverdatum:
@@ -312,18 +362,26 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
                     Warning(
                         code="ASSESSMENT_WEIGHT_UNKNOWN",
                         message="Geen geldige weging gevonden voor toets.",
-                        context={"week": week},
+                        context={"weeks": week_numbers, "rowId": row.source_row_id},
                     )
                 )
 
-            due_date = row.inleverdatum or reference_date or session_date
-            due_year = year
-            due_week = week
+            due_date = row.inleverdatum or session_dates.get(week_numbers[-1])
+            if not due_date and row.datum_eind:
+                due_date = row.datum_eind
+            if not due_date:
+                due_date = session_dates.get(anchor_week) or row.datum
+            if not due_date:
+                due_date = session_dates.get(week_numbers[-1]) or session_dates.get(anchor_week)
+
+            due_year = _resolve_year_for_week(anchor_week, school_year, due_date)
+            due_week = anchor_week
             try:
-                due_dt = date.fromisoformat(due_date)
-                iso = due_dt.isocalendar()
-                due_year = iso.year
-                due_week = iso.week
+                if due_date:
+                    due_dt = date.fromisoformat(due_date)
+                    iso = due_dt.isocalendar()
+                    due_year = iso.year
+                    due_week = iso.week
             except ValueError:
                 pass
 

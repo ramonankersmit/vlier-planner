@@ -1,4 +1,5 @@
 from pathlib import Path
+from pathlib import Path
 from typing import Iterable
 
 import pytest
@@ -119,3 +120,34 @@ def test_periode_detections_use_footer_and_filename(tmp_path: Path) -> None:
     extracted_weeks = [row.week for row in rows]
     assert set(range(46, 53)).issubset(extracted_weeks)
     assert set(range(1, 5)).issubset(extracted_weeks)
+
+
+def test_multiweek_row_preserves_span_metadata(tmp_path: Path) -> None:
+    from docx import Document
+
+    doc = Document()
+    table = doc.add_table(rows=2, cols=4)
+    table.style = "Table Grid"
+    table.cell(0, 0).text = "Week"
+    table.cell(0, 1).text = "Datum"
+    table.cell(0, 2).text = "Onderwerp"
+    table.cell(0, 3).text = "Huiswerk"
+    table.cell(1, 0).text = "3/4"
+    table.cell(1, 1).text = "15-01-2025 t/m 26-01-2025"
+    table.cell(1, 2).text = "Toetsweek"
+    table.cell(1, 3).text = "Leren hoofdstuk 3"
+
+    sample = tmp_path / "Toetsweek_multiweek.docx"
+    doc.save(sample)
+
+    rows = extract_rows_from_docx(str(sample), sample.name)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.week == 3
+    assert row.weeks == [3, 4]
+    assert row.week_span_start == 3
+    assert row.week_span_end == 4
+    assert row.week_label == "3/4"
+    assert row.datum == "2025-01-15"
+    assert row.datum_eind == "2025-01-26"
+    assert row.source_row_id is not None
