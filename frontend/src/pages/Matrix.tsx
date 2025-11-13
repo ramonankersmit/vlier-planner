@@ -27,7 +27,12 @@ import {
 } from "../lib/weekUtils";
 import { splitHomeworkItems } from "../lib/textUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
-import { expandWeekRange, deriveIsoYearForWeek, isWeekInRange, makeWeekId } from "../lib/calendar";
+import {
+  expandWeekRange,
+  isWeekInRange,
+  makeWeekId,
+  resolveWeekIdentifier,
+} from "../lib/calendar";
 import { hasMeaningfulContent } from "../lib/contentUtils";
 import { withAlpha } from "../lib/color";
 
@@ -689,8 +694,10 @@ export default function Matrix() {
     for (const doc of filteredDocs) {
       const weekRange = expandWeekRange(doc.beginWeek, doc.eindWeek);
       for (const wk of weekRange) {
-        const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar });
-        ids.add(makeWeekId(isoYear, wk));
+        const { week: canonicalWeek, isoYear } = resolveWeekIdentifier(wk, {
+          schooljaar: doc.schooljaar,
+        });
+        ids.add(makeWeekId(isoYear, canonicalWeek));
       }
     }
     return ids;
@@ -766,7 +773,7 @@ export default function Matrix() {
       if (!info || docsForVak.length === 0) return docsForVak[0];
       const matched = docsForVak.find((doc) => {
         if (!isWeekInRange(info.nr, doc.beginWeek, doc.eindWeek)) return false;
-        const isoYear = deriveIsoYearForWeek(info.nr, { schooljaar: doc.schooljaar });
+        const { isoYear } = resolveWeekIdentifier(info.nr, { schooljaar: doc.schooljaar });
         return isoYear === info.isoYear;
       });
       return matched ?? docsForVak[0];

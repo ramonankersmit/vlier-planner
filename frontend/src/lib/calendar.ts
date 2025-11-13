@@ -16,6 +16,14 @@ const normalizeWeekNumber = (value: number | null | undefined): number | null =>
   return truncated;
 };
 
+const WEEK_COUNT = 53;
+
+const weekDistance = (a: number, b: number): number => {
+  const direct = Math.abs(a - b);
+  const wrap = Math.abs(Math.min(a, b) + WEEK_COUNT - Math.max(a, b));
+  return Math.min(direct, wrap);
+};
+
 export const expandWeekRange = (
   beginWeek?: number | null,
   endWeek?: number | null,
@@ -107,6 +115,19 @@ export const getIsoWeekEnd = (isoYear: number, week: number): Date => {
   return end;
 };
 
+export const canonicalizeIsoWeek = (
+  week: number,
+  isoYear: number,
+): { week: number; isoYear: number } => {
+  if (!Number.isFinite(week) || !Number.isFinite(isoYear)) {
+    return { week, isoYear };
+  }
+  const start = getIsoWeekStart(isoYear, week);
+  const canonicalWeek = getIsoWeek(start);
+  const canonicalYear = getIsoWeekYear(start);
+  return { week: canonicalWeek, isoYear: canonicalYear };
+};
+
 export const formatIsoDate = (date: Date): string => {
   const yr = date.getUTCFullYear();
   const month = pad2(date.getUTCMonth() + 1);
@@ -141,32 +162,74 @@ export const deriveIsoYearForWeek = (
     today?: Date;
   } = {}
 ): number => {
+  return resolveWeekIdentifier(week, options).isoYear;
+};
+
+export const resolveWeekIdentifier = (
+  week: number,
+  options: {
+    schooljaar?: string | null;
+    candidateDates?: (string | null | undefined)[];
+    today?: Date;
+  } = {}
+): { week: number; isoYear: number } => {
+  const normalized = normalizeWeekNumber(week);
+  const fallbackWeek = normalized ?? 1;
   const { schooljaar, candidateDates = [], today } = options;
-  for (const candidate of candidateDates) {
-    const parsed = parseIsoDate(candidate ?? undefined);
-    if (!parsed) continue;
-    const wk = getIsoWeek(parsed);
-    if (week && wk !== week) continue;
-    return getIsoWeekYear(parsed);
+
+  const parsedCandidates = candidateDates
+    .map((value) => parseIsoDate(value ?? undefined))
+    .filter((value): value is Date => value instanceof Date);
+
+  if (normalized != null && parsedCandidates.length > 0) {
+    const candidateInfos = parsedCandidates.map((date) => ({
+      isoWeek: getIsoWeek(date),
+      isoYear: getIsoWeekYear(date),
+      time: date.getTime(),
+    }));
+
+    const exact = candidateInfos.find((info) => info.isoWeek === normalized);
+    if (exact) {
+      return canonicalizeIsoWeek(normalized, exact.isoYear);
+    }
+
+    const best = candidateInfos
+      .map((info) => ({
+        ...info,
+        distance: weekDistance(info.isoWeek, normalized),
+      }))
+      .sort((a, b) => {
+        if (a.distance !== b.distance) {
+          return a.distance - b.distance;
+        }
+        return a.time - b.time;
+      })[0];
+
+    if (best) {
+      return canonicalizeIsoWeek(best.isoWeek, best.isoYear);
+    }
   }
 
   const schooljaarStart = parseSchoolyearStart(schooljaar);
   if (typeof schooljaarStart === "number") {
-    return week >= 30 ? schooljaarStart : schooljaarStart + 1;
+    const isoYear = fallbackWeek >= 30 ? schooljaarStart : schooljaarStart + 1;
+    return canonicalizeIsoWeek(fallbackWeek, isoYear);
   }
 
-  const base = today ? new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) : TODAY_UTC();
+  const base = today
+    ? new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()))
+    : TODAY_UTC();
   const baseIsoYear = getIsoWeekYear(base);
   const candidates = [baseIsoYear - 1, baseIsoYear, baseIsoYear + 1];
   let bestYear = baseIsoYear;
   let bestDist = Number.POSITIVE_INFINITY;
   for (const isoYear of candidates) {
-    const start = getIsoWeekStart(isoYear, week);
+    const start = getIsoWeekStart(isoYear, fallbackWeek);
     const dist = Math.abs(start.getTime() - base.getTime());
     if (dist < bestDist) {
       bestDist = dist;
       bestYear = isoYear;
     }
   }
-  return bestYear;
+  return canonicalizeIsoWeek(fallbackWeek, bestYear);
 };

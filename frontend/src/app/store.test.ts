@@ -176,7 +176,7 @@ describe("useAppStore", () => {
         .getState()
         .weekData.weeks?.map((w) => `${w.isoYear}-W${String(w.nr).padStart(2, "0")}`) ?? [];
 
-    const expected2025 = Array.from({ length: 8 }, (_, idx) =>
+    const expected2025 = Array.from({ length: 7 }, (_, idx) =>
       `2025-W${String(46 + idx).padStart(2, "0")}`,
     );
     const expected2026 = Array.from({ length: 5 }, (_, idx) =>
@@ -184,5 +184,124 @@ describe("useAppStore", () => {
     );
 
     expect(weekIds).toEqual([...expected2025, ...expected2026]);
+  });
+
+  it("voegt weken met verschillende nummering samen op basis van datums", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-alias",
+      guideId: "guide-alias",
+      beginWeek: 52,
+      eindWeek: 2,
+      schooljaar: "2023/2024",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-alias", [
+      {
+        week: 53,
+        datum: "2024-01-03",
+        onderwerp: "Toetsweek",
+        huiswerk: "Leren hoofdstuk 5",
+      },
+      {
+        week: 1,
+        datum: "2024-01-04",
+        onderwerp: "Herhaling",
+        huiswerk: "Maak opdrachten 1-4",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const weeks = state.weekData.weeks ?? [];
+    expect(weeks.some((info) => info.isoYear === 2023 && info.nr === 53)).toBe(false);
+
+    const weekOne = weeks.find((info) => info.isoYear === 2024 && info.nr === 1);
+    expect(weekOne).toBeDefined();
+
+    const weekData = weekOne ? state.weekData.byWeek?.[weekOne.id]?.[meta.vak] : undefined;
+    expect(weekData?.huiswerk).toContain("Leren hoofdstuk 5");
+    expect(weekData?.huiswerk).toContain("Maak opdrachten 1-4");
+  });
+
+  it("normaliseert kalenderweken ook zonder datums in alle rijen", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-gap",
+      guideId: "guide-gap",
+      beginWeek: 53,
+      eindWeek: 2,
+      schooljaar: "2023/2024",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-gap", [
+      {
+        week: 53,
+        onderwerp: "Voorbereiding",
+      },
+      {
+        week: 1,
+        datum: "2024-01-05",
+        onderwerp: "Start nieuwe periode",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const weeks = state.weekData.weeks ?? [];
+
+    expect(weeks.some((info) => info.isoYear === 2023 && info.nr === 53)).toBe(false);
+
+    const weekOne = weeks.find((info) => info.isoYear === 2024 && info.nr === 1);
+    expect(weekOne).toBeDefined();
+
+    const data = weekOne ? state.weekData.byWeek?.[weekOne.id]?.[meta.vak] : undefined;
+    expect(data?.lesstof).toContain("Voorbereiding");
+    expect(data?.lesstof).toContain("Start nieuwe periode");
+  });
+
+  it("registreert multiweek informatie voor vervolgweken", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-multi",
+      guideId: "guide-multi",
+      beginWeek: 3,
+      eindWeek: 4,
+      schooljaar: "2024/2025",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-multi", [
+      {
+        week: 3,
+        weeks: [3, 4],
+        week_span_start: 3,
+        week_span_end: 4,
+        week_label: "3/4",
+        datum: "2025-01-15",
+        datum_eind: "2025-01-24",
+        onderwerp: "Toetsweek",
+        huiswerk: "Leren hoofdstuk 3",
+        source_row_id: "row-1",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const anchorWeek = state.weekData.weeks?.find((info) => info.nr === 3);
+    const followWeek = state.weekData.weeks?.find((info) => info.nr === 4);
+    expect(anchorWeek).toBeDefined();
+    expect(followWeek).toBeDefined();
+
+    const anchorData = state.weekData.byWeek?.[anchorWeek!.id]?.[meta.vak];
+    const followData = state.weekData.byWeek?.[followWeek!.id]?.[meta.vak];
+
+    expect(
+      anchorData?.multiWeekSpans?.some((span) => span.role === "start" && span.toWeek === 4),
+    ).toBe(true);
+    expect(
+      followData?.multiWeekSpans?.some((span) => span.role === "continue" && span.fromWeek === 3),
+    ).toBe(true);
+    expect(anchorData?.huiswerk).toContain("Leren hoofdstuk 3");
+    expect(followData?.huiswerk).toContain("Leren hoofdstuk 3");
   });
 });

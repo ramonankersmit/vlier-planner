@@ -8,7 +8,12 @@ import {
   formatWeekDateRange,
 } from "../lib/weekUtils";
 import { useDocumentPreview } from "../components/DocumentPreviewProvider";
-import { deriveIsoYearForWeek, expandWeekRange, isWeekInRange, makeWeekId } from "../lib/calendar";
+import {
+  expandWeekRange,
+  isWeekInRange,
+  makeWeekId,
+  resolveWeekIdentifier,
+} from "../lib/calendar";
 
 type Item = {
   id: string;
@@ -89,8 +94,10 @@ export default function Deadlines() {
     for (const doc of filteredDocs) {
       const weekRange = expandWeekRange(doc.beginWeek, doc.eindWeek);
       for (const wk of weekRange) {
-        const isoYear = deriveIsoYearForWeek(wk, { schooljaar: doc.schooljaar });
-        ids.add(makeWeekId(isoYear, wk));
+        const { week: canonicalWeek, isoYear } = resolveWeekIdentifier(wk, {
+          schooljaar: doc.schooljaar,
+        });
+        ids.add(makeWeekId(isoYear, canonicalWeek));
       }
     }
     return ids;
@@ -142,7 +149,7 @@ export default function Deadlines() {
       if (!docsForVak?.length) return undefined;
       const matched = docsForVak.find((doc) => {
         if (!isWeekInRange(info.nr, doc.beginWeek, doc.eindWeek)) return false;
-        const isoYear = deriveIsoYearForWeek(info.nr, { schooljaar: doc.schooljaar });
+        const { isoYear } = resolveWeekIdentifier(info.nr, { schooljaar: doc.schooljaar });
         return isoYear === info.isoYear;
       });
       return matched ?? docsForVak[0];
