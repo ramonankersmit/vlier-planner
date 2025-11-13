@@ -630,38 +630,12 @@ const computeWeekAggregation = (
         const resolvedWeeks: { sourceWeek: number; week: number; isoYear: number; weekId: string }[] = [];
         const seenWeekIds = new Set<string>();
         for (const sourceWeek of uniqueWeeks) {
-          let { week: canonicalWeek, isoYear } = resolveWeekIdentifier(sourceWeek, {
+          const { week: canonicalWeek, isoYear } = resolveWeekIdentifier(sourceWeek, {
             schooljaar: doc.schooljaar,
             candidateDates,
             today,
           });
-          const wrapPair =
-            (sourceWeek <= 5 && canonicalWeek >= 50) ||
-            (sourceWeek >= 50 && canonicalWeek <= 5);
-          const diff = sourceWeek - canonicalWeek;
-          if (!wrapPair && Math.abs(diff) > 0 && Math.abs(diff) <= 2) {
-            const steps = Math.abs(diff);
-            let cursor = { week: canonicalWeek, isoYear };
-            for (let step = 0; step < steps; step += 1) {
-              cursor = diff > 0
-                ? advanceIsoWeek(cursor.week, cursor.isoYear)
-                : retreatIsoWeek(cursor.week, cursor.isoYear);
-            }
-            canonicalWeek = cursor.week;
-            isoYear = cursor.isoYear;
-          }
-          let weekId = makeWeekId(isoYear, canonicalWeek);
-          if (seenWeekIds.has(weekId) && resolvedWeeks.length > 0) {
-            let cursor = resolvedWeeks[resolvedWeeks.length - 1];
-            let guard = 0;
-            while (seenWeekIds.has(weekId) && guard < 60) {
-              cursor = advanceIsoWeek(cursor.week, cursor.isoYear);
-              canonicalWeek = cursor.week;
-              isoYear = cursor.isoYear;
-              weekId = makeWeekId(cursor.isoYear, cursor.week);
-              guard += 1;
-            }
-          }
+          const weekId = makeWeekId(isoYear, canonicalWeek);
           if (seenWeekIds.has(weekId)) {
             continue;
           }
