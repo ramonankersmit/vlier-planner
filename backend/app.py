@@ -576,28 +576,26 @@ def _ensure_rows(rows: List[DocRow]) -> List[DocRow]:
     return normalized
 
 
+def _row_duplicate_signature(row: DocRow) -> str:
+    data = _row_to_dict(row)
+    data.pop("enabled", None)
+    data.pop("source_row_id", None)
+    return json.dumps(data, sort_keys=True, ensure_ascii=False)
+
+
 def _auto_disable_duplicates(rows: List[DocRow]) -> None:
-    active_dates: Dict[str, int] = {}
-    active_weeks: Dict[int, int] = {}
+    seen_signatures: Dict[str, int] = {}
     for index, row in enumerate(rows):
         if row.enabled is False:
             continue
 
-        date_key = (row.datum or "").strip()
-        if date_key:
-            active_index = active_dates.get(date_key)
-            if active_index is None or rows[active_index].enabled is False:
-                active_dates[date_key] = index
-            else:
-                rows[index].enabled = False
-                continue
-
-        if row.week is None:
+        signature = _row_duplicate_signature(row)
+        if not signature:
             continue
 
-        active_week = active_weeks.get(row.week)
-        if active_week is None or rows[active_week].enabled is False:
-            active_weeks[row.week] = index
+        existing_index = seen_signatures.get(signature)
+        if existing_index is None or rows[existing_index].enabled is False:
+            seen_signatures[signature] = index
             continue
 
         rows[index].enabled = False
@@ -613,11 +611,27 @@ def _compute_warnings(
     active_rows = [row for row in normalized_rows if row.enabled]
     unknown_subject = not bool(meta.vak)
     missing_week = any(row.week is None for row in active_rows)
-    dates = [row.datum for row in active_rows if getattr(row, "datum", None)]
-    duplicate_date = len(dates) != len(set(dates))
+    seen_dates: set[str] = set()
+    duplicate_date = False
+    for row in active_rows:
+        if not getattr(row, "datum", None):
+            continue
+        signature = _row_duplicate_signature(row)
+        if signature in seen_dates:
+            duplicate_date = True
+            break
+        seen_dates.add(signature)
     week_source = active_rows if ignore_disabled_duplicates else normalized_rows
-    weeks = [row.week for row in week_source if isinstance(row.week, int)]
-    duplicate_week = len(weeks) != len(set(weeks))
+    seen_signatures: set[str] = set()
+    duplicate_week = False
+    for row in week_source:
+        if not isinstance(row.week, int):
+            continue
+        signature = _row_duplicate_signature(row)
+        if signature in seen_signatures:
+            duplicate_week = True
+            break
+        seen_signatures.add(signature)
     return {
         "unknownSubject": unknown_subject,
         "missingWeek": missing_week,

@@ -563,6 +563,23 @@ const computeWeekAggregation = (
     return false;
   };
 
+  const advanceIsoWeek = (week: number, isoYear: number): { week: number; isoYear: number } => {
+    const start = getIsoWeekStart(isoYear, week);
+    const next = new Date(start);
+    next.setUTCDate(start.getUTCDate() + 7);
+    const nextWeek = getIsoWeek(next);
+    const nextYear = getIsoWeekYear(next);
+    return canonicalizeIsoWeek(nextWeek, nextYear);
+  };
+  const retreatIsoWeek = (week: number, isoYear: number): { week: number; isoYear: number } => {
+    const start = getIsoWeekStart(isoYear, week);
+    const prev = new Date(start);
+    prev.setUTCDate(start.getUTCDate() - 7);
+    const prevWeek = getIsoWeek(prev);
+    const prevYear = getIsoWeekYear(prev);
+    return canonicalizeIsoWeek(prevWeek, prevYear);
+  };
+
   for (const doc of docs) {
     if (!doc.enabled) {
       continue;

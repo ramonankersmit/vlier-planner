@@ -304,4 +304,44 @@ describe("useAppStore", () => {
     expect(anchorData?.huiswerk).toContain("Leren hoofdstuk 3");
     expect(followData?.huiswerk).toContain("Leren hoofdstuk 3");
   });
+
+  it("houdt multiweek regels zichtbaar als alleen de startdatum bekend is", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-multi-start-only",
+      guideId: "guide-multi-start-only",
+      beginWeek: 3,
+      eindWeek: 4,
+      schooljaar: "2024/2025",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-multi-start-only", [
+      {
+        week: 3,
+        weeks: [3, 4],
+        week_span_start: 3,
+        week_span_end: 4,
+        week_label: "3/4",
+        datum: "2025-01-12",
+        onderwerp: "Toetsweek",
+        huiswerk: "Herhalen",
+        source_row_id: "row-2",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const weekThree = state.weekData.weeks?.find((info) => info.nr === 3);
+    const weekFour = state.weekData.weeks?.find((info) => info.nr === 4);
+    expect(weekThree).toBeDefined();
+    expect(weekFour).toBeDefined();
+
+    const weekThreeData = weekThree ? state.weekData.byWeek?.[weekThree.id]?.[meta.vak] : undefined;
+    const weekFourData = weekFour ? state.weekData.byWeek?.[weekFour.id]?.[meta.vak] : undefined;
+
+    expect(weekThreeData?.lesstof).toContain("Toetsweek");
+    expect(weekFourData?.lesstof).toContain("Toetsweek");
+    expect(weekThreeData?.huiswerk).toContain("Herhalen");
+    expect(weekFourData?.huiswerk).toContain("Herhalen");
+  });
 });
