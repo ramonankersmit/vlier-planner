@@ -1,5 +1,51 @@
 const BULLET_RE = /[•●◦▪▫]/g;
-const BASE_SPLIT_RE = /[;\n]/;
+const BASE_SPLIT_RE = /[;\r\n]/;
+const VERB_AFTER_COMMA_WORDS = [
+  "bestudeer",
+  "bestuderen",
+  "leer",
+  "leren",
+  "maak",
+  "maken",
+  "werk",
+  "werken",
+  "herhaal",
+  "herhalen",
+  "oefen",
+  "oefenen",
+  "lees",
+  "lezen",
+  "samenvat",
+  "samenvatten",
+  "bekijk",
+  "bekijken",
+  "schrijf",
+  "schrijven",
+  "afrond",
+  "afronden",
+  "afmaak",
+  "afmaken",
+  "voorbereid",
+  "voorbereiden",
+  "doe",
+  "doen",
+  "inlever",
+  "inleveren",
+  "invul",
+  "invullen",
+  "bespreek",
+  "bespreken",
+  "analyseer",
+  "analyseren",
+  "onderzoek",
+  "onderzoeken",
+  "present",
+  "presenteren",
+];
+const COMMA_VERB_SPLIT_RE = new RegExp(
+  `,\\s+(?=\\b(?:${VERB_AFTER_COMMA_WORDS.join("|")})\\b)`,
+  "gi"
+);
 const KEYWORD_PATTERNS = [
   "Opg\\.?\\s*\\d+(?:\\.\\d+)*[a-z]?",
   "Opgaven\\s+\\d+",
@@ -46,6 +92,15 @@ export function splitHomeworkItems(raw?: string | null): string[] {
         return pieces.length > 1 ? pieces : [trimmed];
       });
     }
+    segments = segments.flatMap((segment) => {
+      const trimmed = segment.trim();
+      if (!trimmed) return [];
+      const pieces = trimmed
+        .split(COMMA_VERB_SPLIT_RE)
+        .map((piece) => piece.trim())
+        .filter(Boolean);
+      return pieces.length > 1 ? pieces : [trimmed];
+    });
     return segments;
   });
 
