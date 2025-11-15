@@ -161,12 +161,7 @@ function insertLineBreakBeforeVoorkennis(value: string): string {
 export function splitHomeworkItems(raw?: string | null): string[] {
   if (!raw) return [];
   const sanitized = insertLineBreakBeforeVoorkennis(
-    raw
-      .replace(BULLET_RE, "\n")
-      .replace(
-        NUMBER_OPGAVEN_SPLIT_RE,
-        (match) => `${match.trimEnd()}\n`
-      )
+    raw.replace(BULLET_RE, "\n").replace(NUMBER_OPGAVEN_SPLIT_RE, "\n")
   );
   const initialParts = sanitized
     .split(BASE_SPLIT_RE)
