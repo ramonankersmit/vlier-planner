@@ -148,4 +148,20 @@ describe("splitHomeworkItems", () => {
     const result = splitHomeworkItems(input);
     expect(result).toEqual(["Bekijk V6", "Opgaven 1-4"]);
   });
+
+  it("splitst meerdere t/m-secties in losse taken", () => {
+    const input = "t/m opgave 8/C2 t/m opgave 16";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual(["t/m opgave 8/C2", "t/m opgave 16"]);
+  });
+
+  it("houdt alle opeenvolgende t/m-taken gescheiden", () => {
+    const input = "t/m opgave 8/C2 t/m opgave 16 t/m opgave 44";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "t/m opgave 8/C2",
+      "t/m opgave 16",
+      "t/m opgave 44",
+    ]);
+  });
 });

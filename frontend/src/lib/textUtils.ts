@@ -120,6 +120,7 @@ const KEYWORD_PATTERNS = [
   "Opg\\.?\\s*\\d+(?:\\.\\d+)*[a-z]?",
   "Opgaven\\s+\\d+",
   "Opdrachten?\\s+\\d+",
+  "\\bt/m\\b",
   "Par(?:agraaf)?\\s+\\d+[a-z]?",
   "Hoofdstuk\\s+\\d+",
   "Bl(?:z|ad)\\.?\\s*\\d+",
