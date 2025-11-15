@@ -32,6 +32,12 @@ describe("splitHomeworkItems", () => {
     ]);
   });
 
+  it("maakt aparte taken voor elke Oefentoets", () => {
+    const input = "Oefentoets H2 Oefentoets H3";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual(["Oefentoets H2", "Oefentoets H3"]);
+  });
+
   it("splitst wanneer na een komma een werkwoord start", () => {
     const input = "Bestuderen Intro hoofdstuk 3, maken opdrachten 3.1, leren woordjes";
     const result = splitHomeworkItems(input);
