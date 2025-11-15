@@ -352,6 +352,25 @@ class BaseParser:
         cleaned = self.normalize_text(text)
         if not cleaned:
             return []
+
+        # Harmoniseer koppeltekens zodat patronen als "52–53" of "52—53"
+        # hetzelfde behandeld worden als reguliere streepjes.
+        cleaned = (
+            cleaned.replace("–", "-")
+            .replace("—", "-")
+            .replace("−", "-")
+            .replace("‑", "-")
+        )
+
+        # Verwijder expliciete datumnotaties (dd-mm-yyyy of dd/mm/yyyy) zodat
+        # RE_WEEK_PAIR hieronder niet per ongeluk dagen/maanden als weken
+        # herkent.
+        cleaned = re.sub(
+            r"\b\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}\b",
+            " ",
+            cleaned,
+        )
+
         weeks: List[int] = []
 
         lead = RE_WEEK_LEADING.search(cleaned)
@@ -376,6 +395,15 @@ class BaseParser:
             value = int(m.group(1))
             if 1 <= value <= 53:
                 weeks.append(value)
+
+        # Wanneer cellen meerdere getallen via koppeltekens of slashes
+        # combineren (bijv. "52-1-2"), lopen we alle getallen opnieuw af in
+        # oorspronkelijke volgorde zodat geen weken wegvallen.
+        if re.search(r"\d\s*[-/]\s*\d", cleaned):
+            for match in re.finditer(r"(?<!\d)(\d{1,2})(?!\d)", cleaned):
+                value = int(match.group(1))
+                if 1 <= value <= 53:
+                    weeks.append(value)
 
         pure = RE_NUM_PURE.match(cleaned)
         if pure:
