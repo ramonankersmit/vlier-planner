@@ -1,6 +1,6 @@
 const BULLET_RE = /[•●◦▪▫]/g;
 const NUMBER_OPGAVEN_SPLIT_RE = /\b\d+\s+(?=Opgaven\b)/gi;
-const VOORKENNIS_HEADING_RE = /Voorkennis/gi;
+const VOORKENNIS_HEADING_RE = /\bVoorkennis\b/g;
 const BASE_SPLIT_RE = /[;\r\n]/;
 const VERB_AFTER_COMMA_WORDS = [
   "bestudeer",
@@ -161,7 +161,7 @@ function insertLineBreakBeforeVoorkennis(value: string): string {
 export function splitHomeworkItems(raw?: string | null): string[] {
   if (!raw) return [];
   const sanitized = insertLineBreakBeforeVoorkennis(
-    raw.replace(BULLET_RE, "\n").replace(NUMBER_OPGAVEN_SPLIT_RE, "\n")
+    raw.replace(BULLET_RE, "\n").replace(NUMBER_OPGAVEN_SPLIT_RE, (match) => `${match.trimEnd()}\n`)
   );
   const initialParts = sanitized
     .split(BASE_SPLIT_RE)
