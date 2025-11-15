@@ -8,7 +8,7 @@ installatiestap, al levert `pdfplumber` doorgaans betere resultaten op.
 
 import re
 from datetime import date
-from typing import Generator, List, Optional, Tuple
+from typing import Generator, Iterable, List, Optional, Tuple
 
 try:  # pdfplumber levert vaak de beste tekstextractie
     import pdfplumber  # type: ignore
@@ -388,19 +388,72 @@ def _flush_pdf_entry(entry: dict, schooljaar: Optional[str]) -> List[DocRow]:
     return [row]
 
 
-def _extract_rows_with_tables(
-    path: str, schooljaar: Optional[str], source_label: Optional[str] = None
-) -> List[DocRow]:
-    if pdfplumber is None:
-        return []
+def _row_contains_weeks(row: List[str]) -> bool:
+    for cell in row:
+        if cell and parse_week_cell(cell):
+            return True
+    return False
 
+
+def _combine_header_rows(header_rows: List[List[str]]) -> List[str]:
+    if not header_rows:
+        return []
+    max_cols = max(len(row) for row in header_rows)
+    combined: List[str] = []
+    for col_idx in range(max_cols):
+        parts: List[str] = []
+        for row in header_rows:
+            if col_idx >= len(row):
+                continue
+            text = normalize_text(row[col_idx] or "")
+            if text:
+                parts.append(text)
+        combined.append(" ".join(parts))
+    return combined
+
+
+def _split_header_and_data_rows(tbl: List[List[str]]) -> Tuple[List[str], List[List[str]]]:
+    if not tbl:
+        return [], []
+
+    header_rows: List[List[str]] = []
+    data_start = None
+    for idx, row in enumerate(tbl):
+        if idx == 0:
+            header_rows.append(row)
+            continue
+        if _row_contains_weeks([cell or "" for cell in row]):
+            data_start = idx
+            break
+        header_rows.append(row)
+
+    if data_start is None:
+        data_rows = tbl[1:]
+    else:
+        data_rows = tbl[data_start:]
+    if not header_rows:
+        header_rows = [tbl[0]]
+    headers = _combine_header_rows(header_rows)
+    if not headers:
+        headers = [normalize_text(c or "") for c in tbl[0]]
+    return headers, data_rows
+
+
+def _extract_rows_from_tables(
+    tables: Iterable[List[List[str]]],
+    schooljaar: Optional[str],
+    source_label: Optional[str] = None,
+) -> List[DocRow]:
     results: List[DocRow] = []
     row_counter = 0
-    for table_index, tbl in enumerate(_iter_pdf_tables(path)):
+    for table_index, tbl in enumerate(tables):
         if len(tbl) < 2:
             continue
 
-        headers = [normalize_text(c or "") for c in tbl[0]]
+        headers, data_rows = _split_header_and_data_rows(tbl)
+        if not data_rows:
+            continue
+
         week_col = find_header_idx(headers, WEEK_HEADER_KEYWORDS)
         date_col = find_header_idx(headers, DATE_HEADER_KEYWORDS)
         les_col = find_header_idx(headers, LES_HEADER_KEYWORDS)
@@ -431,7 +484,7 @@ def _extract_rows_with_tables(
         }
 
         current: Optional[dict] = None
-        for _, raw_row in enumerate(tbl[1:], start=1):
+        for raw_row in data_rows:
             if not any(cell for cell in raw_row if cell):
                 continue
 
@@ -484,6 +537,9 @@ def _extract_rows_with_tables(
                         datum_eind = end_candidate
                 if datum_eind == datum:
                     datum_eind = None
+                label = source_label or ""
+                if not label:
+                    label = "pdf"
                 current = {
                     "weeks": filtered,
                     "week_label": (week_text or "").strip() or None,
@@ -500,7 +556,7 @@ def _extract_rows_with_tables(
                     "notities": None,
                     "klas": None,
                     "locatie": None,
-                    "source_row_id": f"{source_label or path}:t{table_index}:r{row_counter}",
+                    "source_row_id": f"{label}:t{table_index}:r{row_counter}",
                 }
                 _update_pdf_entry(current, row, idx, schooljaar)
             else:
@@ -518,6 +574,15 @@ def _extract_rows_with_tables(
             results.extend(_flush_pdf_entry(current, schooljaar))
 
     return results
+
+
+def _extract_rows_with_tables(
+    path: str, schooljaar: Optional[str], source_label: Optional[str] = None
+) -> List[DocRow]:
+    if pdfplumber is None:
+        return []
+
+    return _extract_rows_from_tables(_iter_pdf_tables(path), schooljaar, source_label or path)
 
 
 def extract_meta_from_pdf(path: str, filename: str) -> DocMeta:
