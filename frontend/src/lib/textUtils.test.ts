@@ -68,4 +68,10 @@ describe("splitHomeworkItems", () => {
       "Opgaven 3 t/m 5",
     ]);
   });
+
+  it("splitst ook wanneer er letters vóór het nummer staan", () => {
+    const input = "Bekijk V6 Opgaven 1-4";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual(["Bekijk V6", "Opgaven 1-4"]);
+  });
 });
