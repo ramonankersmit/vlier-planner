@@ -54,6 +54,30 @@ const makeRow = (overrides?: Partial<DocRow>): DocRow => ({
   ...overrides,
 });
 
+const makeReviewDraft = (overrides?: Partial<ReviewDraft>): ReviewDraft => ({
+  parseId: "parse-review",
+  meta: makeMeta({ vak: "Duits" }),
+  rows: [makeRow({ week: 4, datum: "2024-01-10" })],
+  warnings: {
+    unknownSubject: false,
+    missingWeek: false,
+    duplicateDate: false,
+    duplicateWeek: false,
+  },
+  diffSummary: { added: 1, changed: 0, removed: 0, unchanged: 0 },
+  diff: [
+    {
+      index: 0,
+      status: "added",
+      fields: {
+        week: { status: "added", old: null, new: 4 },
+        datum: { status: "added", old: null, new: "2024-01-10" },
+      },
+    },
+  ],
+  ...overrides,
+});
+
 describe("Review wizard", () => {
   beforeEach(() => {
     useAppStore.getState().resetAppState();
@@ -296,5 +320,35 @@ describe("Review wizard", () => {
     });
 
     await waitFor(() => expect(screen.getByText(/Uploads/i)).toBeInTheDocument());
+  });
+
+  it("laat een ontbrekende review netjes los zonder foutmelding", async () => {
+    const review = makeReviewDraft({ parseId: "parse-missing" });
+    await act(async () => {
+      const store = useAppStore.getState();
+      store.setPendingReview(review);
+      store.setActiveReview(review.parseId);
+    });
+
+    mockedApi.apiGetReview.mockRejectedValue(new Error("get_review failed: 404"));
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={["/review/parse-missing"]}>
+          <Routes>
+            <Route path="/review/:parseId" element={<Review />} />
+            <Route path="/uploads" element={<div>Uploads</div>} />
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => expect(mockedApi.apiGetReview).toHaveBeenCalledTimes(1));
+
+    expect(await screen.findByText(/Deze review is niet gevonden/i)).toBeInTheDocument();
+    expect(screen.queryByText(/get_review failed/i)).not.toBeInTheDocument();
+
+    const state = useAppStore.getState();
+    expect(state.pendingReviews[review.parseId]).toBeUndefined();
   });
 });

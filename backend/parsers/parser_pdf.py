@@ -8,7 +8,7 @@ installatiestap, al levert `pdfplumber` doorgaans betere resultaten op.
 
 import re
 from datetime import date
-from typing import Generator, List, Optional, Tuple
+from typing import Generator, Iterable, List, Optional, Tuple
 
 try:  # pdfplumber levert vaak de beste tekstextractie
     import pdfplumber  # type: ignore
@@ -60,6 +60,9 @@ PDF_TABLE_SETTINGS = {
     "join_tolerance": 3,
     "edge_min_length": 40,
 }
+
+VACATION_PATTERN = re.compile(r"(?i)vakantie")
+DEADLINE_TOETS_PATTERN = re.compile(r"(?i)\b(inlever(?:en|datum|moment)|deadline)\b")
 
 
 def _append_text(existing: Optional[str], new_text: str) -> Optional[str]:
@@ -262,24 +265,31 @@ def _collect_weeks_from_pages(pages: List[Tuple[int, int, str]]) -> List[int]:
 
 def _update_pdf_entry(entry: dict, row: List[str], idx: dict, schooljaar: Optional[str]) -> None:
     date_col = idx.get("date")
-    if date_col is not None and date_col < len(row):
-        start_candidate, end_candidate = parse_date_range_cell(row[date_col], schooljaar)
-        if start_candidate and not entry.get("datum"):
-            entry["datum"] = start_candidate
-        if end_candidate and end_candidate != entry.get("datum"):
-            entry["datum_eind"] = end_candidate
+    if date_col is not None:
+        date_text = _cell_text_with_neighbors(row, date_col)
+        if date_text:
+            start_candidate, end_candidate = parse_date_range_cell(date_text, schooljaar)
+            if start_candidate and not entry.get("datum"):
+                entry["datum"] = start_candidate
+            if end_candidate and end_candidate != entry.get("datum"):
+                entry["datum_eind"] = end_candidate
 
     les_col = idx.get("les")
-    if les_col is not None and les_col < len(row):
-        entry["les"] = _append_text(entry.get("les"), row[les_col])
+    if les_col is not None:
+        les_text = _cell_text_with_neighbors(row, les_col)
+        if les_text:
+            entry["les"] = _append_text(entry.get("les"), les_text)
 
     ond_col = idx.get("onderwerp")
-    if ond_col is not None and ond_col < len(row):
-        entry["onderwerp"] = _append_text(entry.get("onderwerp"), row[ond_col])
+    if ond_col is not None:
+        ond_text = _cell_text_with_neighbors(row, ond_col)
+        if ond_text:
+            entry["onderwerp"] = _append_text(entry.get("onderwerp"), ond_text)
 
     leer_col = idx.get("leerdoelen")
-    if leer_col is not None and leer_col < len(row):
-        bullets = split_bullets(row[leer_col])
+    if leer_col is not None:
+        leer_text = _cell_text_with_neighbors(row, leer_col)
+        bullets = split_bullets(leer_text) if leer_text else None
         if bullets:
             existing = entry.get("leerdoelen")
             if existing:
@@ -290,38 +300,54 @@ def _update_pdf_entry(entry: dict, row: List[str], idx: dict, schooljaar: Option
                 entry["leerdoelen"] = bullets
 
     hw_col = idx.get("huiswerk")
-    if hw_col is not None and hw_col < len(row):
-        entry["huiswerk"] = _append_text(entry.get("huiswerk"), row[hw_col])
+    if hw_col is not None:
+        hw_text = _cell_text_with_neighbors(row, hw_col)
+        if hw_text:
+            entry["huiswerk"] = _append_text(entry.get("huiswerk"), hw_text)
 
     opd_col = idx.get("opdracht")
-    if opd_col is not None and opd_col < len(row):
-        entry["opdracht"] = _append_text(entry.get("opdracht"), row[opd_col])
+    if opd_col is not None:
+        opd_text = _cell_text_with_neighbors(row, opd_col)
+        if opd_text:
+            entry["opdracht"] = _append_text(entry.get("opdracht"), opd_text)
 
     inl_col = idx.get("inlever")
-    if inl_col is not None and inl_col < len(row):
-        candidate = parse_date_cell(row[inl_col], schooljaar)
-        if candidate:
-            entry["inleverdatum"] = candidate
+    if inl_col is not None:
+        inl_text = _cell_text_with_neighbors(row, inl_col)
+        if inl_text:
+            candidate = parse_date_cell(inl_text, schooljaar)
+            if candidate:
+                entry["inleverdatum"] = candidate
 
     toets_col = idx.get("toets")
-    if toets_col is not None and toets_col < len(row):
-        entry["toets_text"] = _append_text(entry.get("toets_text"), row[toets_col])
+    if toets_col is not None:
+        toets_text = _cell_text_with_neighbors(row, toets_col)
+        if toets_text:
+            entry["toets_text"] = _append_text(entry.get("toets_text"), toets_text)
 
     bron_col = idx.get("bronnen")
-    if bron_col is not None and bron_col < len(row):
-        entry["bronnen_text"] = _append_text(entry.get("bronnen_text"), row[bron_col])
+    if bron_col is not None:
+        bron_text = _cell_text_with_neighbors(row, bron_col)
+        if bron_text:
+            entry["bronnen_text"] = _append_text(entry.get("bronnen_text"), bron_text)
 
     not_col = idx.get("notities")
-    if not_col is not None and not_col < len(row):
-        entry["notities"] = _append_text(entry.get("notities"), row[not_col])
+    if not_col is not None:
+        not_text = _cell_text_with_neighbors(row, not_col)
+        if not_text:
+            entry["notities"] = _append_text(entry.get("notities"), not_text)
 
     klas_col = idx.get("klas")
-    if klas_col is not None and klas_col < len(row):
-        entry["klas"] = _append_text(entry.get("klas"), row[klas_col])
+    if klas_col is not None:
+        klas_text = _cell_text_with_neighbors(row, klas_col)
+        if klas_text:
+            entry["klas"] = _append_text(entry.get("klas"), klas_text)
 
     loc_col = idx.get("locatie")
-    if loc_col is not None and loc_col < len(row):
-        entry["locatie"] = _append_text(entry.get("locatie"), row[loc_col])
+    if loc_col is not None:
+        loc_text = _cell_text_with_neighbors(row, loc_col)
+        if loc_text:
+            entry["locatie"] = _append_text(entry.get("locatie"), loc_text)
 
 
 def _flush_pdf_entry(entry: dict, schooljaar: Optional[str]) -> List[DocRow]:
@@ -348,6 +374,20 @@ def _flush_pdf_entry(entry: dict, schooljaar: Optional[str]) -> List[DocRow]:
     toets_text = entry.get("toets_text")
     bronnen_text = entry.get("bronnen_text")
 
+    datum = entry.get("datum")
+    datum_eind = entry.get("datum_eind")
+    if datum_eind == datum:
+        datum_eind = None
+
+    if (
+        not inleverdatum
+        and toets_text
+        and DEADLINE_TOETS_PATTERN.search(toets_text)
+    ):
+        inferred_due = datum or datum_eind
+        if inferred_due:
+            inleverdatum = inferred_due
+
     toets_info = parse_toets_cell(toets_text) if toets_text else None
     if not inleverdatum:
         for source in (opdracht, toets_text):
@@ -358,11 +398,6 @@ def _flush_pdf_entry(entry: dict, schooljaar: Optional[str]) -> List[DocRow]:
                     break
 
     bronnen = find_urls(bronnen_text) if bronnen_text else None
-
-    datum = entry.get("datum")
-    datum_eind = entry.get("datum_eind")
-    if datum_eind == datum:
-        datum_eind = None
 
     row = DocRow(
         week=unique_weeks[0],
@@ -388,19 +423,110 @@ def _flush_pdf_entry(entry: dict, schooljaar: Optional[str]) -> List[DocRow]:
     return [row]
 
 
-def _extract_rows_with_tables(
-    path: str, schooljaar: Optional[str], source_label: Optional[str] = None
-) -> List[DocRow]:
-    if pdfplumber is None:
-        return []
+def _row_contains_weeks(row: List[str]) -> bool:
+    for cell in row:
+        if cell and parse_week_cell(cell):
+            return True
+    return False
 
+
+def _cell_text_with_neighbors(row: List[str], idx: Optional[int]) -> Optional[str]:
+    """Return the first non-empty cell around ``idx`` (preferring the column itself).
+
+    PDF-tabellen met brede kolommen bevatten vaak lege scheidingskolommen waardoor
+    de feitelijke waarde in een naastgelegen cel terechtkomt. Door ook naar
+    buren te kijken blijft de parser robuust zonder per kolom maatwerk te
+    schrijven.
+    """
+
+    if idx is None:
+        return None
+    width = len(row)
+    if width == 0:
+        return None
+
+    candidate_indices: List[int] = []
+    if 0 <= idx < width:
+        candidate_indices.append(idx)
+
+    for offset in (-1, 1, -2, 2, -3, 3):
+        neighbor = idx + offset
+        if 0 <= neighbor < width:
+            candidate_indices.append(neighbor)
+
+    seen: set[int] = set()
+    for col in candidate_indices:
+        if col in seen:
+            continue
+        seen.add(col)
+        text = row[col]
+        if text and normalize_text(text):
+            return text
+
+    if 0 <= idx < width:
+        return row[idx]
+    return None
+
+
+def _combine_header_rows(header_rows: List[List[str]]) -> List[str]:
+    if not header_rows:
+        return []
+    max_cols = max(len(row) for row in header_rows)
+    combined: List[str] = []
+    for col_idx in range(max_cols):
+        parts: List[str] = []
+        for row in header_rows:
+            if col_idx >= len(row):
+                continue
+            text = normalize_text(row[col_idx] or "")
+            if text:
+                parts.append(text)
+        combined.append(" ".join(parts))
+    return combined
+
+
+def _split_header_and_data_rows(tbl: List[List[str]]) -> Tuple[List[str], List[List[str]]]:
+    if not tbl:
+        return [], []
+
+    header_rows: List[List[str]] = []
+    data_start = None
+    for idx, row in enumerate(tbl):
+        if idx == 0:
+            header_rows.append(row)
+            continue
+        if _row_contains_weeks([cell or "" for cell in row]):
+            data_start = idx
+            break
+        header_rows.append(row)
+
+    if data_start is None:
+        data_rows = tbl[1:]
+    else:
+        data_rows = tbl[data_start:]
+    if not header_rows:
+        header_rows = [tbl[0]]
+    headers = _combine_header_rows(header_rows)
+    if not headers:
+        headers = [normalize_text(c or "") for c in tbl[0]]
+    return headers, data_rows
+
+
+def _extract_rows_from_tables(
+    tables: Iterable[List[List[str]]],
+    schooljaar: Optional[str],
+    source_label: Optional[str] = None,
+) -> List[DocRow]:
     results: List[DocRow] = []
     row_counter = 0
-    for table_index, tbl in enumerate(_iter_pdf_tables(path)):
+    for table_index, tbl in enumerate(tables):
         if len(tbl) < 2:
             continue
 
-        headers = [normalize_text(c or "") for c in tbl[0]]
+        headers, data_rows = _split_header_and_data_rows(tbl)
+        if not data_rows:
+            continue
+
         week_col = find_header_idx(headers, WEEK_HEADER_KEYWORDS)
         date_col = find_header_idx(headers, DATE_HEADER_KEYWORDS)
         les_col = find_header_idx(headers, LES_HEADER_KEYWORDS)
@@ -431,31 +557,32 @@ def _extract_rows_with_tables(
         }
 
         current: Optional[dict] = None
-        for _, raw_row in enumerate(tbl[1:], start=1):
+        for raw_row in data_rows:
             if not any(cell for cell in raw_row if cell):
                 continue
 
             row = [cell or "" for cell in raw_row]
 
             weeks: List[int] = []
-            week_text = None
-            if week_col is not None and week_col < len(row):
-                week_text = row[week_col]
+            week_text = _cell_text_with_neighbors(row, week_col)
+            if week_text:
                 weeks = parse_week_cell(week_text)
-                if not weeks and week_col > 0 and week_col - 1 < len(row):
-                    alt_text = row[week_col - 1]
-                    alt_weeks = parse_week_cell(alt_text)
-                    if alt_weeks:
-                        week_text = alt_text
-                        weeks = alt_weeks
-                if not weeks and week_col + 1 < len(row):
-                    alt_text = row[week_col + 1]
-                    alt_weeks = parse_week_cell(alt_text)
-                    if alt_weeks:
-                        week_text = alt_text
-                        weeks = alt_weeks
-            elif date_col is not None and date_col < len(row):
-                iso = parse_date_cell(row[date_col], schooljaar)
+                if not weeks and VACATION_PATTERN.search(week_text):
+                    for col_idx, cell in enumerate(row):
+                        if col_idx == week_col:
+                            continue
+                        if not cell:
+                            continue
+                        extra_weeks = parse_week_cell(cell)
+                        if extra_weeks:
+                            weeks = extra_weeks
+                            if cell and cell not in (week_text or ""):
+                                combined = f"{week_text or ''} {cell}".strip()
+                                week_text = combined or week_text
+                            break
+            elif date_col is not None:
+                date_text = _cell_text_with_neighbors(row, date_col)
+                iso = parse_date_cell(date_text, schooljaar) if date_text else None
                 if iso:
                     try:
                         wk = date.fromisoformat(iso).isocalendar().week
@@ -472,11 +599,13 @@ def _extract_rows_with_tables(
                 row_counter += 1
                 datum = None
                 datum_eind = None
-                if date_col is not None and date_col < len(row):
-                    start_candidate, end_candidate = parse_date_range_cell(row[date_col], schooljaar)
-                    datum = start_candidate or datum
-                    if end_candidate and end_candidate != datum:
-                        datum_eind = end_candidate
+                if date_col is not None:
+                    date_text = _cell_text_with_neighbors(row, date_col)
+                    if date_text:
+                        start_candidate, end_candidate = parse_date_range_cell(date_text, schooljaar)
+                        datum = start_candidate or datum
+                        if end_candidate and end_candidate != datum:
+                            datum_eind = end_candidate
                 if not datum and week_text:
                     start_candidate, end_candidate = parse_date_range_cell(week_text, schooljaar)
                     datum = start_candidate or datum
@@ -484,6 +613,9 @@ def _extract_rows_with_tables(
                         datum_eind = end_candidate
                 if datum_eind == datum:
                     datum_eind = None
+                label = source_label or ""
+                if not label:
+                    label = "pdf"
                 current = {
                     "weeks": filtered,
                     "week_label": (week_text or "").strip() or None,
@@ -500,7 +632,7 @@ def _extract_rows_with_tables(
                     "notities": None,
                     "klas": None,
                     "locatie": None,
-                    "source_row_id": f"{source_label or path}:t{table_index}:r{row_counter}",
+                    "source_row_id": f"{label}:t{table_index}:r{row_counter}",
                 }
                 _update_pdf_entry(current, row, idx, schooljaar)
             else:
@@ -518,6 +650,15 @@ def _extract_rows_with_tables(
             results.extend(_flush_pdf_entry(current, schooljaar))
 
     return results
+
+
+def _extract_rows_with_tables(
+    path: str, schooljaar: Optional[str], source_label: Optional[str] = None
+) -> List[DocRow]:
+    if pdfplumber is None:
+        return []
+
+    return _extract_rows_from_tables(_iter_pdf_tables(path), schooljaar, source_label or path)
 
 
 def extract_meta_from_pdf(path: str, filename: str) -> DocMeta:

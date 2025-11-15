@@ -336,6 +336,97 @@ const formatVakName = (value: string): string => {
   return trimmed.charAt(0).toLocaleUpperCase("nl-NL") + trimmed.slice(1);
 };
 
+const resolveAnchorWeek = (row: DocRow): number | null => {
+  if (typeof row.week === "number" && Number.isFinite(row.week)) {
+    const normalized = Math.trunc(row.week);
+    if (normalized >= 1 && normalized <= 53) {
+      return normalized;
+    }
+  }
+  if (Array.isArray(row.weeks)) {
+    for (const candidate of row.weeks) {
+      if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+        continue;
+      }
+      const normalized = Math.trunc(candidate);
+      if (normalized >= 1 && normalized <= 53) {
+        return normalized;
+      }
+    }
+  }
+  return null;
+};
+
+const extractWeekLabelNote = (value?: string | null): string | undefined => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  let rest = normalized.replace(/^\s*(?:wk|week)\s*/i, "");
+  const weekPrefixMatch = rest.match(/^\s*\d{1,2}(?:\s*(?:[/\-]|t\/?m)\s*\d{1,2})?/i);
+  if (weekPrefixMatch) {
+    rest = rest.slice(weekPrefixMatch[0].length);
+  }
+  rest = rest.replace(/^[\s.,;:()\-–—]+/, "");
+  rest = rest.trim();
+  if (!rest) {
+    return undefined;
+  }
+  if (!/[a-zA-Z]/.test(rest)) {
+    return undefined;
+  }
+  return rest;
+};
+
+const autoCorrectRowDates = (row: DocRow, doc?: DocMeta): DocRow => {
+  const anchorWeek = resolveAnchorWeek(row);
+  if (!anchorWeek || !row.datum) {
+    return row;
+  }
+
+  const parsedStart = parseIsoDate(row.datum);
+  if (!parsedStart) {
+    return row;
+  }
+
+  const isoWeek = getIsoWeek(parsedStart);
+  if (isoWeek === anchorWeek) {
+    return row;
+  }
+
+  const { isoYear } = resolveWeekIdentifier(anchorWeek, {
+    schooljaar: doc?.schooljaar,
+    today: new Date(),
+  });
+  const correctedStart = getIsoWeekStart(isoYear, anchorWeek);
+  const shiftMs = correctedStart.getTime() - parsedStart.getTime();
+  const shiftDays = Math.round(shiftMs / 86400000);
+  if (Math.abs(shiftDays) !== 7) {
+    return row;
+  }
+
+  const nextRow: DocRow = {
+    ...row,
+    datum: formatIsoDate(correctedStart),
+  };
+
+  if (row.datum_eind) {
+    const parsedEnd = parseIsoDate(row.datum_eind);
+    if (parsedEnd) {
+      const shiftedEnd = new Date(parsedEnd.getTime() + shiftMs);
+      nextRow.datum_eind = formatIsoDate(shiftedEnd);
+    }
+  }
+
+  return nextRow;
+};
+
+const normalizeRowsForDoc = (rows: DocRow[], doc?: DocMeta): DocRow[] =>
+  rows.map((row) => autoCorrectRowDates(row, doc));
+
 const uploadedAtTimestamp = (value?: string | null): number => {
   if (!value) return 0;
   const parsed = Date.parse(value);
@@ -421,6 +512,52 @@ const normalizeText = (value?: string | null, options?: NormalizeOptions) => {
     return undefined;
   }
   return cleaned;
+};
+
+const hasNormalizedText = (value?: string | null, options?: NormalizeOptions) =>
+  Boolean(normalizeText(value, options));
+
+const rowHasStructuredHomeworkData = (row: DocRow): boolean => {
+  if (hasNormalizedText(row.huiswerk, { preserveLineBreaks: true })) {
+    return true;
+  }
+  if (hasNormalizedText(row.opdracht, { preserveLineBreaks: true })) {
+    return true;
+  }
+  if (hasNormalizedText(row.inleverdatum)) {
+    return true;
+  }
+  if (hasNormalizedText(row.notities)) {
+    return true;
+  }
+  if (row.toets) {
+    if (hasNormalizedText(row.toets.type)) {
+      return true;
+    }
+    if (hasNormalizedText(row.toets.omschrijving)) {
+      return true;
+    }
+  }
+  if (Array.isArray(row.leerdoelen) && row.leerdoelen.some((value) => hasNormalizedText(value))) {
+    return true;
+  }
+  if (Array.isArray(row.bronnen) && row.bronnen.length > 0) {
+    return true;
+  }
+  return false;
+};
+
+const isPdfDoc = (doc: DocRecord): boolean =>
+  Boolean(doc.bestand && doc.bestand.toLocaleLowerCase("nl-NL").endsWith(".pdf"));
+
+const GENERAL_WEEK_NOTE_PATTERN =
+  /(vakantie|toetsweek|projectweek|studiedag|excursie|werkweek|tentamenweek|examenweek|lesvrij|geen les)/i;
+
+const isGeneralWeekNote = (value?: string | null) => {
+  if (!value) {
+    return false;
+  }
+  return GENERAL_WEEK_NOTE_PATTERN.test(value);
 };
 
 const computeWeekAggregation = (
@@ -580,10 +717,21 @@ const computeWeekAggregation = (
     return canonicalizeIsoWeek(prevWeek, prevYear);
   };
 
+  const docHasStructuredHomework = new Map<string, boolean>();
+  for (const doc of docs) {
+    const rows = docRows[doc.fileId] ?? [];
+    const hasStructured = rows.some(
+      (row) => row && row.enabled !== false && rowHasStructuredHomeworkData(row),
+    );
+    docHasStructuredHomework.set(doc.fileId, hasStructured);
+  }
+
   for (const doc of docs) {
     if (!doc.enabled) {
       continue;
     }
+    const docIsPdf = isPdfDoc(doc);
+    const docContainsStructuredHomework = docHasStructuredHomework.get(doc.fileId) ?? false;
     const rows = docRows[doc.fileId] ?? [];
     const activeRows = rows.filter((row) => row && row.enabled !== false);
 
@@ -674,13 +822,6 @@ const computeWeekAggregation = (
         });
 
         const anchorWeekId = accumulatorEntries[0].weekId;
-        if (
-          vacationWeekSet.size > 0 &&
-          vacationWeekSet.has(anchorWeekId) &&
-          rowContainsVakantie(row)
-        ) {
-          continue;
-        }
 
         const addUnique = (arr: string[], value: string) => {
           if (!arr.includes(value)) {
@@ -706,15 +847,39 @@ const computeWeekAggregation = (
           return normalized;
         };
 
-        let vakantieOutsideHomework = false;
+        const hasHomeworkText = hasNormalizedText(row.huiswerk, {
+          preserveLineBreaks: true,
+        });
+        const hasAssignmentText = hasNormalizedText(row.opdracht, {
+          preserveLineBreaks: true,
+        });
+        const hasInleverText = hasNormalizedText(row.inleverdatum);
+        const toetsHasText = Boolean(
+          row.toets &&
+            (hasNormalizedText(row.toets.type) || hasNormalizedText(row.toets.omschrijving))
+        );
+        const hasHomeworkOrDeadlines = Boolean(
+          hasHomeworkText || hasAssignmentText || hasInleverText || toetsHasText,
+        );
+        const hasStructuredHomeworkData = rowHasStructuredHomeworkData(row);
 
+        let vakantieOutsideHomework = false;
+        const generalNoteCandidates: string[] = [];
+        const registerGeneralNote = (text?: string | null) => {
+          if (text && isGeneralWeekNote(text)) {
+            generalNoteCandidates.push(text);
+          }
+        };
+
+        const rawLesstofSource = row.onderwerp || row.les;
         const normalizedLesstof = addNormalized(
-          row.onderwerp || row.les,
+          rawLesstofSource,
           undefined,
           (accum, normalized) => {
             addUnique(accum.lesstof, normalized);
           },
         );
+        registerGeneralNote(normalizedLesstof);
         if (normalizedLesstof?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
           vakantieOutsideHomework = true;
         }
@@ -731,6 +896,21 @@ const computeWeekAggregation = (
           }
         }
 
+        const mirrorLesstofToAllColumns = (text: string, rawSource?: string | null) => {
+          const homeworkSource = rawSource
+            ? normalizeText(rawSource, { preserveLineBreaks: true })
+            : undefined;
+          const items = splitHomeworkItems(homeworkSource ?? text);
+          applyToAccumulators((accum) => {
+            addUnique(accum.huiswerk, text);
+            addUnique(accum.deadlines, text);
+            addUnique(accum.opmerkingen, text);
+            for (const item of items) {
+              addUnique(accum.huiswerkItems, item);
+            }
+          });
+        };
+
         const addHomework = (value?: string | null) => {
           const normalized = normalizeText(value, { preserveLineBreaks: true });
           if (
@@ -741,6 +921,7 @@ const computeWeekAggregation = (
             return;
           }
           if (!normalized) return;
+          registerGeneralNote(normalized);
           const items = splitHomeworkItems(normalized);
           applyToAccumulators((accum) => {
             addUnique(accum.huiswerk, normalized);
@@ -764,6 +945,7 @@ const computeWeekAggregation = (
             applyToAccumulators((accum) => {
               addUnique(accum.deadlines, label);
             });
+            registerGeneralNote(normalizedType);
           }
         }
 
@@ -791,12 +973,50 @@ const computeWeekAggregation = (
             addUnique(accum.opmerkingen, normalized);
           },
         );
+        registerGeneralNote(opmerkingenText);
         if (opmerkingenText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
           vakantieOutsideHomework = true;
         }
 
+        if (
+          normalizedLesstof &&
+          docIsPdf &&
+          !docContainsStructuredHomework &&
+          !hasStructuredHomeworkData
+        ) {
+          mirrorLesstofToAllColumns(normalizedLesstof, rawLesstofSource);
+        }
+
+        const weekLabelNote = extractWeekLabelNote(row.week_label);
+        if (weekLabelNote) {
+          const normalizedLabel = normalizeText(weekLabelNote);
+          if (normalizedLabel) {
+            applyToAccumulators((accum) => {
+              addUnique(accum.lesstof, normalizedLabel);
+              addUnique(accum.opmerkingen, normalizedLabel);
+              if (!hasHomeworkOrDeadlines) {
+                addUnique(accum.huiswerk, normalizedLabel);
+              }
+            });
+            registerGeneralNote(normalizedLabel);
+          }
+        }
+
         addHomework(row.huiswerk);
         addHomework(row.opdracht);
+
+        const generalNotes = Array.from(new Set(generalNoteCandidates.filter(Boolean)));
+        if (generalNotes.length) {
+          applyToAccumulators((accum) => {
+            for (const note of generalNotes) {
+              if (!hasHomeworkOrDeadlines) {
+                addUnique(accum.huiswerk, note);
+                addUnique(accum.deadlines, note);
+              }
+              addUnique(accum.opmerkingen, note);
+            }
+          });
+        }
 
         if (resolvedWeeks.length > 1) {
           const spanStartResolution =
@@ -1141,31 +1361,33 @@ export const useAppStore = create<State>()(
       },
       setDocRows: (fileId, rows) => {
         const state = get();
-        const nextRows = { ...state.docRows, [fileId]: rows };
-        const nextVersionRows = { ...state.versionRows };
         const doc = state.docs.find((d) => d.fileId === fileId);
+        const correctedRows = normalizeRowsForDoc(rows, doc);
+        const nextRows = { ...state.docRows, [fileId]: correctedRows };
+        const nextVersionRows = { ...state.versionRows };
         const versionId = doc?.versionId ?? null;
         if (versionId != null) {
           const entry = { ...(nextVersionRows[fileId] ?? {}) };
-          entry[versionId] = rows;
+          entry[versionId] = correctedRows;
           nextVersionRows[fileId] = entry;
         }
         const weekData = computeWeekAggregation(state.docs, nextRows, state.schoolVacations);
         set({ docRows: nextRows, weekData, versionRows: nextVersionRows });
       },
       setDocRowsBulk: (entries) => {
-        const nextRows = { ...get().docRows };
-        for (const [fileId, rows] of Object.entries(entries)) {
-          nextRows[fileId] = rows;
-        }
         const state = get();
+        const nextRows = { ...state.docRows };
+        for (const [fileId, rows] of Object.entries(entries)) {
+          const doc = state.docs.find((d) => d.fileId === fileId);
+          nextRows[fileId] = normalizeRowsForDoc(rows, doc);
+        }
         const nextVersionRows = { ...state.versionRows };
         for (const [fileId, rows] of Object.entries(entries)) {
           const doc = state.docs.find((d) => d.fileId === fileId);
           const versionId = doc?.versionId ?? null;
           if (versionId != null) {
             const map = { ...(nextVersionRows[fileId] ?? {}) };
-            map[versionId] = rows;
+            map[versionId] = nextRows[fileId];
             nextVersionRows[fileId] = map;
           }
         }
@@ -1241,13 +1463,14 @@ export const useAppStore = create<State>()(
       },
       setVersionRows: (guideId, versionId, rows) => {
         set((state) => {
-          const entry = { ...(state.versionRows[guideId] ?? {}) };
-          entry[versionId] = rows;
-          const nextVersionRows = { ...state.versionRows, [guideId]: entry };
           const doc = state.docs.find((d) => d.fileId === guideId);
+          const correctedRows = normalizeRowsForDoc(rows, doc);
+          const entry = { ...(state.versionRows[guideId] ?? {}) };
+          entry[versionId] = correctedRows;
+          const nextVersionRows = { ...state.versionRows, [guideId]: entry };
           if (doc?.versionId === versionId) {
-            const nextDocRows = { ...state.docRows, [guideId]: rows };
-          const weekData = computeWeekAggregation(state.docs, nextDocRows, state.schoolVacations);
+            const nextDocRows = { ...state.docRows, [guideId]: correctedRows };
+            const weekData = computeWeekAggregation(state.docs, nextDocRows, state.schoolVacations);
             return { versionRows: nextVersionRows, docRows: nextDocRows, weekData };
           }
           return { versionRows: nextVersionRows };
