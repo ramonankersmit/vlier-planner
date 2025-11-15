@@ -24,31 +24,9 @@ try:  # pragma: no cover - prefer package-relative imports when available
     from ..models import DocMeta, DocRow
 except ImportError:  # pragma: no cover
     from models import DocMeta, DocRow  # type: ignore
-from .parser_docx import (
-    BRON_HEADERS,
-    DATE_HEADER_KEYWORDS,
-    LEERDOEL_HEADERS,
-    HUISWERK_HEADERS,
-    KLAS_HEADERS,
-    LES_HEADER_KEYWORDS,
-    LOCATIE_HEADERS,
-    NOTITIE_HEADERS,
-    ONDERWERP_HEADERS,
-    OPDRACHT_HEADERS,
-    INLEVER_HEADERS,
-    TOETS_HEADERS,
-    WEEK_HEADER_KEYWORDS,
-    extract_schooljaar_from_text,
-    find_header_idx,
-    find_urls,
-    normalize_text,
-    parse_date_cell,
-    parse_date_range_cell,
-    parse_toets_cell,
-    parse_week_cell,
-    split_bullets,
-    vak_from_filename,
-)
+
+from .base_parser import BaseParser, RawEntry, extract_schooljaar_from_text
+from .config import get_keyword_config
 
 RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ0-9\s\-\&]+?)\s*\]")
 RE_AFTER_DASH = re.compile(r"Studiewijzer\s*[-–]\s*(.+)", re.I)
@@ -63,6 +41,33 @@ PDF_TABLE_SETTINGS = {
 
 VACATION_PATTERN = re.compile(r"(?i)vakantie")
 DEADLINE_TOETS_PATTERN = re.compile(r"(?i)\b(inlever(?:en|datum|moment)|deadline)\b")
+
+KEYWORDS = get_keyword_config()
+BASE_PARSER = BaseParser(KEYWORDS)
+
+WEEK_HEADER_KEYWORDS = KEYWORDS.week_headers
+DATE_HEADER_KEYWORDS = KEYWORDS.date_headers
+LES_HEADER_KEYWORDS = KEYWORDS.lesson_headers
+ONDERWERP_HEADERS = KEYWORDS.subject_headers
+LEERDOEL_HEADERS = KEYWORDS.objective_headers
+HUISWERK_HEADERS = KEYWORDS.homework_headers
+OPDRACHT_HEADERS = KEYWORDS.assignment_headers
+INLEVER_HEADERS = KEYWORDS.handin_headers
+TOETS_HEADERS = KEYWORDS.exam_headers
+BRON_HEADERS = KEYWORDS.resource_headers
+NOTITIE_HEADERS = KEYWORDS.note_headers
+KLAS_HEADERS = KEYWORDS.class_headers
+LOCATIE_HEADERS = KEYWORDS.location_headers
+
+normalize_text = BASE_PARSER.normalize_text
+split_bullets = BASE_PARSER.split_bullets
+find_header_idx = BASE_PARSER.find_header_idx
+parse_week_cell = BASE_PARSER.parse_week_cell
+parse_date_cell = BASE_PARSER.parse_date_cell
+parse_date_range_cell = BASE_PARSER.parse_date_range_cell
+parse_toets_cell = BASE_PARSER.parse_toets_cell
+find_urls = BASE_PARSER.find_urls
+vak_from_filename = BASE_PARSER.vak_from_filename
 
 
 def _append_text(existing: Optional[str], new_text: str) -> Optional[str]:
@@ -760,6 +765,11 @@ def extract_rows_from_pdf(path: str, filename: str) -> List[DocRow]:
                 )
 
     return rows
+
+
+def extract_entries_from_pdf(path: str, filename: str) -> List[RawEntry]:
+    rows = extract_rows_from_pdf(path, filename)
+    return BaseParser.entries_from_rows(rows, BASE_PARSER)
 
 
 def _page_texts(path: str) -> Generator[Tuple[int, int, str], None, None]:

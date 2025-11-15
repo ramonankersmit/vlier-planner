@@ -5,14 +5,13 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple, Set
 from uuid import uuid4
 
-from backend.models import DocMeta, DocRow
-from backend.parsers import extract_meta_from_docx, extract_rows_from_docx
+from backend.models import DocMeta
+from backend.parsers import RawEntry, extract_meta_from_docx, extract_entries_from_docx
 
 try:  # pragma: no cover - pdf parsing is optional in CI
-    from backend.parsers import extract_meta_from_pdf, extract_rows_from_pdf
+    from backend.parsers import extract_meta_from_pdf, extract_entries_from_pdf
 except Exception:  # pragma: no cover
-    extract_meta_from_pdf = extract_rows_from_pdf = None  # type: ignore
-
+    extract_meta_from_pdf = extract_entries_from_pdf = None  # type: ignore
 from backend.schemas.normalized import (
     Assessment,
     NormalizedModel,
@@ -134,26 +133,26 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
     parsed_at = datetime.now(timezone.utc).isoformat()
 
     meta: Optional[DocMeta] = None
-    rows: List[DocRow] = []
+    entries: List[RawEntry] = []
 
     suffix = source_path.suffix.lower()
     parse_error: Optional[Exception] = None
     if suffix == ".docx":
         try:
             meta = extract_meta_from_docx(str(source_path), source)
-            rows = extract_rows_from_docx(str(source_path), source)
+            entries = extract_entries_from_docx(str(source_path), source)
         except Exception as exc:  # pragma: no cover - defensive
             parse_error = exc
             meta = None
-            rows = []
-    elif suffix == ".pdf" and extract_meta_from_pdf and extract_rows_from_pdf:
+            entries = []
+    elif suffix == ".pdf" and extract_meta_from_pdf and extract_entries_from_pdf:
         try:
             meta = extract_meta_from_pdf(str(source_path), source)
-            rows = extract_rows_from_pdf(str(source_path), source)
+            entries = extract_entries_from_pdf(str(source_path), source)
         except Exception as exc:  # pragma: no cover - defensive
             parse_error = exc
             meta = None
-            rows = []
+            entries = []
     else:
         raise ValueError(f"Unsupported file type: {suffix or 'unknown'}")
 
@@ -228,14 +227,21 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
     session_counter = 0
     assessment_counter = 0
 
-    for row in rows:
+    for entry in entries:
         week_candidates: List[int] = []
-        if isinstance(row.weeks, list):
-            for value in row.weeks:
-                if isinstance(value, int):
-                    week_candidates.append(value)
-        if row.week is not None:
-            week_candidates.append(row.week)
+        if entry.weeks:
+            week_candidates.extend([wk for wk in entry.weeks if isinstance(wk, int)])
+        if not week_candidates and entry.week_span_start and entry.week_span_end:
+            start = entry.week_span_start
+            end = entry.week_span_end
+            if start <= end:
+                week_candidates.extend(list(range(start, end + 1)))
+            else:
+                week_candidates.extend([start, end])
+        elif not week_candidates and entry.week_span_start:
+            week_candidates.append(entry.week_span_start)
+        elif not week_candidates and entry.week_span_end:
+            week_candidates.append(entry.week_span_end)
 
         normalized_weeks: List[int] = []
         seen_weeks: Set[int] = set()
@@ -247,9 +253,9 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
                 normalized_weeks.append(candidate)
 
         week_numbers = normalized_weeks
-        if not week_numbers and row.datum:
+        if not week_numbers and entry.start_date:
             try:
-                derived = date.fromisoformat(row.datum).isocalendar().week
+                derived = date.fromisoformat(entry.start_date).isocalendar().week
                 if 1 <= derived <= 53:
                     week_numbers = [derived]
             except ValueError:
@@ -260,7 +266,7 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
                 Warning(
                     code="WEEK_MISSING",
                     message="Lesregel zonder weeknummer gevonden.",
-                    context={"source": source, "rowId": row.source_row_id},
+                    context={"source": source, "rowId": entry.source_row_id},
                 )
             )
             continue
@@ -278,62 +284,66 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
                             "weeks": out_of_range,
                             "begin": meta.beginWeek,
                             "end": meta.eindWeek,
-                            "rowId": row.source_row_id,
+                            "rowId": entry.source_row_id,
                         },
                     )
                 )
 
-        if not (row.datum or row.datum_eind):
+        if not (entry.start_date or entry.end_date):
             warnings.append(
                 Warning(
                     code="SESSION_DATE_MISSING",
                     message="Geen datum gevonden voor week.",
-                    context={"weeks": week_numbers, "source": source, "rowId": row.source_row_id},
+                    context={"weeks": week_numbers, "source": source, "rowId": entry.source_row_id},
                 )
             )
 
         week_dates: Dict[int, Optional[str]] = {}
-        if row.datum:
-            week_dates[anchor_week] = row.datum
-        if row.datum_eind:
-            week_dates[week_numbers[-1]] = row.datum_eind
+        if entry.start_date:
+            week_dates[anchor_week] = entry.start_date
+        if entry.end_date:
+            week_dates[week_numbers[-1]] = entry.end_date
 
         for wk in week_numbers:
             ref = week_dates.get(wk)
-            if ref is None and row.datum_eind and wk == week_numbers[-1]:
-                ref = row.datum_eind
+            if ref is None and entry.end_date and wk == week_numbers[-1]:
+                ref = entry.end_date
             if ref is None:
-                ref = row.datum
+                ref = entry.start_date
             _ensure_weeks(weeks, [wk], school_year, ref)
 
         session_type = "lecture"
-        if row.toets:
+        if entry.is_holiday:
+            session_type = "holiday"
+        elif entry.exam:
             session_type = "exam"
-        elif row.inleverdatum:
+        elif entry.due_date or entry.deadline_text:
             session_type = "deadline"
-        elif row.huiswerk or row.opdracht:
+        elif entry.homework or entry.assignment:
             session_type = "workshop"
 
-        topic = row.onderwerp or row.les
+        topic = entry.topic or entry.lesson
+        if entry.is_holiday and not topic:
+            topic = entry.deadline_text or "Vakantie"
 
         resources: List[Dict[str, str]] = []
-        if row.bronnen:
-            for item in row.bronnen:
+        if entry.resources:
+            for item in entry.resources:
                 if not isinstance(item, dict):
                     continue
                 url = item.get("url")
                 if not url:
                     continue
-                label = item.get("title") or url
+                label = item.get("title") or item.get("label") or url
                 resources.append({"label": label, "url": url})
 
         session_dates: Dict[int, str] = {}
         for wk in week_numbers:
             ref = week_dates.get(wk)
-            if ref is None and row.datum_eind and wk == week_numbers[-1]:
-                ref = row.datum_eind
+            if ref is None and entry.end_date and wk == week_numbers[-1]:
+                ref = entry.end_date
             if ref is None:
-                ref = row.datum
+                ref = entry.start_date
             iso_year = _resolve_year_for_week(wk, school_year, ref)
             start, _ = _week_bounds(iso_year, wk)
             session_date = ref or start
@@ -348,29 +358,29 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
                     date=session_date,
                     type=session_type,
                     topic=topic,
-                    location=row.locatie,
+                    location=entry.location,
                     resources=resources,
                 )
             )
             session_dates[wk] = session_date
 
-        toets_info = row.toets if isinstance(row.toets, dict) else None
-        if toets_info or row.inleverdatum:
+        toets_info = entry.exam if isinstance(entry.exam, dict) else None
+        deadline_hint = entry.deadline_text
+        has_deadline = bool(toets_info or entry.due_date or deadline_hint)
+        if has_deadline:
             weight, parsed_weight = _parse_weight(toets_info.get("weging") if toets_info else None)
             if toets_info and not parsed_weight:
                 warnings.append(
                     Warning(
                         code="ASSESSMENT_WEIGHT_UNKNOWN",
                         message="Geen geldige weging gevonden voor toets.",
-                        context={"weeks": week_numbers, "rowId": row.source_row_id},
+                        context={"weeks": week_numbers, "rowId": entry.source_row_id},
                     )
                 )
 
-            due_date = row.inleverdatum or session_dates.get(week_numbers[-1])
-            if not due_date and row.datum_eind:
-                due_date = row.datum_eind
-            if not due_date:
-                due_date = session_dates.get(anchor_week) or row.datum
+            due_date = entry.due_date or entry.end_date or session_dates.get(week_numbers[-1])
+            if not due_date and deadline_hint:
+                due_date = session_dates.get(anchor_week) or entry.start_date
             if not due_date:
                 due_date = session_dates.get(week_numbers[-1]) or session_dates.get(anchor_week)
 
@@ -388,7 +398,7 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
             assessment_counter += 1
             title = (toets_info or {}).get("type") if toets_info else None
             if not title:
-                title = row.opdracht or row.onderwerp or row.les or "Assessment"
+                title = deadline_hint or entry.assignment or entry.topic or entry.lesson or "Assessment"
 
             assessments.append(
                 Assessment(
