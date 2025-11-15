@@ -23,6 +23,15 @@ describe("splitHomeworkItems", () => {
     ]);
   });
 
+  it("houdt hoofdstukverwijzingen intact wanneer meerdere H-secties voorkomen", () => {
+    const input = "H2 Gemengde Opgaven 1 t/m 9 H3 Gemengde Opgaven 1 t/m 11";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11",
+    ]);
+  });
+
   it("splitst wanneer na een komma een werkwoord start", () => {
     const input = "Bestuderen Intro hoofdstuk 3, maken opdrachten 3.1, leren woordjes";
     const result = splitHomeworkItems(input);
