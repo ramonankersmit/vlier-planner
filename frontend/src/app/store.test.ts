@@ -211,6 +211,55 @@ describe("useAppStore", () => {
     expect(row?.datum_eind).toBe("2026-01-23");
   });
 
+  it("splitst import-huiswerk met zachte enters in afzonderlijke taken", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-wisb",
+      guideId: "guide-wisb",
+      vak: "Wiskunde B",
+      beginWeek: 3,
+      eindWeek: 3,
+      schooljaar: "2025/2026",
+    });
+
+    store.setDocs([meta]);
+
+    const lines = [
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11",
+      "Oefentoetsen H2",
+      "Oefentoetsen H3",
+    ];
+
+    store.setDocRows(meta.fileId, [
+      {
+        week: 3,
+        datum: "2025-09-15",
+        les: "Week 3",
+        onderwerp: null,
+        leerdoelen: null,
+        huiswerk: lines.join("\u000b"),
+        opdracht: null,
+        inleverdatum: null,
+        toets: null,
+        bronnen: null,
+        notities: null,
+        klas_of_groep: null,
+        locatie: null,
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const storedDoc = state.docs.find((doc) => doc.fileId === meta.fileId);
+    expect(storedDoc).toBeDefined();
+
+    const targetWeek = state.weekData.weeks?.find((week) => week.nr === 3);
+    expect(targetWeek).toBeDefined();
+
+    const aggregated = state.weekData.byWeek[targetWeek!.id]?.[storedDoc!.vak];
+    expect(aggregated?.huiswerkItems).toEqual(lines);
+  });
+
   it("kopieert notities uit het weeklabel naar alle kolommen wanneer er geen taken zijn", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({

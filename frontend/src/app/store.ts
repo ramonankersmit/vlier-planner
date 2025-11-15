@@ -491,9 +491,11 @@ type NormalizeOptions = {
   preserveLineBreaks?: boolean;
 };
 
+const ALT_LINE_BREAK_RE = /[\u000b\u000c\u0085\u2028\u2029]/g;
+
 const normalizeText = (value?: string | null, options?: NormalizeOptions) => {
   if (value == null) return undefined;
-  const normalizedLineBreaks = value.replace(/\r\n?/g, "\n");
+  const normalizedLineBreaks = value.replace(/\r\n?/g, "\n").replace(ALT_LINE_BREAK_RE, "\n");
   let cleaned: string;
 
   if (options?.preserveLineBreaks) {
