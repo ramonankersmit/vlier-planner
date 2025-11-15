@@ -484,7 +484,15 @@ export default function Uploads() {
     for (const file of files) {
       try {
         const responses = await apiUploadDoc(file);
-        for (const review of responses) {
+        for (const entry of responses) {
+          if (entry.status === "committed") {
+            applyCommitResult(entry.commit, entry.rows, {
+              diffSummary: entry.diffSummary,
+              diff: entry.diff,
+            });
+            continue;
+          }
+          const review = entry.review;
           if (hasReviewWarnings(review)) {
             pending.push(review);
             continue;

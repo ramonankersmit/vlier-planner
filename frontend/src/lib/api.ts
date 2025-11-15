@@ -174,7 +174,22 @@ export async function apiDeleteAllDocs(): Promise<void> {
   if (!r.ok) throw new Error(`delete_all_docs failed: ${r.status}`);
 }
 
-export async function apiUploadDoc(file: File): Promise<ReviewDraft[]> {
+export type UploadPendingEntry = {
+  status: "pending";
+  review: ReviewDraft;
+};
+
+export type UploadCommittedEntry = {
+  status: "committed";
+  commit: CommitResponse;
+  rows: DocRow[];
+  diffSummary: DiffSummary;
+  diff: DiffRow[];
+};
+
+export type UploadResponseEntry = UploadPendingEntry | UploadCommittedEntry;
+
+export async function apiUploadDoc(file: File): Promise<UploadResponseEntry[]> {
   const fd = new FormData();
   fd.append("file", file);
   const r = await fetch(`${BASE}/api/uploads`, {
@@ -185,7 +200,7 @@ export async function apiUploadDoc(file: File): Promise<ReviewDraft[]> {
     const txt = await r.text();
     throw new Error(`upload failed: ${r.status} – ${txt}`);
   }
-  return (await r.json()) as ReviewDraft[];
+  return (await r.json()) as UploadResponseEntry[];
 }
 
 export async function apiGetDocRows(fileId: string, versionId?: number): Promise<DocRow[]> {

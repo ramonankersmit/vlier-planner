@@ -556,6 +556,104 @@ def _build_pending_payload(
     return payload
 
 
+def _has_duplicate_dates(rows: List[DocRow]) -> bool:
+    seen_dates: set[str] = set()
+    for row in rows:
+        if row.enabled is False:
+            continue
+        value = getattr(row, "datum", None)
+        if not isinstance(value, str):
+            continue
+        normalized = value.strip()
+        if not normalized:
+            continue
+        if normalized in seen_dates:
+            return True
+        seen_dates.add(normalized)
+    return False
+
+
+def _should_auto_commit(payload: Dict[str, Any]) -> bool:
+    warnings = payload.get("warnings") or {}
+    if warnings.get("unknownSubject") or warnings.get("missingWeek"):
+        return False
+    rows_data = payload.get("rows", [])
+    rows: List[DocRow] = []
+    for row in rows_data:
+        try:
+            rows.append(DocRow(**row))
+        except Exception:
+            continue
+    if not rows:
+        return False
+    return not _has_duplicate_dates(rows)
+
+
+def _commit_pending_payload(parse_id: str, pending: Dict[str, Any]) -> Dict[str, Any]:
+    meta = DocMeta(**pending["meta"])
+    rows = _ensure_rows([DocRow(**row) for row in pending.get("rows", [])], meta=meta)
+
+    guide_id = _assign_ids(meta)
+    guide = GUIDES.get(guide_id)
+    version_id = _next_version_id(guide)
+
+    now = datetime.now(timezone.utc).isoformat()
+    meta.uploadedAt = now
+    diff_summary, diff_detail = _diff_for_meta(meta, rows)
+    computed_warnings = _compute_warnings(meta, rows, ignore_disabled_duplicates=True)
+    pending_warnings = pending.get("warnings")
+    if isinstance(pending_warnings, dict):
+        warnings = {
+            "unknownSubject": bool(
+                pending_warnings.get("unknownSubject", computed_warnings["unknownSubject"])
+            ),
+            "missingWeek": bool(
+                pending_warnings.get("missingWeek", computed_warnings["missingWeek"])
+            ),
+            "duplicateDate": bool(
+                pending_warnings.get("duplicateDate", computed_warnings["duplicateDate"])
+            ),
+            "duplicateWeek": bool(
+                pending_warnings.get("duplicateWeek", computed_warnings["duplicateWeek"])
+            ),
+        }
+    else:
+        warnings = computed_warnings
+
+    version = StudyGuideVersion(
+        version_id=version_id,
+        file_name=pending.get("fileName", meta.bestand),
+        created_at=now,
+        meta=meta,
+        rows=rows,
+        diff_summary=diff_summary,
+        diff=diff_detail,
+        warnings=warnings,
+    )
+
+    dest_path = _version_file_path(guide_id, version_id, version.file_name)
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    stored_rel = pending.get("storedFile")
+    stored_path = data_store.pending_dir / stored_rel if stored_rel else None
+    if stored_path and stored_path.exists():
+        shutil.copyfile(stored_path, dest_path)
+
+    if not guide:
+        guide = StudyGuide(guide_id=guide_id, versions=[version])
+        GUIDES[guide_id] = guide
+    else:
+        guide.versions.append(version)
+
+    _refresh_docs_index()
+    _save_state()
+    _remove_pending(parse_id)
+
+    return {
+        "guideId": guide_id,
+        "version": _version_payload(version),
+    }
+
+
 def _remove_pending(parse_id: str) -> None:
     PENDING_PARSES.pop(parse_id, None)
     json_path = _pending_json_path(parse_id)
@@ -974,7 +1072,19 @@ async def upload_doc(file: UploadFile = File(...)):
             uploaded_at=uploaded_at,
         )
         _save_pending(payload)
-        responses.append(payload)
+        if _should_auto_commit(payload):
+            commit_result = _commit_pending_payload(parse_id, payload)
+            responses.append(
+                {
+                    "status": "committed",
+                    "commit": commit_result,
+                    "rows": payload["rows"],
+                    "diffSummary": payload["diffSummary"],
+                    "diff": payload["diff"],
+                }
+            )
+        else:
+            responses.append({"status": "pending", "review": payload})
 
     try:
         temp_path.unlink(missing_ok=True)
@@ -1092,62 +1202,7 @@ def _next_version_id(guide: Optional[StudyGuide]) -> int:
 @app.post("/api/reviews/{parse_id}/commit")
 def commit_review(parse_id: str):
     pending = _pending_or_404(parse_id)
-    meta = DocMeta(**pending["meta"])
-    rows = _ensure_rows([DocRow(**row) for row in pending.get("rows", [])], meta=meta)
-
-    guide_id = _assign_ids(meta)
-    guide = GUIDES.get(guide_id)
-    version_id = _next_version_id(guide)
-
-    now = datetime.now(timezone.utc).isoformat()
-    meta.uploadedAt = now
-    diff_summary, diff_detail = _diff_for_meta(meta, rows)
-    computed_warnings = _compute_warnings(meta, rows, ignore_disabled_duplicates=True)
-    pending_warnings = pending.get("warnings")
-    if isinstance(pending_warnings, dict):
-        warnings = {
-            "unknownSubject": bool(pending_warnings.get("unknownSubject", computed_warnings["unknownSubject"])),
-            "missingWeek": bool(pending_warnings.get("missingWeek", computed_warnings["missingWeek"])),
-            "duplicateDate": bool(pending_warnings.get("duplicateDate", computed_warnings["duplicateDate"])),
-            "duplicateWeek": bool(pending_warnings.get("duplicateWeek", computed_warnings["duplicateWeek"])),
-        }
-    else:
-        warnings = computed_warnings
-
-    version = StudyGuideVersion(
-        version_id=version_id,
-        file_name=pending.get("fileName", meta.bestand),
-        created_at=now,
-        meta=meta,
-        rows=rows,
-        diff_summary=diff_summary,
-        diff=diff_detail,
-        warnings=warnings,
-    )
-
-    dest_path = _version_file_path(guide_id, version_id, version.file_name)
-    dest_path.parent.mkdir(parents=True, exist_ok=True)
-    stored_rel = pending.get("storedFile")
-    stored_path = (
-        data_store.pending_dir / stored_rel if stored_rel else None
-    )
-    if stored_path and stored_path.exists():
-        shutil.copyfile(stored_path, dest_path)
-
-    if not guide:
-        guide = StudyGuide(guide_id=guide_id, versions=[version])
-        GUIDES[guide_id] = guide
-    else:
-        guide.versions.append(version)
-
-    _refresh_docs_index()
-    _save_state()
-    _remove_pending(parse_id)
-
-    return {
-        "guideId": guide_id,
-        "version": _version_payload(version),
-    }
+    return _commit_pending_payload(parse_id, pending)
 
 
 @app.delete("/api/reviews/{parse_id}")

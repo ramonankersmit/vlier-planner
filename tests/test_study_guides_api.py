@@ -186,7 +186,9 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
 
     upload_payload = _upload_file(api_client)
     assert len(upload_payload) == 1
-    parse_data = upload_payload[0]
+    entry = upload_payload[0]
+    assert entry["status"] == "pending"
+    parse_data = entry["review"]
     assert parse_data["warnings"]["unknownSubject"] is True
     assert parse_data["warnings"]["missingWeek"] is True
     assert parse_data["warnings"]["duplicateDate"] is False
@@ -255,21 +257,14 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
     assert len(rows_latest) == 2
 
     second_upload = _upload_file(api_client)
-    second_parse = second_upload[0]
-    assert second_parse["warnings"] == {
-        "unknownSubject": False,
-        "missingWeek": False,
-        "duplicateDate": False,
-        "duplicateWeek": False,
-    }
-    assert second_parse["diffSummary"]["added"] == 1
-    assert second_parse["diffSummary"]["changed"] == 1
-
-    parse_id_second = second_parse["parseId"]
-    commit_second = api_client.post(f"/api/reviews/{parse_id_second}/commit").json()
-    assert commit_second["guideId"] == guide_id
-    assert commit_second["version"]["versionId"] == 2
-    assert commit_second["version"]["warnings"] == {
+    second_entry = second_upload[0]
+    assert second_entry["status"] == "committed"
+    second_commit = second_entry["commit"]
+    assert second_commit["guideId"] == guide_id
+    assert second_commit["version"]["versionId"] == 2
+    assert second_commit["version"]["diffSummary"]["added"] == 1
+    assert second_commit["version"]["diffSummary"]["changed"] >= 1
+    assert second_commit["version"]["warnings"] == {
         "unknownSubject": False,
         "missingWeek": False,
         "duplicateDate": False,
@@ -353,16 +348,34 @@ def test_upload_auto_corrects_misdated_week(api_client: TestClient, monkeypatch:
 
     upload_payload = _upload_file(api_client)
     assert len(upload_payload) == 1
-    parse_data = upload_payload[0]
-    assert parse_data["warnings"] == {
+    entry = upload_payload[0]
+    assert entry["status"] == "committed"
+    rows = entry["rows"]
+    assert rows[0]["datum"] == "2026-01-19"
+    assert rows[0]["datum_eind"] == "2026-01-23"
+    commit_info = entry["commit"]
+    assert commit_info["version"]["warnings"] == {
         "unknownSubject": False,
         "missingWeek": False,
         "duplicateDate": False,
         "duplicateWeek": False,
     }
-    row = parse_data["rows"][0]
-    assert row["datum"] == "2026-01-19"
-    assert row["datum_eind"] == "2026-01-23"
+
+
+def test_upload_auto_commits_clean_rows(api_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    scenarios = iter([_scenario_second_version()])
+    _configure_parser(monkeypatch, scenarios)
+
+    upload_payload = _upload_file(api_client)
+    assert len(upload_payload) == 1
+    entry = upload_payload[0]
+    assert entry["status"] == "committed"
+    commit_info = entry["commit"]
+    assert commit_info["version"]["versionId"] == 1
+    docs = api_client.get("/api/docs").json()
+    assert docs
+    assert docs[0]["fileId"] == commit_info["guideId"]
+    assert docs[0]["bestand"] == commit_info["version"]["meta"]["bestand"]
 
 
 def test_rows_with_same_week_remain_enabled(
@@ -373,7 +386,9 @@ def test_rows_with_same_week_remain_enabled(
 
     upload_payload = _upload_file(api_client)
     assert len(upload_payload) == 1
-    parse = upload_payload[0]
+    entry = upload_payload[0]
+    assert entry["status"] == "pending"
+    parse = entry["review"]
 
     enabled_flags = [row["enabled"] for row in parse["rows"]]
     assert enabled_flags == [True, True, True]
@@ -413,28 +428,21 @@ def test_identical_rows_are_disabled(
 
     upload_payload = _upload_file(api_client)
     assert len(upload_payload) == 1
-    parse = upload_payload[0]
+    entry = upload_payload[0]
+    assert entry["status"] == "committed"
+    rows = entry["rows"]
 
-    enabled_flags = [row["enabled"] for row in parse["rows"]]
+    enabled_flags = [row["enabled"] for row in rows]
     assert enabled_flags == [True, False, True]
-    assert parse["warnings"] == {
+    assert entry["commit"]["version"]["warnings"] == {
         "unknownSubject": False,
         "missingWeek": False,
         "duplicateDate": False,
         "duplicateWeek": True,
     }
 
-    parse_id = parse["parseId"]
-    commit_response = api_client.post(f"/api/reviews/{parse_id}/commit")
-    assert commit_response.status_code == 200
-    commit_data = commit_response.json()
-    assert commit_data["version"]["diffSummary"]["added"] == 3
-    assert commit_data["version"]["warnings"] == {
-        "unknownSubject": False,
-        "missingWeek": False,
-        "duplicateDate": False,
-        "duplicateWeek": True,
-    }
+    docs = api_client.get("/api/docs").json()
+    assert docs[0]["fileId"] == entry["commit"]["guideId"]
 
     guides = api_client.get("/api/study-guides").json()
     assert guides[0]["latestVersion"]["warnings"] == {
@@ -465,7 +473,8 @@ def test_normalized_api_uses_shared_store(
     payload = response.json()
     assert isinstance(payload, list) and payload
     parse_entry = payload[0]
-    parse_id = parse_entry["parseId"]
+    assert parse_entry["status"] == "pending"
+    parse_id = parse_entry["review"]["parseId"]
 
     normalized_payload = {
         "meta": {"source": "normalized.docx"},

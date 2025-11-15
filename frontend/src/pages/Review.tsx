@@ -249,6 +249,11 @@ export default function Review() {
       })
       .catch((err) => {
         if (ignore) return;
+        if (err instanceof Error && /get_review failed: 404/.test(err.message)) {
+          removePendingReview(parseId);
+          setError(null);
+          return;
+        }
         const message = err instanceof Error ? err.message : "Kon review niet laden";
         setError(message);
       })

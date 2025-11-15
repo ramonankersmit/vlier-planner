@@ -5,7 +5,14 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import Uploads from "../Uploads";
 import { useAppStore } from "../../app/store";
-import type { CommitResponse, DocMeta, DocRow, ReviewDraft } from "../../lib/api";
+import type {
+  CommitResponse,
+  DocMeta,
+  DocRow,
+  ReviewDraft,
+  UploadCommittedEntry,
+  UploadPendingEntry,
+} from "../../lib/api";
 
 vi.mock("../../lib/api", async () => {
   const actual = await vi.importActual<typeof import("../../lib/api")>("../../lib/api");
@@ -80,6 +87,22 @@ const makeReview = (overrides?: Partial<ReviewDraft>): ReviewDraft => ({
   ...overrides,
 });
 
+const makeCommittedEntry = (
+  review: ReviewDraft,
+  commit: CommitResponse
+): UploadCommittedEntry => ({
+  status: "committed",
+  commit,
+  rows: review.rows,
+  diffSummary: review.diffSummary,
+  diff: review.diff,
+});
+
+const makePendingEntry = (review: ReviewDraft): UploadPendingEntry => ({
+  status: "pending",
+  review,
+});
+
 describe("Uploads page flow", () => {
   beforeEach(() => {
     useAppStore.getState().resetAppState();
@@ -111,7 +134,7 @@ describe("Uploads page flow", () => {
       },
     };
 
-    mockedApi.apiUploadDoc.mockResolvedValue([review]);
+    mockedApi.apiUploadDoc.mockResolvedValue([makeCommittedEntry(review, commitResponse)]);
     mockedApi.apiCommitReview.mockResolvedValue(commitResponse);
 
     const user = userEvent.setup();
@@ -134,7 +157,7 @@ describe("Uploads page flow", () => {
     });
 
     await waitFor(() => expect(mockedApi.apiUploadDoc).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(mockedApi.apiCommitReview).toHaveBeenCalledWith(review.parseId));
+    expect(mockedApi.apiCommitReview).not.toHaveBeenCalled();
 
     await waitFor(() => {
       const state = useAppStore.getState();
@@ -176,7 +199,7 @@ describe("Uploads page flow", () => {
       },
     };
 
-    mockedApi.apiUploadDoc.mockResolvedValue([review]);
+    mockedApi.apiUploadDoc.mockResolvedValue([makeCommittedEntry(review, commitResponse)]);
     mockedApi.apiCommitReview.mockResolvedValue(commitResponse);
 
     const user = userEvent.setup();
@@ -199,7 +222,7 @@ describe("Uploads page flow", () => {
     });
 
     await waitFor(() => expect(mockedApi.apiUploadDoc).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(mockedApi.apiCommitReview).toHaveBeenCalledWith(review.parseId));
+    expect(mockedApi.apiCommitReview).not.toHaveBeenCalled();
 
     await waitFor(() => {
       const state = useAppStore.getState();
@@ -208,6 +231,50 @@ describe("Uploads page flow", () => {
     });
 
     expect(await screen.findByText(/Dubbele week/)).toBeInTheDocument();
+  });
+
+  it("plaatst uploads met blokkades in de reviewwachtrij", async () => {
+    const review = makeReview({
+      parseId: "parse-pending",
+      meta: makeMeta({ bestand: "pending.docx", vak: "" }),
+      warnings: {
+        unknownSubject: true,
+        missingWeek: false,
+        duplicateDate: false,
+        duplicateWeek: false,
+      },
+    });
+
+    mockedApi.apiUploadDoc.mockResolvedValue([makePendingEntry(review)]);
+
+    const user = userEvent.setup();
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/uploads"]}>
+        <Routes>
+          <Route path="/uploads" element={<Uploads />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["fake"], "pending.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+
+    await act(async () => {
+      await user.upload(fileInput, file);
+    });
+
+    await waitFor(() => expect(mockedApi.apiUploadDoc).toHaveBeenCalledTimes(1));
+    expect(mockedApi.apiCommitReview).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      const state = useAppStore.getState();
+      expect(state.pendingReviews[review.parseId]).toBeTruthy();
+    });
+
+    expect(await screen.findByText(/Review vereist/)).toBeInTheDocument();
   });
 
   it("toont pending review met waarschuwingen en start de wizard via de reviewknop", async () => {
