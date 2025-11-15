@@ -1,4 +1,6 @@
 const BULLET_RE = /[•●◦▪▫]/g;
+const NUMBER_OPGAVEN_SPLIT_RE = /\b\d+\s+(?=Opgaven\b)/gi;
+const VOORKENNIS_HEADING_RE = /Voorkennis/gi;
 const BASE_SPLIT_RE = /[;\r\n]/;
 const VERB_AFTER_COMMA_WORDS = [
   "bestudeer",
@@ -99,6 +101,7 @@ const KEYWORD_PATTERNS = [
   "Hoofdstuk\\s+\\d+",
   "Bl(?:z|ad)\\.?\\s*\\d+",
   "§\\s*\\d+",
+  "Voorkennis(?:\\s*[:\-])?",
 ];
 
 type KeywordRule = {
@@ -138,9 +141,28 @@ function splitOnKeywordRule(value: string, rule: KeywordRule): string[] {
   return pieces.length > 0 ? pieces : [trimmed];
 }
 
+function insertLineBreakBeforeVoorkennis(value: string): string {
+  VOORKENNIS_HEADING_RE.lastIndex = 0;
+  return value.replace(
+    VOORKENNIS_HEADING_RE,
+    (match, offset: number, fullString: string) => {
+      if (offset === 0) {
+        return match;
+      }
+      const previousChar = fullString[offset - 1];
+      if (previousChar === "\n" || previousChar === "\r" || previousChar === ";") {
+        return match;
+      }
+      return `\n${match}`;
+    }
+  );
+}
+
 export function splitHomeworkItems(raw?: string | null): string[] {
   if (!raw) return [];
-  const sanitized = raw.replace(BULLET_RE, "\n");
+  const sanitized = insertLineBreakBeforeVoorkennis(
+    raw.replace(BULLET_RE, "\n").replace(NUMBER_OPGAVEN_SPLIT_RE, "\n")
+  );
   const initialParts = sanitized
     .split(BASE_SPLIT_RE)
     .map((part) => part.trim())

@@ -50,4 +50,22 @@ describe("splitHomeworkItems", () => {
       "Maak een samenvatting van paragraaf 3.2",
     ]);
   });
+
+  it("maakt een aparte taak voor een Voorkennis-sectie", () => {
+    const input = "Lesstof: hoofdstuk 4 Voorkennis: herhaal paragraaf 3";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "Lesstof: hoofdstuk 4",
+      "Voorkennis: herhaal paragraaf 3",
+    ]);
+  });
+
+  it("splitst wanneer een nummer direct gevolgd wordt door Opgaven", () => {
+    const input = "Bestudeer paragraaf 5 1 Opgaven 3 t/m 5";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "Bestudeer paragraaf 5",
+      "Opgaven 3 t/m 5",
+    ]);
+  });
 });
