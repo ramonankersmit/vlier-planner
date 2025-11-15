@@ -1,7 +1,13 @@
 const BULLET_RE = /[•●◦▪▫]/g;
 const NUMBER_OPGAVEN_SPLIT_RE = /\b(?:[A-Za-z]+\d+|\d+)\s+(?=Opgaven\b)/gi;
 const VOORKENNIS_HEADING_RE = /\bVoorkennis\b/g;
-const BASE_SPLIT_RE = /[;\r\n]/;
+const LINE_BREAK_CHARS = /[;\r\n\u000b\u000c\u0085\u2028\u2029]/;
+
+function isLineBreakChar(char?: string): boolean {
+  if (!char) return false;
+  LINE_BREAK_CHARS.lastIndex = 0;
+  return LINE_BREAK_CHARS.test(char);
+}
 const VERB_AFTER_COMMA_WORDS = [
   "bestudeer",
   "bestuderen",
@@ -48,6 +54,7 @@ const VERB_WORD_RE = new RegExp(
   `\\b(?:${VERB_AFTER_COMMA_WORDS.join("|")})\\b`,
   "gi"
 );
+const PREFIX_LABEL_RE = /[:;]/;
 const TRAILING_VERB_SEPARATOR_RE = /\s*(?:,|\ben\b|\bof\b|&|\+|\/|-)\s*$/i;
 
 function stripTrailingVerbSeparator(value: string): string {
@@ -93,7 +100,23 @@ function splitOnHomeworkVerbs(value: string): string[] {
   }
   return parts;
 }
+
+function prefixContainsVerb(value: string): boolean {
+  if (!value) return false;
+  VERB_WORD_RE.lastIndex = 0;
+  return VERB_WORD_RE.test(value);
+}
+
+function shouldRepeatPrefix(prefix: string): boolean {
+  if (!prefix) return false;
+  if (prefixContainsVerb(prefix)) {
+    return true;
+  }
+  return PREFIX_LABEL_RE.test(prefix);
+}
 const KEYWORD_PATTERNS = [
+  "\\bOefentoets(?:en)?\\b",
+  "\\bH\\d+(?:\\.\\d+)?(?=\\s+[A-Za-zÀ-ÖØ-öø-ÿ])",
   "Opg\\.?\\s*\\d+(?:\\.\\d+)*[a-z]?",
   "Opgaven\\s+\\d+",
   "Opdrachten?\\s+\\d+",
@@ -111,6 +134,14 @@ type KeywordRule = {
 const KEYWORD_RULES: KeywordRule[] = KEYWORD_PATTERNS.map((pattern) => ({
   occurrence: new RegExp(pattern, "gi"),
 }));
+const KEYWORD_MATCHERS = KEYWORD_PATTERNS.map(
+  (pattern) => new RegExp(pattern, "i")
+);
+
+function containsKeyword(value: string): boolean {
+  if (!value) return false;
+  return KEYWORD_MATCHERS.some((matcher) => matcher.test(value));
+}
 
 function splitOnKeywordRule(value: string, rule: KeywordRule): string[] {
   const trimmed = value.trim();
@@ -123,13 +154,17 @@ function splitOnKeywordRule(value: string, rule: KeywordRule): string[] {
   }
 
   const prefix = trimmed.slice(0, matches[0].index ?? 0).trim();
+  const repeatPrefix = shouldRepeatPrefix(prefix);
   const pieces: string[] = [];
+  if (prefix && !repeatPrefix && containsKeyword(prefix)) {
+    pieces.push(prefix);
+  }
 
   for (let index = 0; index < matches.length; index += 1) {
     const start = matches[index].index ?? 0;
     const end = matches[index + 1]?.index ?? trimmed.length;
     const chunk = trimmed.slice(start, end).trim();
-    const combined = prefix ? `${prefix} ${chunk}` : chunk;
+    const combined = repeatPrefix && prefix ? `${prefix} ${chunk}` : chunk;
     const cleaned = stripTrailingVerbSeparator(combined)
       .replace(/\s+/g, " ")
       .trim();
@@ -150,7 +185,7 @@ function insertLineBreakBeforeVoorkennis(value: string): string {
         return match;
       }
       const previousChar = fullString[offset - 1];
-      if (previousChar === "\n" || previousChar === "\r" || previousChar === ";") {
+      if (isLineBreakChar(previousChar)) {
         return match;
       }
       return `\n${match}`;
@@ -164,7 +199,7 @@ export function splitHomeworkItems(raw?: string | null): string[] {
     raw.replace(BULLET_RE, "\n").replace(NUMBER_OPGAVEN_SPLIT_RE, (match) => `${match.trimEnd()}\n`)
   );
   const initialParts = sanitized
-    .split(BASE_SPLIT_RE)
+    .split(LINE_BREAK_CHARS)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
 

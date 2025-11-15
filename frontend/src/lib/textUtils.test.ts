@@ -7,6 +7,71 @@ describe("splitHomeworkItems", () => {
     expect(result).toEqual(["Bestudeer paragraaf 3", "Maak opdrachten 1-3"]);
   });
 
+  it("splitst ook wanneer regels met een zachte enter (Shift+Enter) gescheiden zijn", () => {
+    const input = [
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11",
+      "Oefentoetsen H2",
+      "Oefentoetsen H3",
+    ].join("\u000b");
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11",
+      "Oefentoetsen H2",
+      "Oefentoetsen H3",
+    ]);
+  });
+
+  it("houdt Oefentoetsen gescheiden wanneer ze direct achter een hoofdstukregel staan", () => {
+    const input = [
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11 Oefentoetsen H2 Oefentoetsen H3",
+      "Toetsweek 2",
+    ].join("\u000b");
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11",
+      "Oefentoetsen H2",
+      "Oefentoetsen H3",
+      "Toetsweek 2",
+    ]);
+  });
+
+  it("houdt hoofdstukverwijzingen intact wanneer meerdere H-secties voorkomen", () => {
+    const input = "H2 Gemengde Opgaven 1 t/m 9 H3 Gemengde Opgaven 1 t/m 11";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11",
+    ]);
+  });
+
+  it("maakt aparte taken voor elke Oefentoets", () => {
+    const input = "Oefentoets H2 Oefentoets H3";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual(["Oefentoets H2", "Oefentoets H3"]);
+  });
+
+  it("splitst ook wanneer Oefentoetsen meerdere keren op één regel staan", () => {
+    const input = "Oefentoetsen H2 Oefentoetsen H3";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual(["Oefentoetsen H2", "Oefentoetsen H3"]);
+  });
+
+  it("houdt opmerkingen achter de laatste Oefentoets bij de juiste taak", () => {
+    const input = "Oefentoetsen H2 Oefentoetsen H3 (Magister)";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual(["Oefentoetsen H2", "Oefentoetsen H3 (Magister)"]);
+  });
+
+  it("behoudt hoofdstuknummers wanneer er verbindingswoorden tussen Oefentoetsen staan", () => {
+    const input = "Oefentoetsen H2 en Oefentoetsen H3";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual(["Oefentoetsen H2", "Oefentoetsen H3"]);
+  });
+
   it("splitst wanneer na een komma een werkwoord start", () => {
     const input = "Bestuderen Intro hoofdstuk 3, maken opdrachten 3.1, leren woordjes";
     const result = splitHomeworkItems(input);
@@ -48,6 +113,15 @@ describe("splitHomeworkItems", () => {
     expect(result).toEqual([
       "Maak een samenvatting van paragraaf 3.1",
       "Maak een samenvatting van paragraaf 3.2",
+    ]);
+  });
+
+  it("behoudt labels met dubbelepunt wanneer meerdere paragrafen volgen", () => {
+    const input = "Lesstof: hoofdstuk 4 paragraaf 4.1 en paragraaf 4.2";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "Lesstof: hoofdstuk 4 paragraaf 4.1",
+      "Lesstof: hoofdstuk 4 paragraaf 4.2",
     ]);
   });
 
