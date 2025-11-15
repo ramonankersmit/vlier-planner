@@ -1387,6 +1387,7 @@ export const useAppStore = create<State>()(
       setActiveReview: (parseId) => set({ activeReviewId: parseId }),
       applyCommitResult: (commit, rows, diff) => {
         const { guideId, version } = commit;
+        const correctedRows = normalizeRowsForDoc(rows, version.meta);
         set((state) => {
           const nextDocs = (() => {
             const normalizedVak = formatVakName(version.meta.vak);
@@ -1429,9 +1430,9 @@ export const useAppStore = create<State>()(
           }
           const nextVersionRows = { ...state.versionRows };
           const versionEntry = { ...(nextVersionRows[guideId] ?? {}) };
-          versionEntry[version.versionId] = rows;
+          versionEntry[version.versionId] = correctedRows;
           nextVersionRows[guideId] = versionEntry;
-          const nextDocRows = { ...state.docRows, [guideId]: rows };
+          const nextDocRows = { ...state.docRows, [guideId]: correctedRows };
           const weekData = computeWeekAggregation(nextDocs, nextDocRows, state.schoolVacations);
           const nextStudyGuides = (() => {
             const existing = state.studyGuides.find((g) => g.guideId === guideId);
