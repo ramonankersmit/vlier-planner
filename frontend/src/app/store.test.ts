@@ -224,11 +224,17 @@ describe("useAppStore", () => {
 
     store.setDocs([meta]);
 
-    const lines = [
+    const rawLines = [
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11 Oefentoetsen H2 Oefentoetsen H3",
+      "Toetsweek 2",
+    ];
+    const expectedItems = [
       "H2 Gemengde Opgaven 1 t/m 9",
       "H3 Gemengde Opgaven 1 t/m 11",
       "Oefentoetsen H2",
       "Oefentoetsen H3",
+      "Toetsweek 2",
     ];
 
     store.setDocRows(meta.fileId, [
@@ -238,7 +244,7 @@ describe("useAppStore", () => {
         les: "Week 3",
         onderwerp: null,
         leerdoelen: null,
-        huiswerk: lines.join("\u000b"),
+        huiswerk: rawLines.join("\u000b"),
         opdracht: null,
         inleverdatum: null,
         toets: null,
@@ -257,7 +263,7 @@ describe("useAppStore", () => {
     expect(targetWeek).toBeDefined();
 
     const aggregated = state.weekData.byWeek[targetWeek!.id]?.[storedDoc!.vak];
-    expect(aggregated?.huiswerkItems).toEqual(lines);
+    expect(aggregated?.huiswerkItems).toEqual(expectedItems);
   });
 
   it("kopieert notities uit het weeklabel naar alle kolommen wanneer er geen taken zijn", () => {

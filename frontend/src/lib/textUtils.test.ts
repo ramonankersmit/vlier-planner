@@ -23,6 +23,22 @@ describe("splitHomeworkItems", () => {
     ]);
   });
 
+  it("houdt Oefentoetsen gescheiden wanneer ze direct achter een hoofdstukregel staan", () => {
+    const input = [
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11 Oefentoetsen H2 Oefentoetsen H3",
+      "Toetsweek 2",
+    ].join("\u000b");
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11",
+      "Oefentoetsen H2",
+      "Oefentoetsen H3",
+      "Toetsweek 2",
+    ]);
+  });
+
   it("houdt hoofdstukverwijzingen intact wanneer meerdere H-secties voorkomen", () => {
     const input = "H2 Gemengde Opgaven 1 t/m 9 H3 Gemengde Opgaven 1 t/m 11";
     const result = splitHomeworkItems(input);
@@ -97,6 +113,15 @@ describe("splitHomeworkItems", () => {
     expect(result).toEqual([
       "Maak een samenvatting van paragraaf 3.1",
       "Maak een samenvatting van paragraaf 3.2",
+    ]);
+  });
+
+  it("behoudt labels met dubbelepunt wanneer meerdere paragrafen volgen", () => {
+    const input = "Lesstof: hoofdstuk 4 paragraaf 4.1 en paragraaf 4.2";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "Lesstof: hoofdstuk 4 paragraaf 4.1",
+      "Lesstof: hoofdstuk 4 paragraaf 4.2",
     ]);
   });
 
