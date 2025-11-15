@@ -81,6 +81,53 @@ def _append_text(existing: Optional[str], new_text: str) -> Optional[str]:
     return new_norm
 
 
+def _should_ignore_homework_text(entry: dict, hw_text: str) -> bool:
+    """Heuristiek om verkeerd toegewezen huiswerkregels te negeren.
+
+    Bij sommige PDF-tabellen lopen lange lessenbeschrijvingen door in een
+    naastgelegen kolom waardoor pdfplumber de vervolgregel als huiswerk
+    teruggeeft. Zolang er nog geen huiswerk in ``entry`` staat en de tekst
+    nagenoeg gelijk is aan het onderwerp of de les, slaan we de regel over.
+    """
+
+    if not hw_text or entry.get("huiswerk"):
+        return False
+
+    hw_norm = normalize_text(hw_text)
+    if not hw_norm:
+        return False
+
+    hw_lower = hw_norm.lower()
+    hw_tokens = [token for token in hw_lower.split() if token]
+
+    def _token_overlap(a: List[str], b: List[str]) -> float:
+        if not a or not b:
+            return 0.0
+        overlap = sum(1 for token in a if token in b)
+        min_len = min(len(a), len(b))
+        if min_len == 0:
+            return 0.0
+        return overlap / min_len
+
+    for field in ("onderwerp", "les"):
+        candidate = normalize_text(entry.get(field))
+        if not candidate:
+            continue
+        candidate_lower = candidate.lower()
+        if candidate_lower == hw_lower:
+            return True
+        candidate_tokens = [token for token in candidate_lower.split() if token]
+        if len(hw_tokens) >= 4 and len(candidate_tokens) >= 4:
+            if _token_overlap(hw_tokens, candidate_tokens) >= 0.8:
+                return True
+        shorter = min(len(hw_lower), len(candidate_lower))
+        longer = max(len(hw_lower), len(candidate_lower))
+        if longer and shorter / longer >= 0.9:
+            if hw_lower in candidate_lower or candidate_lower in hw_lower:
+                return True
+    return False
+
+
 _VAK_STOPWORDS = re.compile(
     r"(?i)\b(studiewijzer|planner|periode|week|huiswerk|opmerkingen|lesstof|toetsen|deadlines?)\b"
 )
@@ -331,7 +378,7 @@ def _update_pdf_entry(
         hw_text = _cell_text_with_neighbors(
             row, hw_col, headers, _header_value(headers, hw_col)
         )
-        if hw_text:
+        if hw_text and not _should_ignore_homework_text(entry, hw_text):
             entry["huiswerk"] = _append_text(entry.get("huiswerk"), hw_text)
 
     opd_col = idx.get("opdracht")
