@@ -362,9 +362,19 @@ class BaseParser:
             .replace("‑", "-")
         )
 
-        # Verwijder expliciete datumnotaties (dd-mm-yyyy of dd/mm/yyyy) zodat
-        # RE_WEEK_PAIR hieronder niet per ongeluk dagen/maanden als weken
-        # herkent.
+        # Verwijder expliciete datumreeksen ("26-08 t/m 30-08" of
+        # "26/08/2025 t/m 30/08/2025") voordat we naar weeknummers zoeken. De
+        # dag/maandcombinaties vallen namelijk ook binnen het bereik 1-53 en
+        # werden voorheen aangezien voor extra weken.
+        cleaned = re.sub(
+            r"\b\d{1,2}\s*[-/]\s*\d{1,2}(?:\s*[-/]\s*\d{2,4})?\s*(?:t\s*/\s*m|t\s*-\s*m|tm|tot)\s*\d{1,2}\s*[-/]\s*\d{1,2}(?:\s*[-/]\s*\d{2,4})?\b",
+            " ",
+            cleaned,
+            flags=re.I,
+        )
+
+        # Verwijder resterende volledige datums (dd-mm-yyyy of dd/mm/yyyy)
+        # zodat dag/maandwaarden niet als weeknummers worden opgepikt.
         cleaned = re.sub(
             r"\b\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}\b",
             " ",
