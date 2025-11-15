@@ -100,11 +100,11 @@ function splitOnHomeworkVerbs(value: string): string[] {
   return parts;
 }
 const KEYWORD_PATTERNS = [
+  "\\bOefentoets(?:en)?\\b",
   "\\bH\\d+(?:\\.\\d+)?(?=\\s+[A-Za-zÀ-ÖØ-öø-ÿ])",
   "Opg\\.?\\s*\\d+(?:\\.\\d+)*[a-z]?",
   "Opgaven\\s+\\d+",
   "Opdrachten?\\s+\\d+",
-  "\\bOefentoets(?:en)?\\b",
   "Par(?:agraaf)?\\s+\\d+[a-z]?",
   "Hoofdstuk\\s+\\d+",
   "Bl(?:z|ad)\\.?\\s*\\d+",

@@ -38,6 +38,24 @@ describe("splitHomeworkItems", () => {
     expect(result).toEqual(["Oefentoets H2", "Oefentoets H3"]);
   });
 
+  it("splitst ook wanneer Oefentoetsen meerdere keren op één regel staan", () => {
+    const input = "Oefentoetsen H2 Oefentoetsen H3";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual(["Oefentoetsen H2", "Oefentoetsen H3"]);
+  });
+
+  it("houdt opmerkingen achter de laatste Oefentoets bij de juiste taak", () => {
+    const input = "Oefentoetsen H2 Oefentoetsen H3 (Magister)";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual(["Oefentoetsen H2", "Oefentoetsen H3 (Magister)"]);
+  });
+
+  it("behoudt hoofdstuknummers wanneer er verbindingswoorden tussen Oefentoetsen staan", () => {
+    const input = "Oefentoetsen H2 en Oefentoetsen H3";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual(["Oefentoetsen H2", "Oefentoetsen H3"]);
+  });
+
   it("splitst wanneer na een komma een werkwoord start", () => {
     const input = "Bestuderen Intro hoofdstuk 3, maken opdrachten 3.1, leren woordjes";
     const result = splitHomeworkItems(input);
