@@ -186,6 +186,31 @@ describe("useAppStore", () => {
     expect(weekIds).toEqual([...expected2025, ...expected2026]);
   });
 
+  it("corrigeert foutieve datums aan de hand van het weeknummer", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-date",
+      guideId: "guide-date",
+      beginWeek: 1,
+      eindWeek: 10,
+      schooljaar: "2025/2026",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-date", [
+      {
+        week: 4,
+        datum: "2026-01-12",
+        datum_eind: "2026-01-16",
+        onderwerp: "Toetsweek 2",
+      },
+    ]);
+
+    const row = useAppStore.getState().docRows["guide-date"]?.[0];
+    expect(row?.datum).toBe("2026-01-19");
+    expect(row?.datum_eind).toBe("2026-01-23");
+  });
+
   it("voegt weken met verschillende nummering samen op basis van datums", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({

@@ -336,6 +336,73 @@ const formatVakName = (value: string): string => {
   return trimmed.charAt(0).toLocaleUpperCase("nl-NL") + trimmed.slice(1);
 };
 
+const resolveAnchorWeek = (row: DocRow): number | null => {
+  if (typeof row.week === "number" && Number.isFinite(row.week)) {
+    const normalized = Math.trunc(row.week);
+    if (normalized >= 1 && normalized <= 53) {
+      return normalized;
+    }
+  }
+  if (Array.isArray(row.weeks)) {
+    for (const candidate of row.weeks) {
+      if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+        continue;
+      }
+      const normalized = Math.trunc(candidate);
+      if (normalized >= 1 && normalized <= 53) {
+        return normalized;
+      }
+    }
+  }
+  return null;
+};
+
+const autoCorrectRowDates = (row: DocRow, doc?: DocMeta): DocRow => {
+  const anchorWeek = resolveAnchorWeek(row);
+  if (!anchorWeek || !row.datum) {
+    return row;
+  }
+
+  const parsedStart = parseIsoDate(row.datum);
+  if (!parsedStart) {
+    return row;
+  }
+
+  const isoWeek = getIsoWeek(parsedStart);
+  if (isoWeek === anchorWeek) {
+    return row;
+  }
+
+  const { isoYear } = resolveWeekIdentifier(anchorWeek, {
+    schooljaar: doc?.schooljaar,
+    today: new Date(),
+  });
+  const correctedStart = getIsoWeekStart(isoYear, anchorWeek);
+  const shiftMs = correctedStart.getTime() - parsedStart.getTime();
+  const shiftDays = Math.round(shiftMs / 86400000);
+  if (Math.abs(shiftDays) !== 7) {
+    return row;
+  }
+
+  const nextRow: DocRow = {
+    ...row,
+    datum: formatIsoDate(correctedStart),
+  };
+
+  if (row.datum_eind) {
+    const parsedEnd = parseIsoDate(row.datum_eind);
+    if (parsedEnd) {
+      const shiftedEnd = new Date(parsedEnd.getTime() + shiftMs);
+      nextRow.datum_eind = formatIsoDate(shiftedEnd);
+    }
+  }
+
+  return nextRow;
+};
+
+const normalizeRowsForDoc = (rows: DocRow[], doc?: DocMeta): DocRow[] =>
+  rows.map((row) => autoCorrectRowDates(row, doc));
+
 const uploadedAtTimestamp = (value?: string | null): number => {
   if (!value) return 0;
   const parsed = Date.parse(value);
@@ -1141,31 +1208,33 @@ export const useAppStore = create<State>()(
       },
       setDocRows: (fileId, rows) => {
         const state = get();
-        const nextRows = { ...state.docRows, [fileId]: rows };
-        const nextVersionRows = { ...state.versionRows };
         const doc = state.docs.find((d) => d.fileId === fileId);
+        const correctedRows = normalizeRowsForDoc(rows, doc);
+        const nextRows = { ...state.docRows, [fileId]: correctedRows };
+        const nextVersionRows = { ...state.versionRows };
         const versionId = doc?.versionId ?? null;
         if (versionId != null) {
           const entry = { ...(nextVersionRows[fileId] ?? {}) };
-          entry[versionId] = rows;
+          entry[versionId] = correctedRows;
           nextVersionRows[fileId] = entry;
         }
         const weekData = computeWeekAggregation(state.docs, nextRows, state.schoolVacations);
         set({ docRows: nextRows, weekData, versionRows: nextVersionRows });
       },
       setDocRowsBulk: (entries) => {
-        const nextRows = { ...get().docRows };
-        for (const [fileId, rows] of Object.entries(entries)) {
-          nextRows[fileId] = rows;
-        }
         const state = get();
+        const nextRows = { ...state.docRows };
+        for (const [fileId, rows] of Object.entries(entries)) {
+          const doc = state.docs.find((d) => d.fileId === fileId);
+          nextRows[fileId] = normalizeRowsForDoc(rows, doc);
+        }
         const nextVersionRows = { ...state.versionRows };
         for (const [fileId, rows] of Object.entries(entries)) {
           const doc = state.docs.find((d) => d.fileId === fileId);
           const versionId = doc?.versionId ?? null;
           if (versionId != null) {
             const map = { ...(nextVersionRows[fileId] ?? {}) };
-            map[versionId] = rows;
+            map[versionId] = nextRows[fileId];
             nextVersionRows[fileId] = map;
           }
         }
@@ -1241,13 +1310,14 @@ export const useAppStore = create<State>()(
       },
       setVersionRows: (guideId, versionId, rows) => {
         set((state) => {
-          const entry = { ...(state.versionRows[guideId] ?? {}) };
-          entry[versionId] = rows;
-          const nextVersionRows = { ...state.versionRows, [guideId]: entry };
           const doc = state.docs.find((d) => d.fileId === guideId);
+          const correctedRows = normalizeRowsForDoc(rows, doc);
+          const entry = { ...(state.versionRows[guideId] ?? {}) };
+          entry[versionId] = correctedRows;
+          const nextVersionRows = { ...state.versionRows, [guideId]: entry };
           if (doc?.versionId === versionId) {
-            const nextDocRows = { ...state.docRows, [guideId]: rows };
-          const weekData = computeWeekAggregation(state.docs, nextDocRows, state.schoolVacations);
+            const nextDocRows = { ...state.docRows, [guideId]: correctedRows };
+            const weekData = computeWeekAggregation(state.docs, nextDocRows, state.schoolVacations);
             return { versionRows: nextVersionRows, docRows: nextDocRows, weekData };
           }
           return { versionRows: nextVersionRows };
