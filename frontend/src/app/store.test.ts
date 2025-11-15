@@ -457,6 +457,46 @@ describe("useAppStore", () => {
     );
   });
 
+  it("laat pdf-lesstof ongemoeid zodra het document echte huiswerkvelden bevat", () => {
+    const store = useAppStore.getState();
+    const pdfMeta = makeMeta({
+      fileId: "guide-pdf",
+      guideId: "guide-pdf",
+      bestand: "ckv.pdf",
+      beginWeek: 46,
+      eindWeek: 48,
+      schooljaar: "2024/2025",
+      vak: "CKV",
+    });
+
+    store.setDocs([pdfMeta]);
+    store.setDocRows("guide-pdf", [
+      { week: 46, onderwerp: "Filmgeschiedenis" },
+      { week: 47, onderwerp: "Nieuwe media" },
+      { week: 48, huiswerk: "Groen licht formulier laten ondertekenen." },
+    ]);
+
+    const state = useAppStore.getState();
+    const findWeekData = (weekNr: number) => {
+      const info = state.weekData.weeks?.find((entry) => entry.nr === weekNr);
+      return info ? state.weekData.byWeek?.[info.id]?.[pdfMeta.vak] : undefined;
+    };
+
+    const week46 = findWeekData(46);
+    expect(week46?.lesstof).toContain("Filmgeschiedenis");
+    expect(week46?.huiswerk).toBeUndefined();
+    expect(week46?.deadlines).toBeUndefined();
+    expect(week46?.opmerkingen).toBeUndefined();
+
+    const week47 = findWeekData(47);
+    expect(week47?.lesstof).toContain("Nieuwe media");
+    expect(week47?.huiswerk).toBeUndefined();
+    expect(week47?.deadlines).toBeUndefined();
+
+    const week48 = findWeekData(48);
+    expect(week48?.huiswerk).toContain("Groen licht formulier laten ondertekenen.");
+  });
+
   it("laat docx-regels ongemoeid wanneer alleen de lesstof is ingevuld", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({ fileId: "guide-docx", guideId: "guide-docx" });

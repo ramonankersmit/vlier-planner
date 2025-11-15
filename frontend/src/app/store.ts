@@ -717,11 +717,21 @@ const computeWeekAggregation = (
     return canonicalizeIsoWeek(prevWeek, prevYear);
   };
 
+  const docHasStructuredHomework = new Map<string, boolean>();
+  for (const doc of docs) {
+    const rows = docRows[doc.fileId] ?? [];
+    const hasStructured = rows.some(
+      (row) => row && row.enabled !== false && rowHasStructuredHomeworkData(row),
+    );
+    docHasStructuredHomework.set(doc.fileId, hasStructured);
+  }
+
   for (const doc of docs) {
     if (!doc.enabled) {
       continue;
     }
     const docIsPdf = isPdfDoc(doc);
+    const docContainsStructuredHomework = docHasStructuredHomework.get(doc.fileId) ?? false;
     const rows = docRows[doc.fileId] ?? [];
     const activeRows = rows.filter((row) => row && row.enabled !== false);
 
@@ -968,7 +978,12 @@ const computeWeekAggregation = (
           vakantieOutsideHomework = true;
         }
 
-        if (normalizedLesstof && docIsPdf && !hasStructuredHomeworkData) {
+        if (
+          normalizedLesstof &&
+          docIsPdf &&
+          !docContainsStructuredHomework &&
+          !hasStructuredHomeworkData
+        ) {
           mirrorLesstofToAllColumns(normalizedLesstof, rawLesstofSource);
         }
 
