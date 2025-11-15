@@ -7,6 +7,22 @@ describe("splitHomeworkItems", () => {
     expect(result).toEqual(["Bestudeer paragraaf 3", "Maak opdrachten 1-3"]);
   });
 
+  it("splitst ook wanneer regels met een zachte enter (Shift+Enter) gescheiden zijn", () => {
+    const input = [
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11",
+      "Oefentoetsen H2",
+      "Oefentoetsen H3",
+    ].join("\u000b");
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "H2 Gemengde Opgaven 1 t/m 9",
+      "H3 Gemengde Opgaven 1 t/m 11",
+      "Oefentoetsen H2",
+      "Oefentoetsen H3",
+    ]);
+  });
+
   it("splitst wanneer na een komma een werkwoord start", () => {
     const input = "Bestuderen Intro hoofdstuk 3, maken opdrachten 3.1, leren woordjes";
     const result = splitHomeworkItems(input);
