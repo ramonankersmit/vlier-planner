@@ -50,4 +50,12 @@ describe("resolveWeekIdentifier", () => {
     });
     expect(resolved).toEqual({ week: 1, isoYear: 2024 });
   });
+
+  it("laat het opgegeven weeknummer leidend blijven binnen dezelfde periode", () => {
+    const resolved = resolveWeekIdentifier(4, {
+      schooljaar: "2024/2025",
+      candidateDates: ["2025-01-12"],
+    });
+    expect(resolved).toEqual({ week: 4, isoYear: 2025 });
+  });
 });
