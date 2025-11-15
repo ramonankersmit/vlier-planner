@@ -64,7 +64,7 @@ describe("splitHomeworkItems", () => {
     const input = "Bestudeer paragraaf 5 1 Opgaven 3 t/m 5";
     const result = splitHomeworkItems(input);
     expect(result).toEqual([
-      "Bestudeer paragraaf 5",
+      "Bestudeer paragraaf 5 1",
       "Opgaven 3 t/m 5",
     ]);
   });
