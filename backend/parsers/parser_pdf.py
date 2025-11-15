@@ -61,6 +61,9 @@ PDF_TABLE_SETTINGS = {
     "edge_min_length": 40,
 }
 
+VACATION_PATTERN = re.compile(r"(?i)vakantie")
+DEADLINE_TOETS_PATTERN = re.compile(r"(?i)\b(inlever(?:en|datum|moment)|deadline)\b")
+
 
 def _append_text(existing: Optional[str], new_text: str) -> Optional[str]:
     new_norm = normalize_text(new_text)
@@ -371,6 +374,20 @@ def _flush_pdf_entry(entry: dict, schooljaar: Optional[str]) -> List[DocRow]:
     toets_text = entry.get("toets_text")
     bronnen_text = entry.get("bronnen_text")
 
+    datum = entry.get("datum")
+    datum_eind = entry.get("datum_eind")
+    if datum_eind == datum:
+        datum_eind = None
+
+    if (
+        not inleverdatum
+        and toets_text
+        and DEADLINE_TOETS_PATTERN.search(toets_text)
+    ):
+        inferred_due = datum or datum_eind
+        if inferred_due:
+            inleverdatum = inferred_due
+
     toets_info = parse_toets_cell(toets_text) if toets_text else None
     if not inleverdatum:
         for source in (opdracht, toets_text):
@@ -381,11 +398,6 @@ def _flush_pdf_entry(entry: dict, schooljaar: Optional[str]) -> List[DocRow]:
                     break
 
     bronnen = find_urls(bronnen_text) if bronnen_text else None
-
-    datum = entry.get("datum")
-    datum_eind = entry.get("datum_eind")
-    if datum_eind == datum:
-        datum_eind = None
 
     row = DocRow(
         week=unique_weeks[0],
@@ -437,7 +449,7 @@ def _cell_text_with_neighbors(row: List[str], idx: Optional[int]) -> Optional[st
     if 0 <= idx < width:
         candidate_indices.append(idx)
 
-    for offset in (-1, 1, -2, 2):
+    for offset in (-1, 1, -2, 2, -3, 3):
         neighbor = idx + offset
         if 0 <= neighbor < width:
             candidate_indices.append(neighbor)
@@ -555,6 +567,19 @@ def _extract_rows_from_tables(
             week_text = _cell_text_with_neighbors(row, week_col)
             if week_text:
                 weeks = parse_week_cell(week_text)
+                if not weeks and VACATION_PATTERN.search(week_text):
+                    for col_idx, cell in enumerate(row):
+                        if col_idx == week_col:
+                            continue
+                        if not cell:
+                            continue
+                        extra_weeks = parse_week_cell(cell)
+                        if extra_weeks:
+                            weeks = extra_weeks
+                            if cell and cell not in (week_text or ""):
+                                combined = f"{week_text or ''} {cell}".strip()
+                                week_text = combined or week_text
+                            break
             elif date_col is not None:
                 date_text = _cell_text_with_neighbors(row, date_col)
                 iso = parse_date_cell(date_text, schooljaar) if date_text else None

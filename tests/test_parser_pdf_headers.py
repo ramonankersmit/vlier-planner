@@ -47,3 +47,75 @@ def test_pdf_parser_reads_cells_from_neighboring_columns():
     assert row.huiswerk == "Groen licht formulier laten ondertekenen."
     assert row.toets is not None
     assert row.toets.get("type") == "Inleveren opdracht 3 Deadline definitieve film"
+
+
+def test_pdf_parser_reads_cells_three_columns_away():
+    table = [
+        [
+            "Week",
+            "Lesstof",
+            "Huiswerk",
+            "",
+            "",
+            "",
+            "Toetsen / Deadlines",
+            "",
+            "",
+            "",
+            "Opmerkingen",
+        ],
+        [
+            "48",
+            "Project",
+            "Maak opdracht 2",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "Inleveren pitch",
+            "",
+        ],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "ckv.pdf")
+    assert rows, "Expected rows to be parsed"
+    row = rows[0]
+    assert row.week == 48
+    assert row.huiswerk == "Maak opdracht 2"
+    assert row.toets is not None
+    assert row.toets.get("type") == "Inleveren pitch"
+
+
+def test_pdf_parser_keeps_vacation_rows_without_week_digits():
+    table = [
+        ["Week", "Extra"],
+        ["Kerstvakantie", "52/1"],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "ckv.pdf")
+    assert rows, "Expected vacation row to be parsed"
+    row = rows[0]
+    assert row.week == 52
+    assert row.week_span_end == 1
+    assert row.week_label and row.week_label.startswith("Kerstvakantie")
+
+
+def test_pdf_parser_infers_due_date_from_deadline_toets_text():
+    entry = {
+        "weeks": [48],
+        "week_label": "48",
+        "datum": "2025-11-24",
+        "datum_eind": None,
+        "huiswerk": None,
+        "opdracht": None,
+        "inleverdatum": None,
+        "toets_text": "Inleveren pitch",
+        "bronnen_text": None,
+    }
+
+    rows = parser_pdf._flush_pdf_entry(entry, "2025/2026")
+    assert rows, "Expected flush to create a row"
+    row = rows[0]
+    assert row.inleverdatum == "2025-11-24"
