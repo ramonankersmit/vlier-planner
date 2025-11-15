@@ -514,6 +514,42 @@ const normalizeText = (value?: string | null, options?: NormalizeOptions) => {
   return cleaned;
 };
 
+const hasNormalizedText = (value?: string | null, options?: NormalizeOptions) =>
+  Boolean(normalizeText(value, options));
+
+const rowHasStructuredHomeworkData = (row: DocRow): boolean => {
+  if (hasNormalizedText(row.huiswerk, { preserveLineBreaks: true })) {
+    return true;
+  }
+  if (hasNormalizedText(row.opdracht, { preserveLineBreaks: true })) {
+    return true;
+  }
+  if (hasNormalizedText(row.inleverdatum)) {
+    return true;
+  }
+  if (hasNormalizedText(row.notities)) {
+    return true;
+  }
+  if (row.toets) {
+    if (hasNormalizedText(row.toets.type)) {
+      return true;
+    }
+    if (hasNormalizedText(row.toets.omschrijving)) {
+      return true;
+    }
+  }
+  if (Array.isArray(row.leerdoelen) && row.leerdoelen.some((value) => hasNormalizedText(value))) {
+    return true;
+  }
+  if (Array.isArray(row.bronnen) && row.bronnen.length > 0) {
+    return true;
+  }
+  return false;
+};
+
+const isPdfDoc = (doc: DocRecord): boolean =>
+  Boolean(doc.bestand && doc.bestand.toLocaleLowerCase("nl-NL").endsWith(".pdf"));
+
 const GENERAL_WEEK_NOTE_PATTERN =
   /(vakantie|toetsweek|projectweek|studiedag|excursie|werkweek|tentamenweek|examenweek|lesvrij|geen les)/i;
 
@@ -685,6 +721,7 @@ const computeWeekAggregation = (
     if (!doc.enabled) {
       continue;
     }
+    const docIsPdf = isPdfDoc(doc);
     const rows = docRows[doc.fileId] ?? [];
     const activeRows = rows.filter((row) => row && row.enabled !== false);
 
@@ -808,8 +845,9 @@ const computeWeekAggregation = (
           }
         };
 
+        const rawLesstofSource = row.onderwerp || row.les;
         const normalizedLesstof = addNormalized(
-          row.onderwerp || row.les,
+          rawLesstofSource,
           undefined,
           (accum, normalized) => {
             addUnique(accum.lesstof, normalized);
@@ -831,6 +869,21 @@ const computeWeekAggregation = (
             vakantieOutsideHomework = true;
           }
         }
+
+        const mirrorLesstofToAllColumns = (text: string, rawSource?: string | null) => {
+          const homeworkSource = rawSource
+            ? normalizeText(rawSource, { preserveLineBreaks: true })
+            : undefined;
+          const items = splitHomeworkItems(homeworkSource ?? text);
+          applyToAccumulators((accum) => {
+            addUnique(accum.huiswerk, text);
+            addUnique(accum.deadlines, text);
+            addUnique(accum.opmerkingen, text);
+            for (const item of items) {
+              addUnique(accum.huiswerkItems, item);
+            }
+          });
+        };
 
         const addHomework = (value?: string | null) => {
           const normalized = normalizeText(value, { preserveLineBreaks: true });
@@ -897,6 +950,10 @@ const computeWeekAggregation = (
         registerGeneralNote(opmerkingenText);
         if (opmerkingenText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
           vakantieOutsideHomework = true;
+        }
+
+        if (normalizedLesstof && docIsPdf && !rowHasStructuredHomeworkData(row)) {
+          mirrorLesstofToAllColumns(normalizedLesstof, rawLesstofSource);
         }
 
         const weekLabelNote = extractWeekLabelNote(row.week_label);

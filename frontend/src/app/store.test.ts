@@ -338,6 +338,84 @@ describe("useAppStore", () => {
     expect(data01?.deadlines).toContain("Kerstvakantie");
   });
 
+  it("spiegelt pdf-regels zonder aparte kolommen naar huiswerk en deadlines", () => {
+    const store = useAppStore.getState();
+    const pdfMeta = makeMeta({
+      fileId: "guide-pdf",
+      guideId: "guide-pdf",
+      bestand: "ckv.pdf",
+      beginWeek: 48,
+      eindWeek: 4,
+      schooljaar: "2024/2025",
+      vak: "CKV",
+    });
+
+    store.setDocs([pdfMeta]);
+    store.setDocRows("guide-pdf", [
+      { week: 48, onderwerp: "Groen licht formulier laten ondertekenen." },
+      { week: 51, onderwerp: "Inleveren Ruwe versie" },
+      {
+        week: 52,
+        weeks: [52, 1],
+        week_span_start: 52,
+        week_span_end: 1,
+        week_label: "52/1 Kerstvakantie",
+        onderwerp: "Kerstvakantie",
+      },
+      { week: 2, onderwerp: "Inleveren opdracht 3\nDeadline definitieve film" },
+    ]);
+
+    const state = useAppStore.getState();
+    const findWeekData = (weekNr: number) => {
+      const info = state.weekData.weeks?.find((entry) => entry.nr === weekNr);
+      return info ? state.weekData.byWeek?.[info.id]?.[pdfMeta.vak] : undefined;
+    };
+
+    const week48 = findWeekData(48);
+    expect(week48?.lesstof).toContain("Groen licht formulier laten ondertekenen.");
+    expect(week48?.huiswerk).toContain("Groen licht formulier laten ondertekenen.");
+    expect(week48?.deadlines).toContain("Groen licht formulier laten ondertekenen.");
+    expect(week48?.opmerkingen).toContain("Groen licht formulier laten ondertekenen.");
+
+    const week51 = findWeekData(51);
+    expect(week51?.huiswerk).toContain("Inleveren Ruwe versie");
+    expect(week51?.deadlines).toContain("Inleveren Ruwe versie");
+
+    const week52 = findWeekData(52);
+    const week01 = findWeekData(1);
+    expect(week52?.huiswerk).toContain("Kerstvakantie");
+    expect(week01?.huiswerk).toContain("Kerstvakantie");
+
+    const week02 = findWeekData(2);
+    expect(week02?.huiswerk).toContain("Inleveren opdracht 3");
+    expect(week02?.huiswerk).toContain("Deadline definitieve film");
+    expect(week02?.deadlines).toContain("Inleveren opdracht 3");
+    expect(week02?.deadlines).toContain("Deadline definitieve film");
+    expect(week02?.huiswerkItems).toEqual(
+      expect.arrayContaining(["Inleveren opdracht 3", "Deadline definitieve film"]),
+    );
+  });
+
+  it("laat docx-regels ongemoeid wanneer alleen de lesstof is ingevuld", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({ fileId: "guide-docx", guideId: "guide-docx" });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-docx", [
+      {
+        week: 3,
+        onderwerp: "Alleen instructie",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const weekInfo = state.weekData.weeks?.find((info) => info.nr === 3);
+    const weekData = weekInfo ? state.weekData.byWeek?.[weekInfo.id]?.[meta.vak] : undefined;
+    expect(weekData?.lesstof).toContain("Alleen instructie");
+    expect(weekData?.huiswerk).toBeUndefined();
+    expect(weekData?.deadlines).toBeUndefined();
+  });
+
   it("voegt weken met verschillende nummering samen op basis van datums", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({
