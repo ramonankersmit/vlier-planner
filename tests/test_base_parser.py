@@ -28,6 +28,13 @@ def test_holiday_detected_with_no_work_even_if_text_in_homework() -> None:
     assert entry.is_holiday is True
 
 
+def test_week_label_with_holiday_marks_entry_as_holiday() -> None:
+    parser = BaseParser()
+    row = DocRow(week=1, week_label="Week 1 Kerstvakantie")
+    entry = parser.to_raw_entry(row)
+    assert entry.is_holiday is True
+
+
 def test_assignment_matching_week_label_is_removed() -> None:
     parser = BaseParser()
     row = DocRow(

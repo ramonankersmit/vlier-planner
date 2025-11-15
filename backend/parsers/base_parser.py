@@ -335,7 +335,14 @@ class BaseParser:
                     return False
             return True
 
-        fields = [row.onderwerp, row.les, row.notities, row.huiswerk, row.opdracht]
+        fields = [
+            row.week_label,
+            row.onderwerp,
+            row.les,
+            row.notities,
+            row.huiswerk,
+            row.opdracht,
+        ]
         has_work = any(_has_real_work(value) for value in (row.huiswerk, row.opdracht)) or bool(row.toets)
         for field in fields:
             if field and self._holiday_pattern.search(field):

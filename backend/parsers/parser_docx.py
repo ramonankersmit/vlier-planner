@@ -290,6 +290,59 @@ def _table_rows_texts(tbl) -> List[List[str]]:
         rows.append([_clean(c.text) for c in row.cells])
     return rows
 
+
+def _row_contains_weeks(row: List[str]) -> bool:
+    for cell in row:
+        if cell and parse_week_cell(cell):
+            return True
+    return False
+
+
+def _combine_header_rows(header_rows: List[List[str]]) -> List[str]:
+    if not header_rows:
+        return []
+    max_cols = max(len(row) for row in header_rows)
+    combined: List[str] = []
+    for col_idx in range(max_cols):
+        parts: List[str] = []
+        for row in header_rows:
+            if col_idx >= len(row):
+                continue
+            text = normalize_text(row[col_idx] or "")
+            if text:
+                parts.append(text)
+        combined.append(" ".join(parts))
+    return combined
+
+
+def _split_header_and_data_rows(rows: List[List[str]]) -> Tuple[List[str], List[List[str]], int]:
+    if not rows:
+        return [], [], 0
+
+    header_rows: List[List[str]] = []
+    data_start: Optional[int] = None
+    for idx, row in enumerate(rows):
+        if idx == 0:
+            header_rows.append(row)
+            continue
+        if _row_contains_weeks([cell or "" for cell in row]):
+            data_start = idx
+            break
+        header_rows.append(row)
+
+    if data_start is None:
+        data_start = 1 if len(rows) > 1 else len(rows)
+
+    data_rows = rows[data_start:]
+    if not header_rows:
+        header_rows = [rows[0]]
+
+    headers = _combine_header_rows(header_rows)
+    if not any(normalize_text(h) for h in headers):
+        headers = [normalize_text(c or "") for c in rows[0]]
+
+    return headers, data_rows, len(header_rows)
+
 def _parse_week_range(
     doc: Document, periode: Optional[int], table_markers: List[Tuple[Table, Optional[int]]]
 ) -> Tuple[int, int]:
@@ -486,7 +539,9 @@ def _extract_rows_from_context(
         rows = _table_rows_texts(tbl)
         if len(rows) < 2:
             continue
-        headers = rows[0]
+        headers, data_rows, header_row_count = _split_header_and_data_rows(rows)
+        if not data_rows:
+            continue
         week_col = _find_week_column(headers)
         date_col = find_header_idx(headers, DATE_HEADER_KEYWORDS)
         les_col = find_header_idx(headers, LES_HEADER_KEYWORDS)
@@ -502,7 +557,8 @@ def _extract_rows_from_context(
         loc_col = find_header_idx(headers, LOCATIE_HEADERS)
 
         allow_wrap = (marker is not None) or (periode == 2)
-        for row_index, r in enumerate(rows[1:], start=1):
+        for data_offset, r in enumerate(data_rows):
+            row_index = header_row_count + data_offset
             if stop:
                 break
             week_text = None
