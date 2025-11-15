@@ -1,0 +1,15 @@
+from backend.parsers.parser_pdf import _cell_text_with_neighbors
+
+
+def test_neighbor_lookup_ignores_columns_with_other_headers() -> None:
+    headers = ["Week", "Onderwerp", "Huiswerk", "Opdracht"]
+    row = ["48", "Toetsweek", "", "Groen licht formulier"]
+    result = _cell_text_with_neighbors(row, 2, headers, headers[2])
+    assert not result
+
+
+def test_neighbor_lookup_uses_blank_header_columns() -> None:
+    headers = ["Week", "", "Huiswerk"]
+    row = ["48", "Groen licht formulier", ""]
+    result = _cell_text_with_neighbors(row, 2, headers, headers[2])
+    assert result == "Groen licht formulier"

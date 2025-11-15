@@ -17,6 +17,9 @@ except ImportError:  # pragma: no cover
 
 RE_DATE_DMY = re.compile(r"\b(\d{1,2})[\-/](\d{1,2})(?:[\-/](\d{2,4}))?\b")
 RE_DATE_TEXTUAL = re.compile(r"\b(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+((?:20)?\d{2})\b", re.I)
+RE_HOLIDAY_FILLER = re.compile(
+    r"(?i)\b(geen|vrij|vrije dag|lesvrij|geen les|geen huiswerk|huiswerk|les|i\.v\.m|ivm)\b"
+)
 
 RE_WEEK_LEADING = re.compile(r"^\s*(\d{1,2})(?:\s*[/\-]\s*(\d{1,2}))?")
 RE_WEEK_PAIR = re.compile(r"\b(\d{1,2})\s*[/\-]\s*(\d{1,2})\b")
@@ -274,8 +277,22 @@ class BaseParser:
         return None, due_date
 
     def _detect_holiday(self, row: DocRow) -> bool:
+        def _has_real_work(value: Optional[str]) -> bool:
+            if not value:
+                return False
+            normalized = self.normalize_text(value)
+            if not normalized:
+                return False
+            if self._holiday_pattern.search(normalized):
+                stripped = self._holiday_pattern.sub(" ", normalized)
+                stripped = RE_HOLIDAY_FILLER.sub(" ", stripped)
+                stripped = stripped.strip(" ,.;:-()")
+                if not stripped:
+                    return False
+            return True
+
         fields = [row.onderwerp, row.les, row.notities, row.huiswerk, row.opdracht]
-        has_work = bool(row.huiswerk or row.opdracht or row.toets)
+        has_work = any(_has_real_work(value) for value in (row.huiswerk, row.opdracht)) or bool(row.toets)
         for field in fields:
             if field and self._holiday_pattern.search(field):
                 return not has_work
