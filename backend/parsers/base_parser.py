@@ -190,14 +190,32 @@ class BaseParser:
         if not text or not BaseParser.normalize_text(text):
             return None
         lower = text.lower()
+        compact = re.sub(r"[\s\-]+", "", lower)
         ttype = None
-        for kw in ("so", "pw", "se"):
-            if re.search(rf"\b{kw}\b", lower):
-                ttype = kw.upper()
+        for kw, label in (
+            ("so", "SO"),
+            ("pw", "PW"),
+            ("se", "SE"),
+            ("te1", "TE1"),
+            ("te2", "TE2"),
+            ("klt", "KLT"),
+        ):
+            if re.search(rf"\b{re.escape(kw)}\b", lower) or kw in compact:
+                ttype = label
                 break
         if not ttype:
-            for kw in ("proefwerk", "tentamen", "praktische opdracht", "presentatie", "toets"):
-                if kw in lower:
+            for kw in (
+                "proefwerk",
+                "tentamen",
+                "praktische opdracht",
+                "presentatie",
+                "toetsweek",
+                "kijk- en luistertoets",
+                "kijk en luistertoets",
+                "toets",
+            ):
+                normalized_kw = kw.replace(" ", "")
+                if kw in lower or normalized_kw in compact:
                     ttype = kw
                     break
         weight = None
