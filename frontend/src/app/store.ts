@@ -357,6 +357,30 @@ const resolveAnchorWeek = (row: DocRow): number | null => {
   return null;
 };
 
+const extractWeekLabelNote = (value?: string | null): string | undefined => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  let rest = normalized.replace(/^\s*(?:wk|week)\s*/i, "");
+  const weekPrefixMatch = rest.match(/^\s*\d{1,2}(?:\s*(?:[/\-]|t\/?m)\s*\d{1,2})?/i);
+  if (weekPrefixMatch) {
+    rest = rest.slice(weekPrefixMatch[0].length);
+  }
+  rest = rest.replace(/^[\s.,;:()\-–—]+/, "");
+  rest = rest.trim();
+  if (!rest) {
+    return undefined;
+  }
+  if (!/[a-zA-Z]/.test(rest)) {
+    return undefined;
+  }
+  return rest;
+};
+
 const autoCorrectRowDates = (row: DocRow, doc?: DocMeta): DocRow => {
   const anchorWeek = resolveAnchorWeek(row);
   if (!anchorWeek || !row.datum) {
@@ -860,6 +884,18 @@ const computeWeekAggregation = (
         );
         if (opmerkingenText?.toLocaleLowerCase("nl-NL").includes("vakantie")) {
           vakantieOutsideHomework = true;
+        }
+
+        const weekLabelNote = extractWeekLabelNote(row.week_label);
+        if (weekLabelNote) {
+          const normalizedLabel = normalizeText(weekLabelNote);
+          if (normalizedLabel) {
+            applyToAccumulators((accum) => {
+              addUnique(accum.lesstof, normalizedLabel);
+              addUnique(accum.huiswerk, normalizedLabel);
+              addUnique(accum.opmerkingen, normalizedLabel);
+            });
+          }
         }
 
         addHomework(row.huiswerk);

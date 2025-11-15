@@ -211,6 +211,48 @@ describe("useAppStore", () => {
     expect(row?.datum_eind).toBe("2026-01-23");
   });
 
+  it("kopieert notities uit het weeklabel naar alle kolommen", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-label",
+      guideId: "guide-label",
+      beginWeek: 52,
+      eindWeek: 2,
+      schooljaar: "2025/2026",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-label", [
+      {
+        week: 52,
+        weeks: [52, 1],
+        week_span_start: 52,
+        week_span_end: 1,
+        week_label: "52/1 Kerstvakantie",
+        huiswerk: "Herhalen grammatica",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const week52 = state.weekData.weeks?.find((info) => info.nr === 52);
+    const week01 = state.weekData.weeks?.find((info) => info.nr === 1);
+
+    expect(week52).toBeDefined();
+    expect(week01).toBeDefined();
+
+    const data52 = week52 ? state.weekData.byWeek?.[week52.id]?.[meta.vak] : undefined;
+    const data01 = week01 ? state.weekData.byWeek?.[week01.id]?.[meta.vak] : undefined;
+
+    expect(data52?.lesstof).toContain("Kerstvakantie");
+    expect(data52?.huiswerk).toContain("Kerstvakantie");
+    expect(data52?.opmerkingen).toContain("Kerstvakantie");
+    expect(data52?.huiswerk).toContain("Herhalen grammatica");
+
+    expect(data01?.lesstof).toContain("Kerstvakantie");
+    expect(data01?.huiswerk).toContain("Kerstvakantie");
+    expect(data01?.opmerkingen).toContain("Kerstvakantie");
+  });
+
   it("voegt weken met verschillende nummering samen op basis van datums", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({
