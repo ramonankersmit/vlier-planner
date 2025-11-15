@@ -31,4 +31,23 @@ describe("splitHomeworkItems", () => {
     const result = splitHomeworkItems("Lees paragraaf 4, pagina 12-13");
     expect(result).toEqual(["Lees paragraaf 4, pagina 12-13"]);
   });
+
+  it("houdt paragraafaanduidingen bij de juiste opdracht als het werkwoord wisselt", () => {
+    const input =
+      "Bestuderen Intro Hoofdstuk 3 par 3.1, maken opdrachten Intro (t/m4) par 3.1";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "Bestuderen Intro Hoofdstuk 3 par 3.1",
+      "maken opdrachten Intro (t/m4) par 3.1",
+    ]);
+  });
+
+  it("kopieert het voorvoegsel wanneer meerdere paragrafen onder dezelfde opdracht vallen", () => {
+    const input = "Maak een samenvatting van paragraaf 3.1 en paragraaf 3.2";
+    const result = splitHomeworkItems(input);
+    expect(result).toEqual([
+      "Maak een samenvatting van paragraaf 3.1",
+      "Maak een samenvatting van paragraaf 3.2",
+    ]);
+  });
 });

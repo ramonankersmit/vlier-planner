@@ -102,14 +102,41 @@ const KEYWORD_PATTERNS = [
 ];
 
 type KeywordRule = {
-  lookahead: RegExp;
   occurrence: RegExp;
 };
 
 const KEYWORD_RULES: KeywordRule[] = KEYWORD_PATTERNS.map((pattern) => ({
-  lookahead: new RegExp(`(?=${pattern})`, "i"),
   occurrence: new RegExp(pattern, "gi"),
 }));
+
+function splitOnKeywordRule(value: string, rule: KeywordRule): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  rule.occurrence.lastIndex = 0;
+  const matches = Array.from(trimmed.matchAll(rule.occurrence));
+  if (matches.length < 2) {
+    return [trimmed];
+  }
+
+  const prefix = trimmed.slice(0, matches[0].index ?? 0).trim();
+  const pieces: string[] = [];
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const start = matches[index].index ?? 0;
+    const end = matches[index + 1]?.index ?? trimmed.length;
+    const chunk = trimmed.slice(start, end).trim();
+    const combined = prefix ? `${prefix} ${chunk}` : chunk;
+    const cleaned = stripTrailingVerbSeparator(combined)
+      .replace(/\s+/g, " ")
+      .trim();
+    if (cleaned) {
+      pieces.push(cleaned);
+    }
+  }
+
+  return pieces.length > 0 ? pieces : [trimmed];
+}
 
 export function splitHomeworkItems(raw?: string | null): string[] {
   if (!raw) return [];
@@ -120,25 +147,16 @@ export function splitHomeworkItems(raw?: string | null): string[] {
     .filter((part) => part.length > 0);
 
   const expanded = initialParts.flatMap((part) => {
-    let segments = [part];
-    for (const rule of KEYWORD_RULES) {
-      segments = segments.flatMap((segment) => {
-        const trimmed = segment.trim();
-        if (!trimmed) return [];
-        rule.occurrence.lastIndex = 0;
-        const matches = trimmed.match(rule.occurrence);
-        if (!matches || matches.length < 2) {
-          return [trimmed];
-        }
-        const pieces = trimmed
-          .split(rule.lookahead)
-          .map((piece) => piece.trim())
-          .filter(Boolean);
-        return pieces.length > 1 ? pieces : [trimmed];
-      });
-    }
-    segments = segments.flatMap((segment) => splitOnHomeworkVerbs(segment));
-    return segments;
+    const verbSegments = splitOnHomeworkVerbs(part);
+    return verbSegments.flatMap((segment) => {
+      let keywordSegments = [segment];
+      for (const rule of KEYWORD_RULES) {
+        keywordSegments = keywordSegments.flatMap((piece) =>
+          splitOnKeywordRule(piece, rule)
+        );
+      }
+      return keywordSegments;
+    });
   });
 
   const normalized = expanded
