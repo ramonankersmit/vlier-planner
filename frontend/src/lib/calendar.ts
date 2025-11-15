@@ -206,7 +206,14 @@ export const resolveWeekIdentifier = (
       })[0];
 
     if (best) {
-      return canonicalizeIsoWeek(best.isoWeek, best.isoYear);
+      const isWraparoundPair =
+        normalized >= 52
+          ? best.isoWeek <= 2
+          : normalized <= 2
+            ? best.isoWeek >= 52
+            : false;
+      const targetWeek = isWraparoundPair ? best.isoWeek : normalized;
+      return canonicalizeIsoWeek(targetWeek, best.isoYear);
     }
   }
 

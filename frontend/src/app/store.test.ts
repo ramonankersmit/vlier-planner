@@ -186,6 +186,158 @@ describe("useAppStore", () => {
     expect(weekIds).toEqual([...expected2025, ...expected2026]);
   });
 
+  it("corrigeert foutieve datums aan de hand van het weeknummer", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-date",
+      guideId: "guide-date",
+      beginWeek: 1,
+      eindWeek: 10,
+      schooljaar: "2025/2026",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-date", [
+      {
+        week: 4,
+        datum: "2026-01-12",
+        datum_eind: "2026-01-16",
+        onderwerp: "Toetsweek 2",
+      },
+    ]);
+
+    const row = useAppStore.getState().docRows["guide-date"]?.[0];
+    expect(row?.datum).toBe("2026-01-19");
+    expect(row?.datum_eind).toBe("2026-01-23");
+  });
+
+  it("kopieert notities uit het weeklabel naar alle kolommen", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-label",
+      guideId: "guide-label",
+      beginWeek: 52,
+      eindWeek: 2,
+      schooljaar: "2025/2026",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-label", [
+      {
+        week: 52,
+        weeks: [52, 1],
+        week_span_start: 52,
+        week_span_end: 1,
+        week_label: "52/1 Kerstvakantie",
+        huiswerk: "Herhalen grammatica",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const week52 = state.weekData.weeks?.find((info) => info.nr === 52);
+    const week01 = state.weekData.weeks?.find((info) => info.nr === 1);
+
+    expect(week52).toBeDefined();
+    expect(week01).toBeDefined();
+
+    const data52 = week52 ? state.weekData.byWeek?.[week52.id]?.[meta.vak] : undefined;
+    const data01 = week01 ? state.weekData.byWeek?.[week01.id]?.[meta.vak] : undefined;
+
+    expect(data52?.lesstof).toContain("Kerstvakantie");
+    expect(data52?.huiswerk).toContain("Kerstvakantie");
+    expect(data52?.opmerkingen).toContain("Kerstvakantie");
+    expect(data52?.huiswerk).toContain("Herhalen grammatica");
+
+    expect(data01?.lesstof).toContain("Kerstvakantie");
+    expect(data01?.huiswerk).toContain("Kerstvakantie");
+    expect(data01?.opmerkingen).toContain("Kerstvakantie");
+  });
+
+  it("kopieert algemene toetsweekregels naar alle kolommen", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-general",
+      guideId: "guide-general",
+      beginWeek: 4,
+      eindWeek: 4,
+      schooljaar: "2025/2026",
+      vak: "Duits",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-general", [
+      {
+        week: 4,
+        week_label: "wk 4",
+        weeks: [4],
+        onderwerp: "Toetsweek 2",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const week = state.weekData.weeks?.find((info) => info.nr === 4);
+    expect(week).toBeDefined();
+
+    const data = week ? state.weekData.byWeek?.[week.id]?.[meta.vak] : undefined;
+    expect(data?.lesstof).toContain("Toetsweek 2");
+    expect(data?.huiswerk).toContain("Toetsweek 2");
+    expect(data?.deadlines).toContain("Toetsweek 2");
+    expect(data?.opmerkingen).toContain("Toetsweek 2");
+  });
+
+  it("verbergt vakantie-notities niet wanneer schoolvakanties aanwezig zijn", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-vac", 
+      guideId: "guide-vac",
+      beginWeek: 52,
+      eindWeek: 2,
+      schooljaar: "2025/2026",
+      vak: "CKV",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-vac", [
+      {
+        week: 52,
+        weeks: [52, 1],
+        week_span_start: 52,
+        week_span_end: 1,
+        week_label: "wk 52/1",
+        onderwerp: "Kerstvakantie",
+      },
+    ]);
+
+    store.setSchoolVacations([
+      {
+        id: "vac-kerst",
+        name: "Kerstvakantie",
+        region: "Regio Zuid",
+        startDate: "2025-12-22",
+        endDate: "2026-01-03",
+        schoolYear: "2025/2026",
+        source: "DUO",
+        label: "Kerstvakantie",
+        active: true,
+        createdAt: "2024-01-01T00:00:00.000Z",
+        updatedAt: "2024-01-01T00:00:00.000Z",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const week52 = state.weekData.weeks?.find((info) => info.nr === 52);
+    const week01 = state.weekData.weeks?.find((info) => info.nr === 1);
+    expect(week52).toBeDefined();
+    expect(week01).toBeDefined();
+
+    const data52 = week52 ? state.weekData.byWeek?.[week52.id]?.[meta.vak] : undefined;
+    const data01 = week01 ? state.weekData.byWeek?.[week01.id]?.[meta.vak] : undefined;
+    expect(data52?.huiswerk).toContain("Kerstvakantie");
+    expect(data52?.deadlines).toContain("Kerstvakantie");
+    expect(data01?.huiswerk).toContain("Kerstvakantie");
+    expect(data01?.deadlines).toContain("Kerstvakantie");
+  });
+
   it("voegt weken met verschillende nummering samen op basis van datums", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({
