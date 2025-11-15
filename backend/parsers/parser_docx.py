@@ -13,6 +13,14 @@ try:  # pragma: no cover - prefer package-relative imports when available
 except ImportError:  # pragma: no cover
     from models import DocMeta, DocRow  # type: ignore
 
+from .base_parser import (
+    BaseParser,
+    RawEntry,
+    WeekCellParseResult,
+    extract_schooljaar_from_text,
+)
+from .config import get_keyword_config
+
 # ---------------------------
 # Regex patronen & helpers
 # ---------------------------
@@ -23,192 +31,23 @@ RE_VAK_AFTER_DASH = re.compile(r"studiewijzer\s*[-–]\s*(.+)", re.I)
 RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ\s\-\&]+?)\s*\]")
 RE_PERIODE_MARKER = re.compile(r"periode\s*([1-4])", re.I)
 
-# Datums
-RE_DATE_DMY = re.compile(r"\b(\d{1,2})[\-/](\d{1,2})[\-/](\d{2,4})\b")
-RE_DATE_TEXTUAL = re.compile(r"\b(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+((?:20)?\d{2})\b", re.I)
+KEYWORDS = get_keyword_config()
+BASE_PARSER = BaseParser(KEYWORDS)
 
-# Weekcel parsing
-RE_WEEK_LEADING = re.compile(r"^\s*(\d{1,2})(?:\s*[/\-]\s*(\d{1,2}))?")
-RE_WEEK_PAIR = re.compile(r"\b(\d{1,2})\s*[/\-]\s*(\d{1,2})\b")
-RE_WEEK_SOLO = re.compile(r"\b(?:wk|week)\s*(\d{1,2})\b", re.I)
-RE_NUM_PURE = re.compile(r"^\s*(\d{1,2})\s*$")  # hele cel is een getal
+WEEK_HEADER_KEYWORDS = KEYWORDS.week_headers
+DATE_HEADER_KEYWORDS = KEYWORDS.date_headers
+LES_HEADER_KEYWORDS = KEYWORDS.lesson_headers
+ONDERWERP_HEADERS = KEYWORDS.subject_headers
+LEERDOEL_HEADERS = KEYWORDS.objective_headers
+HUISWERK_HEADERS = KEYWORDS.homework_headers
+OPDRACHT_HEADERS = KEYWORDS.assignment_headers
+INLEVER_HEADERS = KEYWORDS.handin_headers
+TOETS_HEADERS = KEYWORDS.exam_headers
+BRON_HEADERS = KEYWORDS.resource_headers
+NOTITIE_HEADERS = KEYWORDS.note_headers
+KLAS_HEADERS = KEYWORDS.class_headers
+LOCATIE_HEADERS = KEYWORDS.location_headers
 
-# Schooljaar
-# Herken zowel 4-cijferige als 2-cijferige jaartallen (bijv. "2025/2026" of "25-26")
-RE_SCHOOLYEAR = re.compile(r"((?:20)?\d{2})\s*[/\-]\s*((?:20)?\d{2})")
-RE_SCHOOLYEAR_COMPACT = re.compile(r"(?<!\d)(\d{2})(\d{2})(?!\d)")
-
-MONTHS_NL = {
-    "januari": 1,
-    "jan": 1,
-    "februari": 2,
-    "feb": 2,
-    "maart": 3,
-    "mrt": 3,
-    "april": 4,
-    "apr": 4,
-    "mei": 5,
-    "juni": 6,
-    "jun": 6,
-    "juli": 7,
-    "jul": 7,
-    "augustus": 8,
-    "aug": 8,
-    "september": 9,
-    "sep": 9,
-    "sept": 9,
-    "oktober": 10,
-    "okt": 10,
-    "november": 11,
-    "nov": 11,
-    "december": 12,
-    "dec": 12,
-}
-
-
-def _normalize_year_fragment(part: str) -> Optional[int]:
-    """Normaliseer een (mogelijke) jaartal-string naar een viercijferig jaar."""
-    part = (part or "").strip()
-    if not part:
-        return None
-    try:
-        value = int(part)
-    except ValueError:
-        return None
-
-    if len(part) <= 2:
-        if value > 50:  # vermijd paginareeksen zoals 60/61
-            return None
-        value += 2000
-    elif value < 1900 or value > 2100:
-        return None
-
-    return value
-
-
-def _format_schooljaar(a: str, b: str) -> Optional[str]:
-    """Converteer matches naar formaat YYYY/YYYY met eenvoudige validatie."""
-    ai = _normalize_year_fragment(a)
-    bi = _normalize_year_fragment(b)
-    if ai is None or bi is None:
-        return None
-    a_digits = re.sub(r"\D", "", a)
-    b_digits = re.sub(r"\D", "", b)
-    if not a_digits or not b_digits:
-        return None
-    try:
-        a_val = int(a_digits)
-        b_val = int(b_digits)
-    except ValueError:
-        return None
-    if len(a_digits) <= 2 and not (20 <= a_val <= 30):
-        return None
-    if len(b_digits) <= 2 and not (20 <= b_val <= 30):
-        return None
-    if bi < ai or abs(bi - ai) > 2:
-        return None
-    return f"{ai}/{bi}"
-
-
-def _iter_dates_with_year(text: str) -> List[Tuple[int, int]]:
-    results: List[Tuple[int, int]] = []
-    if not text:
-        return results
-
-    for match in RE_DATE_DMY.finditer(text):
-        try:
-            month = int(match.group(2))
-            year_raw = match.group(3)
-            year = int(year_raw)
-        except (TypeError, ValueError):
-            continue
-        if not (1 <= month <= 12):
-            continue
-        if len(year_raw) <= 2:
-            year += 2000
-        if year < 1900 or year > 2100:
-            continue
-        results.append((year, month))
-
-    for match in RE_DATE_TEXTUAL.finditer(text):
-        month = MONTHS_NL.get(match.group(2).lower())
-        if not month:
-            continue
-        try:
-            year_raw = match.group(3)
-            year = int(year_raw)
-        except (TypeError, ValueError):
-            continue
-        if len(year_raw) <= 2:
-            year += 2000
-        if year < 1900 or year > 2100:
-            continue
-        results.append((year, month))
-
-    return results
-
-
-def _infer_schooljaar_from_dates(text: str) -> Optional[str]:
-    stats = defaultdict(lambda: {"count": 0, "has_autumn": False, "has_spring": False})
-    for year, month in _iter_dates_with_year(text):
-        start_year = year if month >= 8 else year - 1
-        end_year = start_year + 1
-        if start_year < 1900 or end_year > 2101:
-            continue
-        bucket = stats[(start_year, end_year)]
-        bucket["count"] += 1
-        if month >= 8:
-            bucket["has_autumn"] = True
-        else:
-            bucket["has_spring"] = True
-
-    best_key: Optional[Tuple[int, int]] = None
-    best_score = (-1, -1, -1)
-    for (start, end), bucket in stats.items():
-        span_score = int(bucket["has_autumn"]) + int(bucket["has_spring"])
-        count = bucket["count"]
-        score = (span_score, count, start)
-        if score > best_score:
-            best_key = (start, end)
-            best_score = score
-
-    if not best_key:
-        return None
-    return f"{best_key[0]}/{best_key[1]}"
-
-
-def extract_schooljaar_from_text(text: str) -> Optional[str]:
-    """Zoek het meest waarschijnlijke schooljaar in een stuk tekst."""
-    best: Optional[str] = None
-    best_score = -1
-    for match in RE_SCHOOLYEAR.finditer(text):
-        candidate = _format_schooljaar(match.group(1), match.group(2))
-        if not candidate:
-            continue
-        score = 0
-        if len(match.group(1)) >= 4:
-            score += 1
-        if len(match.group(2)) >= 4:
-            score += 1
-        if best is None or score > best_score:
-            best = candidate
-            best_score = score
-
-    if best:
-        if best_score > 0:
-            return best
-        fallback = _infer_schooljaar_from_dates(text)
-        if fallback:
-            return fallback
-        return best
-
-    for match in RE_SCHOOLYEAR_COMPACT.finditer(text):
-        candidate = _format_schooljaar(match.group(1), match.group(2))
-        if candidate:
-            fallback = _infer_schooljaar_from_dates(text)
-            return fallback or candidate
-
-    return _infer_schooljaar_from_dates(text)
 
 def _clean(s: str) -> str:
     return (s or "").strip()
@@ -430,99 +269,6 @@ def _find_week_column(headers: List[str]) -> Optional[int]:
                 return i
     return None
 
-def _weeks_from_week_cell(txt: str) -> List[int]:
-    """
-    Haal weeknummers uit een 'Week'-cel.
-    - Leading nummer/pair: '35...' of '44/45...'
-    - 'Week 44', 'wk 44', '44/45', '44-45'
-    - Puur getal als hele cel
-    """
-    text = (txt or "").strip().replace("\n", " ")
-    # Harmoniseer verschillende koppeltekens zodat we 52-1-2 patronen eenduidig kunnen herkennen.
-    text = text.replace("–", "-").replace("—", "-").replace("−", "-")
-
-    # Verwijder datums zoals 25-08-2025 zodat RE_WEEK_PAIR hieronder
-    # niet per ongeluk dagen/maanden als weken herkent.
-    text = re.sub(r"\b\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}\b", " ", text)
-
-    weeks: List[int] = []
-
-    m0 = RE_WEEK_LEADING.match(text)
-    if m0:
-        a = int(m0.group(1))
-        if 1 <= a <= 53:
-            weeks.append(a)
-        if m0.group(2):
-            b = int(m0.group(2))
-            if 1 <= b <= 53:
-                weeks.append(b)
-
-    for x in RE_WEEK_SOLO.findall(text):
-        v = int(x)
-        if 1 <= v <= 53:
-            weeks.append(v)
-
-    for a, b in RE_WEEK_PAIR.findall(text):
-        va, vb = int(a), int(b)
-        if 1 <= va <= 53:
-            weeks.append(va)
-        if 1 <= vb <= 53:
-            weeks.append(vb)
-
-    # Fallback: als er meerdere nummers via koppeltekens/slashes aan elkaar staan, kunnen
-    # overlappende paren ontbreken (bijv. '52-1-2'). In dat geval lopen we nogmaals alle
-    # losse getallen af in oorspronkelijke volgorde zodat ook de tussenliggende weken
-    # worden meegenomen.
-    if re.search(r"\d\s*[-/]\s*\d", text):
-        for match in re.finditer(r"(?<!\d)(\d{1,2})(?!\d)", text):
-            v = int(match.group(1))
-            if 1 <= v <= 53:
-                weeks.append(v)
-
-    m2 = RE_NUM_PURE.match(text)
-    if m2:
-        v = int(m2.group(1))
-        if 1 <= v <= 53:
-            weeks.append(v)
-
-    # Verwijder dubbelen maar behoud invoegvolgorde
-    ordered: List[int] = []
-    seen: set[int] = set()
-    for w in weeks:
-        if w in seen:
-            continue
-        seen.add(w)
-        ordered.append(w)
-
-    return ordered
-
-
-@dataclass
-class WeekCellParseResult:
-    weeks: List[int]
-    week_span_start: Optional[int]
-    week_span_end: Optional[int]
-    label: Optional[str]
-
-
-def parse_week_cell_details(text: Optional[str]) -> WeekCellParseResult:
-    return _make_week_result(_weeks_from_week_cell(text or ""), (text or "").strip() or None)
-
-
-def _make_week_result(weeks: Iterable[int], label: Optional[str]) -> WeekCellParseResult:
-    ordered = list(weeks)
-    unique: List[int] = []
-    seen: set[int] = set()
-    for value in ordered:
-        if value in seen:
-            continue
-        seen.add(value)
-        unique.append(value)
-    start = unique[0] if unique else None
-    end = unique[-1] if unique else None
-    return WeekCellParseResult(unique, start, end, label)
-
-
 def _is_new_period(
     prev_week: Optional[int], current_week: int, *, allow_wrap: bool = False
 ) -> bool:
@@ -543,6 +289,59 @@ def _table_rows_texts(tbl) -> List[List[str]]:
     for row in tbl.rows:
         rows.append([_clean(c.text) for c in row.cells])
     return rows
+
+
+def _row_contains_weeks(row: List[str]) -> bool:
+    for cell in row:
+        if cell and parse_week_cell(cell):
+            return True
+    return False
+
+
+def _combine_header_rows(header_rows: List[List[str]]) -> List[str]:
+    if not header_rows:
+        return []
+    max_cols = max(len(row) for row in header_rows)
+    combined: List[str] = []
+    for col_idx in range(max_cols):
+        parts: List[str] = []
+        for row in header_rows:
+            if col_idx >= len(row):
+                continue
+            text = normalize_text(row[col_idx] or "")
+            if text:
+                parts.append(text)
+        combined.append(" ".join(parts))
+    return combined
+
+
+def _split_header_and_data_rows(rows: List[List[str]]) -> Tuple[List[str], List[List[str]], int]:
+    if not rows:
+        return [], [], 0
+
+    header_rows: List[List[str]] = []
+    data_start: Optional[int] = None
+    for idx, row in enumerate(rows):
+        if idx == 0:
+            header_rows.append(row)
+            continue
+        if _row_contains_weeks([cell or "" for cell in row]):
+            data_start = idx
+            break
+        header_rows.append(row)
+
+    if data_start is None:
+        data_start = 1 if len(rows) > 1 else len(rows)
+
+    data_rows = rows[data_start:]
+    if not header_rows:
+        header_rows = [rows[0]]
+
+    headers = _combine_header_rows(header_rows)
+    if not any(normalize_text(h) for h in headers):
+        headers = [normalize_text(c or "") for c in rows[0]]
+
+    return headers, data_rows, len(header_rows)
 
 def _parse_week_range(
     doc: Document, periode: Optional[int], table_markers: List[Tuple[Table, Optional[int]]]
@@ -700,177 +499,21 @@ from datetime import date
 # Header keyword sets
 DATE_HEADER_KEYWORDS = ("datum", "weekdatum", "date", "start", "begin")
 LES_HEADER_KEYWORDS = ("les", "lesnr", "lesnummer")
-ONDERWERP_HEADERS = (
-    "onderwerp",
-    "thema",
-    "hoofdstuk",
-    "chapter",
-    "topic",
-    "lesstof",
-    "in les",
-    "grammatica",
-)
-LEERDOEL_HEADERS = ("leerdoelen", "doelen")
-HUISWERK_HEADERS = ("huiswerk", "maken", "leren", "planning teksten")
-OPDRACHT_HEADERS = ("opdracht", "k-tekst")
-INLEVER_HEADERS = ("inleverdatum", "deadline", "inleveren voor")
-TOETS_HEADERS = (
-    "toets",
-    "so",
-    "pw",
-    "se",
-    "proefwerk",
-    "tentamen",
-    "praktische opdracht",
-    "presentatie",
-    "deadlines",
-)
-BRON_HEADERS = ("bron", "bronnen", "links", "link", "boek")
-NOTITIE_HEADERS = ("opmerking", "notitie", "remarks")
-KLAS_HEADERS = ("klas", "groep")
-LOCATIE_HEADERS = ("locatie", "lokaal")
-
-def normalize_text(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").strip())
+normalize_text = BASE_PARSER.normalize_text
+split_bullets = BASE_PARSER.split_bullets
+find_header_idx = BASE_PARSER.find_header_idx
+parse_week_cell = BASE_PARSER.parse_week_cell
+parse_week_cell_details = BASE_PARSER.parse_week_cell_details
+parse_date_cell = BASE_PARSER.parse_date_cell
+parse_date_range_cell = BASE_PARSER.parse_date_range_cell
+find_urls = BASE_PARSER.find_urls
+parse_toets_cell = BASE_PARSER.parse_toets_cell
+vak_from_filename = BASE_PARSER.vak_from_filename
+_make_week_result = BaseParser._make_week_result
 
 
-def split_bullets(text: str) -> Optional[List[str]]:
-    if not text:
-        return None
-    parts = re.split(r"[\n\r\u2022\-\–\*]+", text)
-    items = [normalize_text(p) for p in parts if normalize_text(p)]
-    return items or None
-
-
-def find_header_idx(headers: List[str], keywords: Iterable[str]) -> Optional[int]:
-    norm = [normalize_text(h).lower() for h in headers]
-    for i, h in enumerate(norm):
-        for kw in keywords:
-            if kw.lower() in h:
-                return i
-    return None
-
-
-def parse_week_cell(text: str) -> List[int]:
-    return _weeks_from_week_cell(text)
-
-
-def _extract_dates_from_text(text: Optional[str], schooljaar: Optional[str]) -> List[str]:
-    if not text:
-        return []
-    normalized = normalize_text(text)
-    if not normalized:
-        return []
-
-    pattern_numeric = re.compile(r"(\d{1,2})[\-/](\d{1,2})(?:[\-/](\d{2,4}))?")
-    matches: List[Tuple[int, str]] = []
-
-    def _resolve_year(month: int, explicit: Optional[str]) -> Optional[int]:
-        if explicit:
-            try:
-                year = int(explicit)
-            except ValueError:
-                return None
-            if year < 100:
-                year += 2000
-            if year < 1900 or year > 2100:
-                return None
-            return year
-        if schooljaar:
-            try:
-                a_str, b_str = schooljaar.split("/")
-                a_val, b_val = int(a_str), int(b_str)
-                return a_val if month >= 8 else b_val
-            except Exception:
-                pass
-        return date.today().year
-
-    for match in pattern_numeric.finditer(normalized):
-        day = int(match.group(1))
-        month = int(match.group(2))
-        if not (1 <= day <= 31 and 1 <= month <= 12):
-            continue
-        year = _resolve_year(month, match.group(3))
-        if year is None:
-            continue
-        matches.append((match.start(), f"{year:04d}-{month:02d}-{day:02d}"))
-
-    for match in RE_DATE_TEXTUAL.finditer(normalized):
-        day = int(match.group(1))
-        month = MONTHS_NL.get(match.group(2).lower())
-        if not month or not (1 <= day <= 31):
-            continue
-        year_fragment = match.group(3)
-        year = _resolve_year(month, year_fragment)
-        if year is None:
-            continue
-        matches.append((match.start(), f"{year:04d}-{month:02d}-{day:02d}"))
-
-    matches.sort(key=lambda item: item[0])
-    seen: Set[str] = set()
-    ordered: List[str] = []
-    for _, iso in matches:
-        if iso in seen:
-            continue
-        seen.add(iso)
-        ordered.append(iso)
-    return ordered
-
-
-def parse_date_cell(text: str, schooljaar: Optional[str]) -> Optional[str]:
-    dates = _extract_dates_from_text(text, schooljaar)
-    return dates[0] if dates else None
-
-
-def parse_date_range_cell(text: Optional[str], schooljaar: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
-    dates = _extract_dates_from_text(text, schooljaar)
-    if not dates:
-        return None, None
-    if len(dates) == 1:
-        return dates[0], None
-    return dates[0], dates[-1]
-
-
-def find_urls(text: str) -> Optional[List[Dict[str, str]]]:
-    if not text:
-        return None
-    urls = re.findall(r"https?://\S+", text)
-    out: List[Dict[str, str]] = []
-    for url in urls:
-        title = url.split("/")[-1] or url
-        out.append({"type": "link", "title": title, "url": url})
-    return out or None
-
-
-def parse_toets_cell(text: str) -> Optional[Dict[str, Optional[str]]]:
-    if not text or not normalize_text(text):
-        return None
-    t = text.lower()
-    ttype = None
-    for kw in ("so", "pw", "se"):
-        if re.search(rf"\b{kw}\b", t):
-            ttype = kw.upper()
-            break
-    if not ttype:
-        for kw in ("proefwerk", "tentamen", "praktische opdracht", "presentatie", "toets"):
-            if kw in t:
-                ttype = kw
-                break
-    weight = None
-    m = re.search(r"weging\s*(\d+)", t)
-    if m:
-        weight = m.group(1)
-    else:
-        m = re.search(r"(\d+)\s*(?:x|%)", t)
-        if m:
-            weight = m.group(1)
-    herk = "onbekend"
-    if "herkans" in t:
-        if "nee" in t or "niet" in t:
-            herk = "nee"
-        elif "ja" in t:
-            herk = "ja"
-    return {"type": ttype or normalize_text(text), "weging": weight, "herkansing": herk}
+def _weeks_from_week_cell(text: str) -> List[int]:
+    return BASE_PARSER.parse_week_cell(text)
 
 
 def _extract_rows_from_context(
@@ -896,7 +539,9 @@ def _extract_rows_from_context(
         rows = _table_rows_texts(tbl)
         if len(rows) < 2:
             continue
-        headers = rows[0]
+        headers, data_rows, header_row_count = _split_header_and_data_rows(rows)
+        if not data_rows:
+            continue
         week_col = _find_week_column(headers)
         date_col = find_header_idx(headers, DATE_HEADER_KEYWORDS)
         les_col = find_header_idx(headers, LES_HEADER_KEYWORDS)
@@ -912,7 +557,8 @@ def _extract_rows_from_context(
         loc_col = find_header_idx(headers, LOCATIE_HEADERS)
 
         allow_wrap = (marker is not None) or (periode == 2)
-        for row_index, r in enumerate(rows[1:], start=1):
+        for data_offset, r in enumerate(data_rows):
+            row_index = header_row_count + data_offset
             if stop:
                 break
             week_text = None
@@ -1033,6 +679,13 @@ def extract_rows_from_docx(
 ) -> List[DocRow]:
     ctx = _build_doc_context(path, filename)
     return _extract_rows_from_context(ctx, target_periode)
+
+
+def extract_entries_from_docx(
+    path: str, filename: str, target_periode: Optional[int] = None
+) -> List[RawEntry]:
+    rows = extract_rows_from_docx(path, filename, target_periode)
+    return BaseParser.entries_from_rows(rows, BASE_PARSER)
 
 
 def extract_all_periods_from_docx(

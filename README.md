@@ -82,6 +82,8 @@ Beide modules gebruiken dezelfde code en opslag; je kiest per scenario welke API
 - `vlier_parser/normalize.py` zet geparste bestanden om naar het genormaliseerde `NormalizedModel`, voegt waarschuwingen toe en bewaart resultaten via de `DataStore` zodat week-, matrix- en agendaweergaven direct te voeden zijn.
 - `backend/study_guides.py` bewaakt versies per studiewijzer, berekent diffs, houdt waarschuwingen bij en koppelt bestanden aan stabiele identifiers voor de reviewflow.
 
+Alle parsers delen nu één `BaseParser` met `RawEntry`-objecten. Hierdoor hebben PDF en DOCX dezelfde week- en datumherkenning, sleutelwoorden en deadline-heuristieken. De trefwoorden staan in `backend/parsers/config.py` en zijn optioneel te overschrijven via `VLIER_PARSER_KEYWORDS=/pad/naar/keywords.json`.
+
 ### Dataflows
 - Zowel de snelle normalisatie-API als de volledige workflow schrijven naar dezelfde opslagstructuur (`backend/storage/`).
 - Goedgekeurde versies worden per studiewijzer en versie-id opgeslagen zodat diffing en historische downloads beschikbaar blijven.
@@ -115,6 +117,11 @@ De applicatieversie staat in `VERSION.ini` onder `[app]`. Gebruik `npm run sync-
 - Backend-tests: `pytest`
 - Frontend-tests: `npm test`
 - Specifieke parser- of normalisatietests kun je draaien met `pytest -k normalize` zodra echte parserlogica aanwezig is.
+
+### Voorbeelddocumenten ophalen
+1. Plaats je gedeelde OneDrive- of Google Drive-link in `.env` onder `ONEDRIVE_SHARE_URL`.
+2. Voer `python tools/fetch_onedrive_folder.py` uit; de ZIP wordt automatisch opgehaald en uitgepakt naar `samples/`.
+3. Controleer alle bestanden met `python tools/parse_samples.py` om zeker te weten dat alle periodes zonder fouten worden ingelezen.
 
 ## Gebruik van de applicatie
 
