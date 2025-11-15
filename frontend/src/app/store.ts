@@ -837,6 +837,22 @@ const computeWeekAggregation = (
           return normalized;
         };
 
+        const hasHomeworkText = hasNormalizedText(row.huiswerk, {
+          preserveLineBreaks: true,
+        });
+        const hasAssignmentText = hasNormalizedText(row.opdracht, {
+          preserveLineBreaks: true,
+        });
+        const hasInleverText = hasNormalizedText(row.inleverdatum);
+        const toetsHasText = Boolean(
+          row.toets &&
+            (hasNormalizedText(row.toets.type) || hasNormalizedText(row.toets.omschrijving))
+        );
+        const hasHomeworkOrDeadlines = Boolean(
+          hasHomeworkText || hasAssignmentText || hasInleverText || toetsHasText,
+        );
+        const hasStructuredHomeworkData = rowHasStructuredHomeworkData(row);
+
         let vakantieOutsideHomework = false;
         const generalNoteCandidates: string[] = [];
         const registerGeneralNote = (text?: string | null) => {
@@ -952,7 +968,7 @@ const computeWeekAggregation = (
           vakantieOutsideHomework = true;
         }
 
-        if (normalizedLesstof && docIsPdf && !rowHasStructuredHomeworkData(row)) {
+        if (normalizedLesstof && docIsPdf && !hasStructuredHomeworkData) {
           mirrorLesstofToAllColumns(normalizedLesstof, rawLesstofSource);
         }
 
@@ -962,8 +978,10 @@ const computeWeekAggregation = (
           if (normalizedLabel) {
             applyToAccumulators((accum) => {
               addUnique(accum.lesstof, normalizedLabel);
-              addUnique(accum.huiswerk, normalizedLabel);
               addUnique(accum.opmerkingen, normalizedLabel);
+              if (!hasHomeworkOrDeadlines) {
+                addUnique(accum.huiswerk, normalizedLabel);
+              }
             });
             registerGeneralNote(normalizedLabel);
           }
@@ -976,8 +994,10 @@ const computeWeekAggregation = (
         if (generalNotes.length) {
           applyToAccumulators((accum) => {
             for (const note of generalNotes) {
-              addUnique(accum.huiswerk, note);
-              addUnique(accum.deadlines, note);
+              if (!hasHomeworkOrDeadlines) {
+                addUnique(accum.huiswerk, note);
+                addUnique(accum.deadlines, note);
+              }
               addUnique(accum.opmerkingen, note);
             }
           });

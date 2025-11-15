@@ -211,7 +211,7 @@ describe("useAppStore", () => {
     expect(row?.datum_eind).toBe("2026-01-23");
   });
 
-  it("kopieert notities uit het weeklabel naar alle kolommen", () => {
+  it("kopieert notities uit het weeklabel naar alle kolommen wanneer er geen taken zijn", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({
       fileId: "guide-label",
@@ -229,7 +229,7 @@ describe("useAppStore", () => {
         week_span_start: 52,
         week_span_end: 1,
         week_label: "52/1 Kerstvakantie",
-        huiswerk: "Herhalen grammatica",
+        onderwerp: "Kerstvakantie",
       },
     ]);
 
@@ -246,11 +246,40 @@ describe("useAppStore", () => {
     expect(data52?.lesstof).toContain("Kerstvakantie");
     expect(data52?.huiswerk).toContain("Kerstvakantie");
     expect(data52?.opmerkingen).toContain("Kerstvakantie");
-    expect(data52?.huiswerk).toContain("Herhalen grammatica");
 
     expect(data01?.lesstof).toContain("Kerstvakantie");
     expect(data01?.huiswerk).toContain("Kerstvakantie");
     expect(data01?.opmerkingen).toContain("Kerstvakantie");
+  });
+
+  it("laat reguliere huiswerktaken intact wanneer het weeklabel een algemene notitie bevat", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-label-notes",
+      guideId: "guide-label-notes",
+      beginWeek: 52,
+      eindWeek: 52,
+      schooljaar: "2025/2026",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-label-notes", [
+      {
+        week: 52,
+        week_label: "wk 52 Kerstvakantie",
+        onderwerp: "Kerstvakantie",
+        huiswerk: "Herhalen grammatica",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const week52 = state.weekData.weeks?.find((info) => info.nr === 52);
+    expect(week52).toBeDefined();
+
+    const data = week52 ? state.weekData.byWeek?.[week52.id]?.[meta.vak] : undefined;
+    expect(data?.huiswerk).toContain("Herhalen grammatica");
+    expect(data?.huiswerk).not.toContain("Kerstvakantie");
+    expect(data?.opmerkingen).toContain("Kerstvakantie");
   });
 
   it("kopieert algemene toetsweekregels naar alle kolommen", () => {
@@ -283,6 +312,38 @@ describe("useAppStore", () => {
     expect(data?.huiswerk).toContain("Toetsweek 2");
     expect(data?.deadlines).toContain("Toetsweek 2");
     expect(data?.opmerkingen).toContain("Toetsweek 2");
+  });
+
+  it("laat toetsen niet als huiswerk zien wanneer er echte taken zijn", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-toets",
+      guideId: "guide-toets",
+      beginWeek: 48,
+      eindWeek: 48,
+      schooljaar: "2025/2026",
+      vak: "CKV",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-toets", [
+      {
+        week: 48,
+        huiswerk: "Groen licht formulier laten ondertekenen.",
+        toets: {
+          type: "Toetsweek 2",
+        },
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const week = state.weekData.weeks?.find((info) => info.nr === 48);
+    expect(week).toBeDefined();
+
+    const data = week ? state.weekData.byWeek?.[week.id]?.[meta.vak] : undefined;
+    expect(data?.huiswerk).toContain("Groen licht formulier laten ondertekenen.");
+    expect(data?.huiswerk).not.toContain("Toetsweek 2");
+    expect(data?.deadlines).toContain("Toetsweek 2");
   });
 
   it("verbergt vakantie-notities niet wanneer schoolvakanties aanwezig zijn", () => {
