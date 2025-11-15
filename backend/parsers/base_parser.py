@@ -25,6 +25,8 @@ RE_WEEK_LEADING = re.compile(r"^\s*(\d{1,2})(?:\s*[/\-]\s*(\d{1,2}))?")
 RE_WEEK_PAIR = re.compile(r"\b(\d{1,2})\s*[/\-]\s*(\d{1,2})\b")
 RE_WEEK_SOLO = re.compile(r"\b(?:wk|week)\s*(\d{1,2})\b", re.I)
 RE_NUM_PURE = re.compile(r"^\s*(\d{1,2})\s*$")
+RE_WEEK_WORD = re.compile(r"(?i)\bweek\b")
+RE_NUMERIC_FIELD = re.compile(r"^[0-9\s\-/,:]+$")
 
 MONTHS_NL = {
     "januari": 1,
@@ -233,7 +235,20 @@ class BaseParser:
         if not weeks and isinstance(row.week, int):
             weeks = [row.week]
 
-        deadline_text, due_date = self._detect_deadline(row)
+        lesson = self._sanitize_row_value(row, row.les)
+        topic = self._sanitize_row_value(row, row.onderwerp)
+        homework = self._sanitize_row_value(row, row.huiswerk)
+        assignment = self._sanitize_row_value(row, row.opdracht)
+        notes = self._sanitize_row_value(row, row.notities)
+
+        deadline_text, due_date = self._detect_deadline(
+            row,
+            assignment=assignment,
+            homework=homework,
+            notes=notes,
+            topic=topic,
+            lesson=lesson,
+        )
         is_holiday = self._detect_holiday(row)
 
         return RawEntry(
@@ -243,16 +258,16 @@ class BaseParser:
             week_label=row.week_label,
             start_date=row.datum,
             end_date=row.datum_eind,
-            lesson=row.les,
-            topic=row.onderwerp,
+            lesson=lesson,
+            topic=topic,
             objectives=row.leerdoelen,
-            homework=row.huiswerk,
-            assignment=row.opdracht,
+            homework=homework,
+            assignment=assignment,
             deadline_text=deadline_text,
             due_date=due_date,
             exam=row.toets if isinstance(row.toets, dict) else None,
             resources=row.bronnen if isinstance(row.bronnen, list) else None,
-            notes=row.notities,
+            notes=notes,
             class_label=row.klas_of_groep,
             location=row.locatie,
             source_row_id=row.source_row_id,
@@ -260,21 +275,48 @@ class BaseParser:
             is_holiday=is_holiday,
         )
 
-    def _detect_deadline(self, row: DocRow) -> Tuple[Optional[str], Optional[str]]:
+    def _detect_deadline(
+        self,
+        row: DocRow,
+        *,
+        assignment: Optional[str],
+        homework: Optional[str],
+        notes: Optional[str],
+        topic: Optional[str],
+        lesson: Optional[str],
+    ) -> Tuple[Optional[str], Optional[str]]:
         due_date = row.inleverdatum
         label: Optional[str] = None
-        fields = [row.opdracht, row.huiswerk, row.notities, row.onderwerp, row.les]
+        fields = [assignment, homework, notes, topic, lesson]
         for field in fields:
             if not field:
                 continue
             if self._deadline_pattern.search(field):
-                label = self.normalize_text(field)
+                label = field
                 break
         if not label and due_date:
-            label = self.normalize_text(row.opdracht or row.onderwerp or "Inlevermoment")
+            label = assignment or topic or "Inlevermoment"
         if label:
             return label, due_date
         return None, due_date
+
+    def _sanitize_row_value(self, row: DocRow, value: Optional[str]) -> Optional[str]:
+        normalized = self.normalize_text(value)
+        if not normalized:
+            return None
+        normalized_lower = normalized.lower()
+        label = self.normalize_text(row.week_label)
+        if label:
+            variants = [label]
+            stripped = self.normalize_text(RE_WEEK_WORD.sub(" ", row.week_label or ""))
+            if stripped and stripped not in variants:
+                variants.append(stripped)
+            for candidate in variants:
+                if candidate and normalized_lower == candidate.lower():
+                    return None
+        if RE_NUMERIC_FIELD.fullmatch(normalized):
+            return None
+        return normalized
 
     def _detect_holiday(self, row: DocRow) -> bool:
         def _has_real_work(value: Optional[str]) -> bool:
@@ -282,6 +324,8 @@ class BaseParser:
                 return False
             normalized = self.normalize_text(value)
             if not normalized:
+                return False
+            if RE_NUMERIC_FIELD.fullmatch(normalized):
                 return False
             if self._holiday_pattern.search(normalized):
                 stripped = self._holiday_pattern.sub(" ", normalized)

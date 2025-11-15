@@ -26,3 +26,28 @@ def test_holiday_detected_with_no_work_even_if_text_in_homework() -> None:
     row = DocRow(week=1, huiswerk="Geen les i.v.m. kerstvakantie")
     entry = parser.to_raw_entry(row)
     assert entry.is_holiday is True
+
+
+def test_assignment_matching_week_label_is_removed() -> None:
+    parser = BaseParser()
+    row = DocRow(
+        week=4,
+        week_label="Week 4 22-01-2026 23-01-2026",
+        opdracht="4 22-01-2026 23-01-2026",
+        huiswerk="4 22-01-2026 23-01-2026",
+    )
+    entry = parser.to_raw_entry(row)
+    assert entry.assignment is None
+    assert entry.homework is None
+
+
+def test_numeric_only_homework_does_not_block_holiday_detection() -> None:
+    parser = BaseParser()
+    row = DocRow(
+        week=1,
+        week_label="Week 1 22-12-2025 26-12-2025",
+        onderwerp="Kerstvakantie",
+        huiswerk="1 22-12-2025 26-12-2025",
+    )
+    entry = parser.to_raw_entry(row)
+    assert entry.is_holiday is True
