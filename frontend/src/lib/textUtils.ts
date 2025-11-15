@@ -1,5 +1,5 @@
 const BULLET_RE = /[•●◦▪▫]/g;
-const NUMBER_OPGAVEN_SPLIT_RE = /\b\d+\s+(?=Opgaven\b)/gi;
+const NUMBER_OPGAVEN_SPLIT_RE = /\b(?:[A-Za-z]+\d+|\d+)\s+(?=Opgaven\b)/gi;
 const VOORKENNIS_HEADING_RE = /\bVoorkennis\b/g;
 const BASE_SPLIT_RE = /[;\r\n]/;
 const VERB_AFTER_COMMA_WORDS = [
