@@ -5,7 +5,8 @@ from pathlib import Path
 import mimetypes
 import shutil
 import uuid
-from datetime import datetime, timezone
+import re
+from datetime import date, datetime, timezone, timedelta
 from html import escape
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote
@@ -277,11 +278,22 @@ def _load_pending() -> None:
             continue
         parse_id = data.get("parseId") or pending_file.stem
         rows_data = data.get("rows") or []
+        meta_dict = data.get("meta")
+        meta: Optional[DocMeta]
+        if isinstance(meta_dict, dict):
+            try:
+                meta = DocMeta(**meta_dict)
+            except Exception:  # pragma: no cover - tolerates legacy pending files
+                meta = None
+        else:
+            meta = None
         try:
-            normalized_rows = _ensure_rows([DocRow(**row) for row in rows_data])
+            normalized_rows = _ensure_rows([DocRow(**row) for row in rows_data], meta=meta)
         except Exception:
             normalized_rows = []
         data["rows"] = [row.dict() for row in normalized_rows]
+        if meta is not None:
+            data["meta"] = meta.dict()
         PENDING_PARSES[parse_id] = data
 
 
@@ -518,7 +530,7 @@ def _build_pending_payload(
     stored_file: Optional[str] = None,
     uploaded_at: Optional[str] = None,
 ) -> Dict[str, Any]:
-    safe_rows = _ensure_rows(rows or [])
+    safe_rows = _ensure_rows(rows or [], meta=meta)
     _auto_disable_duplicates(safe_rows)
 
     meta_copy = meta.copy(deep=True)
@@ -566,13 +578,134 @@ def _version_payload(version: StudyGuideVersion) -> Dict[str, Any]:
     }
 
 
-def _ensure_rows(rows: List[DocRow]) -> List[DocRow]:
+ISO_DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+
+
+def _parse_iso_date(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    match = ISO_DATE_RE.match(value.strip())
+    if not match:
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
+
+
+def _normalize_week_number(value: Optional[Union[int, float]]) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError):
+        return None
+    if normalized < 1 or normalized > 53:
+        return None
+    return normalized
+
+
+def _resolve_anchor_week(data: dict[str, Any]) -> Optional[int]:
+    week = _normalize_week_number(data.get("week"))
+    if week is not None:
+        return week
+    weeks_value = data.get("weeks")
+    if isinstance(weeks_value, list):
+        for candidate in weeks_value:
+            normalized = _normalize_week_number(candidate)
+            if normalized is not None:
+                return normalized
+    return None
+
+
+def _parse_schoolyear_start(value: Optional[str]) -> Optional[int]:
+    if not value:
+        return None
+    match = re.search(r"(\d{4})", value)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _get_iso_week_start(iso_year: int, week: int) -> date:
+    fourth_jan = date(iso_year, 1, 4)
+    monday = fourth_jan - timedelta(days=(fourth_jan.isoweekday() - 1))
+    return monday + timedelta(weeks=week - 1)
+
+
+def _canonicalize_iso_week(week: int, iso_year: int) -> tuple[int, int]:
+    start = _get_iso_week_start(iso_year, week)
+    iso = start.isocalendar()
+    return iso.week, iso.year
+
+
+def _derive_iso_year_for_week(week: int, meta: Optional[DocMeta]) -> int:
+    normalized = _normalize_week_number(week) or 1
+    schoolyear_start = _parse_schoolyear_start(getattr(meta, "schooljaar", None))
+    if schoolyear_start is not None:
+        guess_year = schoolyear_start if normalized >= 30 else schoolyear_start + 1
+        _, iso_year = _canonicalize_iso_week(normalized, guess_year)
+        return iso_year
+
+    today = datetime.now(timezone.utc).date()
+    base_iso_year = today.isocalendar().year
+    candidates = (base_iso_year - 1, base_iso_year, base_iso_year + 1)
+    best_year = base_iso_year
+    best_distance = None
+    for iso_year in candidates:
+        start = _get_iso_week_start(iso_year, normalized)
+        distance = abs((start - today).days)
+        if best_distance is None or distance < best_distance:
+            best_distance = distance
+            best_year = iso_year
+    _, iso_year = _canonicalize_iso_week(normalized, best_year)
+    return iso_year
+
+
+def _auto_correct_row_dates(
+    data: dict[str, Any], meta: Optional[DocMeta]
+) -> dict[str, Any]:
+    anchor_week = _resolve_anchor_week(data)
+    datum = data.get("datum")
+    if anchor_week is None or not isinstance(datum, str):
+        return data
+    parsed_start = _parse_iso_date(datum)
+    if not parsed_start:
+        return data
+    iso_week = parsed_start.isocalendar().week
+    if iso_week == anchor_week:
+        return data
+
+    iso_year = _derive_iso_year_for_week(anchor_week, meta)
+    corrected_start = _get_iso_week_start(iso_year, anchor_week)
+    shift_days = (corrected_start - parsed_start).days
+    if abs(shift_days) != 7:
+        return data
+
+    corrected = dict(data)
+    corrected["datum"] = corrected_start.isoformat()
+    datum_eind = corrected.get("datum_eind")
+    if isinstance(datum_eind, str):
+        parsed_end = _parse_iso_date(datum_eind)
+        if parsed_end:
+            corrected_end = parsed_end + timedelta(days=shift_days)
+            corrected["datum_eind"] = corrected_end.isoformat()
+    return corrected
+
+
+def _ensure_rows(rows: List[DocRow], *, meta: Optional[DocMeta] = None) -> List[DocRow]:
     normalized: List[DocRow] = []
     for row in rows:
         data = _row_to_dict(row)
         if data.get("enabled") is None:
             data["enabled"] = True
-        normalized.append(DocRow(**data))
+        corrected = _auto_correct_row_dates(data, meta)
+        normalized.append(DocRow(**corrected))
     return normalized
 
 
@@ -607,7 +740,7 @@ def _compute_warnings(
     *,
     ignore_disabled_duplicates: bool = False,
 ) -> Dict[str, bool]:
-    normalized_rows = _ensure_rows(rows)
+    normalized_rows = _ensure_rows(rows, meta=meta)
     active_rows = [row for row in normalized_rows if row.enabled]
     unknown_subject = not bool(meta.vak)
     missing_week = any(row.week is None for row in active_rows)
@@ -785,7 +918,7 @@ def _parse_upload(temp_path: Path, file_name: str, suffix: str) -> List[Tuple[Do
 
 
 def _diff_for_meta(meta: DocMeta, rows: List[DocRow]) -> Tuple[Dict[str, int], List[Dict[str, Any]]]:
-    normalized_rows = _ensure_rows(rows)
+    normalized_rows = _ensure_rows(rows, meta=meta)
     guide_id = meta.guideId or _assign_ids(meta)
     if not meta.fileId:
         meta.fileId = guide_id
@@ -793,7 +926,7 @@ def _diff_for_meta(meta: DocMeta, rows: List[DocRow]) -> Tuple[Dict[str, int], L
     if not guide or not guide.versions:
         return compute_diff([], normalized_rows)
     latest = guide.latest_version()
-    latest_rows = _ensure_rows(latest.rows)
+    latest_rows = _ensure_rows(latest.rows, meta=latest.meta)
     return compute_diff(latest_rows, normalized_rows)
 
 
@@ -936,7 +1069,7 @@ def update_review(parse_id: str, payload: Dict[str, Any] = Body(...)):
         pending["rows"] = rows_data
 
     meta = DocMeta(**pending["meta"])
-    rows = _ensure_rows([DocRow(**row) for row in pending.get("rows", [])])
+    rows = _ensure_rows([DocRow(**row) for row in pending.get("rows", [])], meta=meta)
     diff_summary, diff_detail = _diff_for_meta(meta, rows)
     warnings = _compute_warnings(meta, rows, ignore_disabled_duplicates=True)
 
@@ -960,7 +1093,7 @@ def _next_version_id(guide: Optional[StudyGuide]) -> int:
 def commit_review(parse_id: str):
     pending = _pending_or_404(parse_id)
     meta = DocMeta(**pending["meta"])
-    rows = _ensure_rows([DocRow(**row) for row in pending.get("rows", [])])
+    rows = _ensure_rows([DocRow(**row) for row in pending.get("rows", [])], meta=meta)
 
     guide_id = _assign_ids(meta)
     guide = GUIDES.get(guide_id)

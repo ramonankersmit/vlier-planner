@@ -129,6 +129,29 @@ def _scenario_identical_duplicate() -> tuple[DocMeta, list[DocRow]]:
     return meta, rows
 
 
+def _scenario_week_date_mismatch() -> tuple[DocMeta, list[DocRow]]:
+    meta = DocMeta(
+        fileId="guide-date",
+        bestand="week-date.docx",
+        vak="Duits",
+        niveau="VWO",
+        leerjaar="4",
+        periode=2,
+        beginWeek=1,
+        eindWeek=10,
+        schooljaar="2025/2026",
+    )
+    rows = [
+        DocRow(
+            week=4,
+            datum="2026-01-12",
+            datum_eind="2026-01-16",
+            onderwerp="Toetsweek 2",
+        )
+    ]
+    return meta, rows
+
+
 def _configure_parser(monkeypatch: pytest.MonkeyPatch, scenarios: Iterator[tuple[DocMeta, list[DocRow]]]) -> None:
     def fake_extract_all(path: str, name: str):
         try:
@@ -322,6 +345,24 @@ def test_upload_review_commit_flow(api_client: TestClient, monkeypatch: pytest.M
         restart_commit_data["version"]["meta"]["bestand"],
     )
     assert version_three_file.exists()
+
+
+def test_upload_auto_corrects_misdated_week(api_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    scenarios = iter([_scenario_week_date_mismatch()])
+    _configure_parser(monkeypatch, scenarios)
+
+    upload_payload = _upload_file(api_client)
+    assert len(upload_payload) == 1
+    parse_data = upload_payload[0]
+    assert parse_data["warnings"] == {
+        "unknownSubject": False,
+        "missingWeek": False,
+        "duplicateDate": False,
+        "duplicateWeek": False,
+    }
+    row = parse_data["rows"][0]
+    assert row["datum"] == "2026-01-19"
+    assert row["datum_eind"] == "2026-01-23"
 
 
 def test_rows_with_same_week_remain_enabled(
