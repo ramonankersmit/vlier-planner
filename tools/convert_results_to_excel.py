@@ -38,6 +38,33 @@ except ImportError as exc:
         "pandas is required to run this script. Install it with 'pip install pandas'."
     ) from exc
 
+REFERENCE_DOCUMENT_ALIASES = {
+    "Duits_4V_ P2_2025-2026.pdf": "Duits_4V_ P2_2025-2026.pdf",
+    "Maatschappijleer_4vwo_p2.docx": "Maatschappijleer_4vwo_p2.docx",
+    "Studiewijzer 2526 periode 2 CKV VWO 4.pdf": "Studiewijzer 2526 periode 2 CKV VWO 4.pdf",
+    "Engels_4V_Per2.pdf": "_Engels_4V_Per2.pdf",
+    "Geschiedenis periode 2.pdf": "_Geschiedenis periode 2.pdf",
+    "Natuurkunde studiewijzer 2526 periode 2.pdf": "_Natuurkunde studiewijzer 2526 periode 2.pdf",
+    "Scheikunde 4V P2 2526.pdf": "_Scheikunde 4V P2 2526.pdf",
+    "WiskundeB_4V_Per2.pdf": "_WiskundeB_4V_Per2.pdf",
+    "Aardrijkskunde_4V_P2_2025-2026.docx": "__Aardrijkskunde_4V_P2_2025-2026.docx",
+    "Studiewijzer 4VwisA 2526 periode 2.pdf": "__Studiewijzer 4VwisA 2526 periode 2.pdf",
+}
+
+
+def _alias_document_name(name: str) -> str:
+    return REFERENCE_DOCUMENT_ALIASES.get(name, name)
+
+
+def _alias_source_row_id(row_id: Any, original_name: str, alias: str) -> Any:
+    if not isinstance(row_id, str):
+        return row_id
+    if original_name == alias:
+        return row_id
+    if original_name in row_id:
+        return row_id.replace(original_name, alias, 1)
+    return row_id
+
 
 def _sanitize_sheet_name(name: str) -> str:
     """Return a safe Excel sheet name limited to 31 characters.
@@ -130,9 +157,10 @@ def convert_json_to_single_sheet(
             continue
         # Determine a source document identifier
         doc_name = str(meta.get("bestand") or meta.get("path") or f"doc{idx+1}")
+        alias_name = _alias_document_name(doc_name)
         # Collect meta fields of interest
         meta_fields = {
-            "document": doc_name,
+            "document": alias_name,
             "periode": meta.get("periode"),
             "vak": meta.get("vak"),
             "niveau": meta.get("niveau"),
@@ -144,6 +172,9 @@ def convert_json_to_single_sheet(
                 continue
             # Merge row with a copy of metadata fields
             merged_row = {**row, **meta_fields}
+            merged_row["source_row_id"] = _alias_source_row_id(
+                merged_row.get("source_row_id"), doc_name, alias_name
+            )
             all_rows.append(merged_row)
     if not all_rows:
         print("No rows found in input; nothing to write.")
@@ -264,3 +295,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
