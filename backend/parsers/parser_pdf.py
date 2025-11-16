@@ -30,6 +30,16 @@ from .config import get_keyword_config
 
 RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ0-9\s\-\&]+?)\s*\]")
 RE_AFTER_DASH = re.compile(r"Studiewijzer\s*[-–]\s*(.+)", re.I)
+RE_DATE_TOKEN = re.compile(r"\b\d{1,2}[\-/]\d{1,2}(?:[\-/](?:\d{2}|\d{4}))?\b")
+_DATE_SEQUENCE = (
+    rf"{RE_DATE_TOKEN.pattern}(?:\s*(?:t\/?m|tm|tot\s+en\s+met)\s*{RE_DATE_TOKEN.pattern})?"
+)
+RE_DATE_SUFFIX = re.compile(
+    rf"(?:[\s,;:()\-]*{_DATE_SEQUENCE})+[\s,.;:()\-]*$", re.I
+)
+RE_WEEKLIKE_NEIGHBOR = re.compile(
+    r"^(?:wk|week)?\s*\d{1,2}(?:\s*[/\-]\s*\d{1,2})?$", re.I
+)
 
 PDF_TABLE_SETTINGS = {
     "vertical_strategy": "lines",
@@ -69,6 +79,8 @@ parse_toets_cell = BASE_PARSER.parse_toets_cell
 find_urls = BASE_PARSER.find_urls
 vak_from_filename = BASE_PARSER.vak_from_filename
 
+_WEEK_TARGET_HEADERS = {normalize_text(keyword).lower() for keyword in WEEK_HEADER_KEYWORDS}
+
 
 def _append_text(existing: Optional[str], new_text: str) -> Optional[str]:
     new_norm = normalize_text(new_text)
@@ -79,6 +91,16 @@ def _append_text(existing: Optional[str], new_text: str) -> Optional[str]:
             return existing
         return f"{existing} {new_norm}"
     return new_norm
+
+
+def _strip_date_suffix(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    stripped = RE_DATE_SUFFIX.sub("", value)
+    if stripped != value:
+        stripped = stripped.rstrip(" ,.;:-")
+    stripped = stripped.strip()
+    return stripped or None
 
 
 _VAK_STOPWORDS = re.compile(
@@ -332,7 +354,9 @@ def _update_pdf_entry(
             row, hw_col, headers, _header_value(headers, hw_col)
         )
         if hw_text:
-            entry["huiswerk"] = _append_text(entry.get("huiswerk"), hw_text)
+            entry["huiswerk"] = _strip_date_suffix(
+                _append_text(entry.get("huiswerk"), hw_text)
+            )
 
     opd_col = idx.get("opdracht")
     if opd_col is not None:
@@ -340,7 +364,9 @@ def _update_pdf_entry(
             row, opd_col, headers, _header_value(headers, opd_col)
         )
         if opd_text:
-            entry["opdracht"] = _append_text(entry.get("opdracht"), opd_text)
+            entry["opdracht"] = _strip_date_suffix(
+                _append_text(entry.get("opdracht"), opd_text)
+            )
 
     inl_col = idx.get("inlever")
     if inl_col is not None:
@@ -473,6 +499,27 @@ def _row_contains_weeks(row: List[str]) -> bool:
     return False
 
 
+def _row_has_meaningful_text(row: List[str], ignore_col: Optional[int]) -> bool:
+    for idx, cell in enumerate(row):
+        if ignore_col is not None and idx == ignore_col:
+            continue
+        if normalize_text(cell):
+            return True
+    return False
+
+
+def _looks_like_week_neighbor(value: str) -> bool:
+    if not value:
+        return False
+    if RE_WEEKLIKE_NEIGHBOR.match(value):
+        return True
+    if re.fullmatch(r"[0-9\s/\-]+", value):
+        weeks = parse_week_cell(value)
+        if weeks and all(1 <= wk <= 53 for wk in weeks):
+            return True
+    return False
+
+
 def _cell_text_with_neighbors(
     row: List[str],
     idx: Optional[int],
@@ -494,6 +541,7 @@ def _cell_text_with_neighbors(
         return None
 
     target_norm = normalize_text(target_header or "").lower()
+    target_is_week = target_norm in _WEEK_TARGET_HEADERS if target_norm else False
 
     def _header_allows(col: int) -> bool:
         if headers is None:
@@ -525,12 +573,36 @@ def _cell_text_with_neighbors(
         if col != idx and not _header_allows(col):
             continue
         text = row[col]
-        if text and normalize_text(text):
-            return text
+        if not text:
+            continue
+        normalized = normalize_text(text)
+        if not normalized:
+            continue
+        if col != idx:
+            stripped = _strip_date_suffix(normalized)
+            if stripped is None:
+                continue
+            if not target_is_week and _looks_like_week_neighbor(stripped):
+                continue
+        return text
 
     if 0 <= idx < width:
         return row[idx]
     return None
+
+
+def _apply_buffered_rows(
+    entry: Optional[dict],
+    buffered_rows: List[List[str]],
+    idx: dict,
+    headers: Optional[List[str]],
+    schooljaar: Optional[str],
+) -> None:
+    if entry is None or not buffered_rows:
+        return
+    for pending in buffered_rows:
+        _update_pdf_entry(entry, pending, idx, headers, schooljaar)
+    buffered_rows.clear()
 
 
 def _combine_header_rows(header_rows: List[List[str]]) -> List[str]:
@@ -622,6 +694,7 @@ def _extract_rows_from_tables(
         }
 
         current: Optional[dict] = None
+        pending_vacation_rows: List[List[str]] = []
         for raw_row in data_rows:
             if not any(cell for cell in raw_row if cell):
                 continue
@@ -658,6 +731,16 @@ def _extract_rows_from_tables(
                         weeks = [wk]
                     except ValueError:
                         weeks = []
+
+            should_buffer_vacation = (
+                not weeks
+                and week_text
+                and VACATION_PATTERN.search(week_text)
+                and _row_has_meaningful_text(row, week_col)
+            )
+            if should_buffer_vacation:
+                pending_vacation_rows.append(list(row))
+                continue
 
             if weeks:
                 filtered = [w for w in weeks if 1 <= w <= 53]
@@ -706,6 +789,7 @@ def _extract_rows_from_tables(
                     "source_row_id": f"{label}:t{table_index}:r{row_counter}",
                 }
                 _update_pdf_entry(current, row, idx, headers, schooljaar)
+                _apply_buffered_rows(current, pending_vacation_rows, idx, headers, schooljaar)
             else:
                 if current is None:
                     continue
@@ -718,7 +802,9 @@ def _extract_rows_from_tables(
                 _update_pdf_entry(current, row, idx, headers, schooljaar)
 
         if current:
+            _apply_buffered_rows(current, pending_vacation_rows, idx, headers, schooljaar)
             results.extend(_flush_pdf_entry(current, schooljaar))
+        pending_vacation_rows.clear()
 
     return results
 

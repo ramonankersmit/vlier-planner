@@ -119,3 +119,78 @@ def test_pdf_parser_infers_due_date_from_deadline_toets_text():
     assert rows, "Expected flush to create a row"
     row = rows[0]
     assert row.inleverdatum == "2025-11-24"
+
+
+def test_pdf_parser_ignores_date_only_neighbor_columns_for_work():
+    table = [
+        ["Week", "Huiswerk", "", "Opdracht", ""],
+        ["46", "", "10-11-2025 14-11-2025", "", "10-11-2025 14-11-2025"],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "scheikunde.pdf")
+    assert rows, "Expected rows to be parsed"
+    row = rows[0]
+    assert row.huiswerk is None
+    assert row.opdracht is None
+
+
+def test_pdf_parser_ignores_tm_date_neighbor_columns_for_work():
+    table = [
+        ["Week", "Huiswerk", "", "Opdracht", ""],
+        [
+            "46",
+            "",
+            "10-11-2025 t/m 14-11-2025",
+            "",
+            "22-11-2025 tot en met 23-11-2025",
+        ],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "scheikunde.pdf")
+    assert rows, "Expected rows to be parsed"
+    row = rows[0]
+    assert row.huiswerk is None
+    assert row.opdracht is None
+
+
+def test_pdf_parser_strips_tm_date_suffix_from_work_columns():
+    table = [
+        ["Week", "Huiswerk"],
+        ["46", "Maken: paragraaf 1 en 2. 10-11-2025 t/m 14-11-2025"],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "scheikunde.pdf")
+    assert rows, "Expected rows to be parsed"
+    row = rows[0]
+    assert row.huiswerk == "Maken: paragraaf 1 en 2"
+
+
+def test_pdf_parser_buffers_vacation_rows_without_week_numbers():
+    table = [
+        ["Week", "Huiswerk", ""],
+        ["51", "Maken: paragraaf 2", ""],
+        ["Kerstvakantie", "Kerstvakantie", ""],
+        ["52/1", "", ""],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "scheikunde.pdf")
+    assert rows and len(rows) == 2
+    first, second = rows
+    assert first.week == 51
+    assert first.huiswerk == "Maken: paragraaf 2"
+    assert second.week == 52
+    assert second.weeks == [52, 1]
+    assert second.huiswerk == "Kerstvakantie"
+
+
+def test_pdf_parser_skips_week_number_neighbors_for_work_columns():
+    table = [
+        ["Week", "", "Huiswerk", ""],
+        ["4", "4", "", "Maken: paragraaf 3"],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "scheikunde.pdf")
+    assert rows, "Expected rows to be parsed"
+    row = rows[0]
+    assert row.week == 4
+    assert row.huiswerk == "Maken: paragraaf 3"
