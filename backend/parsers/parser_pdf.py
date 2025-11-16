@@ -554,7 +554,15 @@ def _cell_text_with_neighbors(
             return True
         if not target_norm:
             return False
-        return header_value == target_norm
+        if header_value == target_norm:
+            return True
+        if header_value.startswith(target_norm) or target_norm.startswith(header_value):
+            return True
+        header_tokens = set(header_value.split())
+        target_tokens = set(target_norm.split())
+        if header_tokens & target_tokens:
+            return True
+        return False
 
     candidate_indices: List[int] = []
     if 0 <= idx < width:

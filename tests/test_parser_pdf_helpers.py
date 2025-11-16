@@ -20,3 +20,10 @@ def test_neighbor_lookup_skips_date_only_values() -> None:
     row = ["46", "", "10-11-2025 14-11-2025"]
     result = _cell_text_with_neighbors(row, 1, headers, headers[1])
     assert not result
+
+
+def test_neighbor_lookup_accepts_partial_header_overlap() -> None:
+    headers = ["Onderwerp", "Onderwerp / les", "Huiswerk"]
+    row = ["", "Wereldgodsdiensten", ""]
+    result = _cell_text_with_neighbors(row, 0, headers, headers[0])
+    assert result == "Wereldgodsdiensten"
