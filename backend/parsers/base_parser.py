@@ -27,6 +27,10 @@ RE_WEEK_SOLO = re.compile(r"\b(?:wk|week)\s*(\d{1,2})\b", re.I)
 RE_NUM_PURE = re.compile(r"^\s*(\d{1,2})\s*$")
 RE_WEEK_WORD = re.compile(r"(?i)\bweek\b")
 RE_NUMERIC_FIELD = re.compile(r"^[0-9\s\-/,:]+$")
+RE_TRAILING_DATE_BLOB = re.compile(
+    r"(?:[\s,;:()\-]*\b\d{1,2}[\-/]\d{1,2}(?:[\-/]\d{2,4})?\b)+[\s,.;:()\-]*$",
+    re.I,
+)
 
 MONTHS_NL = {
     "januari": 1,
@@ -304,11 +308,20 @@ class BaseParser:
         normalized = self.normalize_text(value)
         if not normalized:
             return None
+        normalized = RE_TRAILING_DATE_BLOB.sub("", normalized).strip()
+        normalized = normalized.strip(" .,:;-–—")
+        if not normalized:
+            return None
         normalized_lower = normalized.lower()
         label = self.normalize_text(row.week_label)
         if label:
+            label = RE_TRAILING_DATE_BLOB.sub("", label).strip()
+            label = label.strip(" .,:;-–—")
             variants = [label]
             stripped = self.normalize_text(RE_WEEK_WORD.sub(" ", row.week_label or ""))
+            if stripped:
+                stripped = RE_TRAILING_DATE_BLOB.sub("", stripped).strip()
+                stripped = stripped.strip(" .,:;-–—")
             if stripped and stripped not in variants:
                 variants.append(stripped)
             for candidate in variants:

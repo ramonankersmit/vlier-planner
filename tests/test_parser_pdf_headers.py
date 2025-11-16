@@ -119,3 +119,16 @@ def test_pdf_parser_infers_due_date_from_deadline_toets_text():
     assert rows, "Expected flush to create a row"
     row = rows[0]
     assert row.inleverdatum == "2025-11-24"
+
+
+def test_pdf_parser_ignores_date_only_neighbor_columns_for_work():
+    table = [
+        ["Week", "Huiswerk", "", "Opdracht", ""],
+        ["46", "", "10-11-2025 14-11-2025", "", "10-11-2025 14-11-2025"],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "scheikunde.pdf")
+    assert rows, "Expected rows to be parsed"
+    row = rows[0]
+    assert row.huiswerk is None
+    assert row.opdracht is None

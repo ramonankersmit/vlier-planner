@@ -48,6 +48,19 @@ def test_assignment_matching_week_label_is_removed() -> None:
     assert entry.homework is None
 
 
+def test_assignment_with_punctuation_and_dates_is_removed() -> None:
+    parser = BaseParser()
+    row = DocRow(
+        week=4,
+        week_label="Week 4 22-01-2026 23-01-2026.",
+        opdracht="4 22-01-2026 23-01-2026.",
+        huiswerk="4 22-01-2026 23-01-2026.",
+    )
+    entry = parser.to_raw_entry(row)
+    assert entry.assignment is None
+    assert entry.homework is None
+
+
 def test_numeric_only_homework_does_not_block_holiday_detection() -> None:
     parser = BaseParser()
     row = DocRow(

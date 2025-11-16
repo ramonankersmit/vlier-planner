@@ -30,6 +30,10 @@ from .config import get_keyword_config
 
 RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ0-9\s\-\&]+?)\s*\]")
 RE_AFTER_DASH = re.compile(r"Studiewijzer\s*[-–]\s*(.+)", re.I)
+RE_DATE_TOKEN = re.compile(r"\b\d{1,2}[\-/]\d{1,2}(?:[\-/](?:\d{2}|\d{4}))?\b")
+RE_DATE_SUFFIX = re.compile(
+    rf"(?:[\s,;:()\-]*{RE_DATE_TOKEN.pattern})+[\s,.;:()\-]*$", re.I
+)
 
 PDF_TABLE_SETTINGS = {
     "vertical_strategy": "lines",
@@ -79,6 +83,16 @@ def _append_text(existing: Optional[str], new_text: str) -> Optional[str]:
             return existing
         return f"{existing} {new_norm}"
     return new_norm
+
+
+def _strip_date_suffix(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    stripped = RE_DATE_SUFFIX.sub("", value)
+    if stripped != value:
+        stripped = stripped.rstrip(" ,.;:-")
+    stripped = stripped.strip()
+    return stripped or None
 
 
 _VAK_STOPWORDS = re.compile(
@@ -332,7 +346,9 @@ def _update_pdf_entry(
             row, hw_col, headers, _header_value(headers, hw_col)
         )
         if hw_text:
-            entry["huiswerk"] = _append_text(entry.get("huiswerk"), hw_text)
+            entry["huiswerk"] = _strip_date_suffix(
+                _append_text(entry.get("huiswerk"), hw_text)
+            )
 
     opd_col = idx.get("opdracht")
     if opd_col is not None:
@@ -340,7 +356,9 @@ def _update_pdf_entry(
             row, opd_col, headers, _header_value(headers, opd_col)
         )
         if opd_text:
-            entry["opdracht"] = _append_text(entry.get("opdracht"), opd_text)
+            entry["opdracht"] = _strip_date_suffix(
+                _append_text(entry.get("opdracht"), opd_text)
+            )
 
     inl_col = idx.get("inlever")
     if inl_col is not None:
@@ -525,8 +543,14 @@ def _cell_text_with_neighbors(
         if col != idx and not _header_allows(col):
             continue
         text = row[col]
-        if text and normalize_text(text):
-            return text
+        if not text:
+            continue
+        normalized = normalize_text(text)
+        if not normalized:
+            continue
+        if col != idx and RE_DATE_SUFFIX.fullmatch(normalized):
+            continue
+        return text
 
     if 0 <= idx < width:
         return row[idx]
