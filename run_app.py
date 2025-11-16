@@ -120,8 +120,25 @@ def _configure_logging() -> None:
     if root_logger.level > log_level:
         root_logger.setLevel(log_level)
 
-    _store_file_handler_settings(log_path, log_level)
-    logging.getLogger(__name__).info("Logbestand: %s", log_path)
+_store_file_handler_settings(log_path, log_level)
+logging.getLogger(__name__).info("Logbestand: %s", log_path)
+
+
+def _announce_log_destination() -> None:
+    """Echo the configured log destination so devs know where to look."""
+
+    settings = _FILE_HANDLER_SETTINGS
+    if not settings:
+        print("[logging] Console logging actief (geen logbestand geconfigureerd).")
+        return
+
+    path = settings["path"]
+    level = logging.getLevelName(settings["level"])
+    print(
+        "[logging] Backendlogs worden naar"
+        f" {path} geschreven (niveau {level})."
+        " Zet VLIER_LOG_LEVEL=DEBUG voor extra details."
+    )
 
 
 def get_uvicorn_log_config() -> dict[str, Any]:
@@ -223,6 +240,7 @@ def _ensure_version_env() -> None:
 
 _ensure_version_env()
 _configure_logging()
+_announce_log_destination()
 
 from backend import app as backend_app
 from backend import updater as backend_updater
