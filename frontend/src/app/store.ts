@@ -1009,10 +1009,15 @@ const computeWeekAggregation = (
 
         const generalNotes = Array.from(new Set(generalNoteCandidates.filter(Boolean)));
         if (generalNotes.length) {
+          const allowNotesAsHomework =
+            !docContainsStructuredHomework && !hasHomeworkOrDeadlines;
+          const allowNotesAsDeadlines = !hasHomeworkOrDeadlines;
           applyToAccumulators((accum) => {
             for (const note of generalNotes) {
-              if (!hasHomeworkOrDeadlines) {
+              if (allowNotesAsHomework) {
                 addUnique(accum.huiswerk, note);
+              }
+              if (allowNotesAsDeadlines) {
                 addUnique(accum.deadlines, note);
               }
               addUnique(accum.opmerkingen, note);

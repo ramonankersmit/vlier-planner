@@ -589,6 +589,34 @@ describe("useAppStore", () => {
     expect(week48?.huiswerk).toContain("Groen licht formulier laten ondertekenen.");
   });
 
+  it("laat algemene weeknotities geen huiswerk vullen zodra het document huiswerk bevat", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-weeknote",
+      guideId: "guide-weeknote",
+      bestand: "geschiedenis.pdf",
+      beginWeek: 1,
+      eindWeek: 3,
+      schooljaar: "2024/2025",
+      vak: "Geschiedenis",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-weeknote", [
+      { week: 1, huiswerk: "Lees paragraaf 1" },
+      { week: 2, onderwerp: "Toetsweek 2" },
+    ]);
+
+    const state = useAppStore.getState();
+    const weekTwo = state.weekData.weeks?.find((info) => info.nr === 2);
+    const weekTwoData = weekTwo ? state.weekData.byWeek?.[weekTwo.id]?.[meta.vak] : undefined;
+
+    expect(weekTwoData?.lesstof).toContain("Toetsweek 2");
+    expect(weekTwoData?.huiswerk).toBeUndefined();
+    expect(weekTwoData?.opmerkingen).toContain("Toetsweek 2");
+    expect(weekTwoData?.deadlines).toContain("Toetsweek 2");
+  });
+
   it("laat docx-regels ongemoeid wanneer alleen de lesstof is ingevuld", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({ fileId: "guide-docx", guideId: "guide-docx" });
