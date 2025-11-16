@@ -7,6 +7,7 @@ hulpscripts werken zonder extra installatiestap, terwijl de
 cel-detectie robuuster wordt zodra Camelot beschikbaar is.
 """
 
+import logging
 import re
 from datetime import date
 from typing import Generator, Iterable, List, Optional, Tuple
@@ -56,6 +57,8 @@ DEADLINE_TOETS_PATTERN = re.compile(r"(?i)\b(inlever(?:en|datum|moment)|deadline
 
 KEYWORDS = get_keyword_config()
 BASE_PARSER = BaseParser(KEYWORDS)
+
+LOGGER = logging.getLogger(__name__)
 
 WEEK_HEADER_KEYWORDS = KEYWORDS.week_headers
 DATE_HEADER_KEYWORDS = KEYWORDS.date_headers
@@ -247,10 +250,15 @@ def _normalize_camelot_cell(value: object) -> str:
 
 def _iter_camelot_tables(path: str) -> Generator[List[List[str]], None, None]:
     if camelot is None:
+        LOGGER.info(
+            "Camelot niet beschikbaar; sla Camelot-parsing over voor %s", path
+        )
         return
 
+    any_rows = False
     for flavor in CAMELOT_FLAVORS:
         kwargs = CAMELOT_KWARGS.get(flavor, {})
+        LOGGER.debug("Probeer Camelot flavor '%s' voor %s", flavor, path)
         try:
             tables = camelot.read_pdf(  # type: ignore[attr-defined]
                 path,
@@ -259,9 +267,13 @@ def _iter_camelot_tables(path: str) -> Generator[List[List[str]], None, None]:
                 strip_text="\n",
                 **kwargs,
             )
-        except Exception:  # pragma: no cover - afhankelijk van pdf inhoud
+        except Exception as exc:  # pragma: no cover - afhankelijk van pdf inhoud
+            LOGGER.warning(
+                "Camelot faalde met flavor '%s' voor %s: %s", flavor, path, exc
+            )
             continue
 
+        flavor_tables = 0
         for table in tables:
             dataframe = getattr(table, "df", None)
             if dataframe is None:
@@ -273,7 +285,23 @@ def _iter_camelot_tables(path: str) -> Generator[List[List[str]], None, None]:
             for raw_row in values:
                 rows.append([_normalize_camelot_cell(cell) for cell in raw_row])
             if rows:
+                any_rows = True
+                flavor_tables += 1
                 yield rows
+
+        if flavor_tables:
+            LOGGER.info(
+                "Camelot gebruikte flavor '%s' en vond %d tabellen in %s",
+                flavor,
+                flavor_tables,
+                path,
+            )
+
+    if not any_rows:
+        LOGGER.info(
+            "Camelot leverde geen tabellen voor %s; val terug op pdfplumber/PyPDF2",
+            path,
+        )
 
 
 def _iter_pdf_tables(path: str):
@@ -284,7 +312,13 @@ def _iter_pdf_tables(path: str):
         return
 
     if pdfplumber is None:
+        LOGGER.warning(
+            "pdfplumber niet geïnstalleerd; kan geen tabellen uit %s extraheren",
+            path,
+        )
         return
+
+    LOGGER.info("Val terug op pdfplumber voor tabellen in %s", path)
     with pdfplumber.open(path) as pdf:  # type: ignore[arg-type]
         for page in pdf.pages:
             tables = page.extract_tables(PDF_TABLE_SETTINGS)
@@ -904,6 +938,7 @@ def _page_texts(path: str) -> Generator[Tuple[int, int, str], None, None]:
     """
 
     if pdfplumber is not None:  # voorkeursoptie
+        LOGGER.debug("Lees paginatest met pdfplumber uit %s", path)
         with pdfplumber.open(path) as pdf:  # type: ignore[arg-type]
             total_pages = len(pdf.pages)
             for idx, page in enumerate(pdf.pages, start=1):
@@ -911,6 +946,10 @@ def _page_texts(path: str) -> Generator[Tuple[int, int, str], None, None]:
         return
 
     if PdfReader is not None:  # eenvoudige fallback
+        LOGGER.info(
+            "Val terug op PyPDF2 voor paginatest omdat pdfplumber ontbreekt (%s)",
+            path,
+        )
         reader = PdfReader(path)
         total_pages = len(reader.pages)
         for idx, page in enumerate(reader.pages, start=1):
