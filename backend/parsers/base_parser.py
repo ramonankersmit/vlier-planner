@@ -27,10 +27,57 @@ RE_WEEK_SOLO = re.compile(r"\b(?:wk|week)\s*(\d{1,2})\b", re.I)
 RE_NUM_PURE = re.compile(r"^\s*(\d{1,2})\s*$")
 RE_WEEK_WORD = re.compile(r"(?i)\bweek\b")
 RE_NUMERIC_FIELD = re.compile(r"^[0-9\s\-/,:]+$")
-RE_TRAILING_DATE_BLOB = re.compile(
-    r"(?:[\s,;:()\-]*\b\d{1,2}[\-/]\d{1,2}(?:[\-/]\d{2,4})?\b)+[\s,.;:()\-]*$",
+RE_TRAILING_DATE_TOKEN = re.compile(
+    r"(\b\d{1,2}[\-/]\d{1,2}[\-/]\d{2,4}\b|\b\d{1,2}[\-/]\d{1,2}\b|\b\d{1,2}\s+[A-Za-zÀ-ÿ]+\s+(?:20)?\d{2}\b)\s*$",
     re.I,
 )
+RE_TRAILING_DATE_CONNECTOR = re.compile(
+    r"(?i)(?:t/m|t\.m\.|t\.e\.m\.?|tm|tot(?:\s+en\s+met)?|totenmet|van|vanaf)\s*$",
+)
+RE_NUMERIC_DATE_WITH_YEAR = re.compile(r"^\d{1,2}[\-/]\d{1,2}[\-/]\d{2,4}$")
+RE_NUMERIC_DATE_SHORT = re.compile(r"^\d{1,2}[\-/]\d{1,2}$")
+RE_TEXTUAL_DATE_FULL = re.compile(r"^\d{1,2}\s+[A-Za-zÀ-ÿ]+\s+(?:20)?\d{2}$", re.I)
+
+
+def _strip_trailing_dates(text: str) -> str:
+    """Strip trailing date-looking tokens while keeping exercise ranges intact."""
+
+    trimmed = text
+    removed_tokens = 0
+    has_strong_token = False
+    while trimmed:
+        trimmed = trimmed.rstrip(" ,.;:-()")
+        if not trimmed:
+            break
+        connector_match = RE_TRAILING_DATE_CONNECTOR.search(trimmed)
+        if connector_match and removed_tokens > 0:
+            trimmed = trimmed[: connector_match.start()]
+            continue
+        token_match = RE_TRAILING_DATE_TOKEN.search(trimmed)
+        if not token_match:
+            break
+        token = token_match.group(1)
+        if RE_NUMERIC_DATE_WITH_YEAR.fullmatch(token) or RE_TEXTUAL_DATE_FULL.fullmatch(token):
+            trimmed = trimmed[: token_match.start()]
+            removed_tokens += 1
+            has_strong_token = True
+            continue
+        if RE_NUMERIC_DATE_SHORT.fullmatch(token):
+            prefix = trimmed[: token_match.start()]
+            if has_strong_token or removed_tokens > 0 or _ends_with_date_connector(prefix):
+                trimmed = trimmed[: token_match.start()]
+                removed_tokens += 1
+                continue
+        break
+    return trimmed.rstrip(" ,.;:-()")
+
+
+def _ends_with_date_connector(text: str) -> bool:
+    stripped = text.rstrip(" ,.;:-()")
+    if not stripped:
+        return False
+    return bool(RE_TRAILING_DATE_CONNECTOR.search(stripped))
+
 
 MONTHS_NL = {
     "januari": 1,
@@ -308,19 +355,19 @@ class BaseParser:
         normalized = self.normalize_text(value)
         if not normalized:
             return None
-        normalized = RE_TRAILING_DATE_BLOB.sub("", normalized).strip()
+        normalized = _strip_trailing_dates(normalized)
         normalized = normalized.strip(" .,:;-–—")
         if not normalized:
             return None
         normalized_lower = normalized.lower()
         label = self.normalize_text(row.week_label)
         if label:
-            label = RE_TRAILING_DATE_BLOB.sub("", label).strip()
+            label = _strip_trailing_dates(label)
             label = label.strip(" .,:;-–—")
             variants = [label]
             stripped = self.normalize_text(RE_WEEK_WORD.sub(" ", row.week_label or ""))
             if stripped:
-                stripped = RE_TRAILING_DATE_BLOB.sub("", stripped).strip()
+                stripped = _strip_trailing_dates(stripped)
                 stripped = stripped.strip(" .,:;-–—")
             if stripped and stripped not in variants:
                 variants.append(stripped)

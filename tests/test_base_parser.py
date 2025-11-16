@@ -71,3 +71,17 @@ def test_numeric_only_homework_does_not_block_holiday_detection() -> None:
     )
     entry = parser.to_raw_entry(row)
     assert entry.is_holiday is True
+
+
+def test_assignment_with_exercise_range_is_preserved() -> None:
+    parser = BaseParser()
+    row = DocRow(week=2, opdracht="Opdracht 1-2")
+    entry = parser.to_raw_entry(row)
+    assert entry.assignment == "Opdracht 1-2"
+
+
+def test_homework_with_fraction_instruction_is_preserved() -> None:
+    parser = BaseParser()
+    row = DocRow(week=3, huiswerk="Lees paragraaf 3/4")
+    entry = parser.to_raw_entry(row)
+    assert entry.homework == "Lees paragraaf 3/4"
