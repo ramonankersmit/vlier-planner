@@ -630,7 +630,7 @@ def _cell_text_with_neighbors(
     allowed_headers = _compatible_headers(target_norm) if target_norm else set()
 
     def _has_hyphenated_suffix(value: Optional[str]) -> bool:
-        if not value:
+        if not value or not isinstance(value, str):
             return False
         normalized_value = normalize_text(value)
         if not normalized_value:
