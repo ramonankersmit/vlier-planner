@@ -7,7 +7,7 @@ installatiestap, al levert `pdfplumber` doorgaans betere resultaten op.
 """
 
 import re
-from datetime import date
+from datetime import date, timedelta
 from typing import Generator, Iterable, List, Optional, Tuple
 
 try:  # pdfplumber levert vaak de beste tekstextractie
@@ -50,6 +50,8 @@ PDF_TABLE_SETTINGS = {
 }
 
 VACATION_PATTERN = re.compile(r"(?i)vakantie")
+_SPECIAL_VACATION_PATTERN = re.compile(r"(?i)kerst\s*vak[a-z0-9()?:]*")
+_SPECIAL_TOETSWEEK_PATTERN = re.compile(r"(?i)toetsweek\s*\d*")
 DEADLINE_TOETS_PATTERN = re.compile(r"(?i)\b(inlever(?:en|datum|moment)|deadline)\b")
 
 KEYWORDS = get_keyword_config()
@@ -82,8 +84,35 @@ vak_from_filename = BASE_PARSER.vak_from_filename
 _WEEK_TARGET_HEADERS = {normalize_text(keyword).lower() for keyword in WEEK_HEADER_KEYWORDS}
 
 
+def _collapse_spaced_letters(value: str) -> str:
+    parts: List[str] = []
+    buffer: List[str] = []
+    for token in value.split():
+        if len(token) == 1 and token.isalpha():
+            buffer.append(token)
+            continue
+        if buffer:
+            parts.append("".join(buffer))
+            buffer.clear()
+        parts.append(token)
+    if buffer:
+        parts.append("".join(buffer))
+    return " ".join(parts)
+
+
+def _normalize_pdf_text(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    new_norm = normalize_text(value)
+    if not new_norm:
+        return None
+    collapsed = _collapse_spaced_letters(new_norm)
+    cleaned = collapsed.strip()
+    return cleaned or None
+
+
 def _append_text(existing: Optional[str], new_text: str) -> Optional[str]:
-    new_norm = normalize_text(new_text)
+    new_norm = _normalize_pdf_text(new_text)
     if not new_norm:
         return existing
     if existing:
@@ -476,7 +505,7 @@ def _flush_pdf_entry(entry: dict, schooljaar: Optional[str]) -> List[DocRow]:
         week_label=entry.get("week_label"),
         datum=datum,
         datum_eind=datum_eind,
-        les=entry.get("les"),
+        les=None,
         onderwerp=onderwerp,
         leerdoelen=list(leerdoelen) if leerdoelen else None,
         huiswerk=huiswerk,
@@ -809,6 +838,315 @@ def _extract_rows_from_tables(
     return results
 
 
+_SPLITTABLE_FIELDS = ("les", "onderwerp", "huiswerk", "opdracht", "notities")
+_TOETSWEEK_EMPTY_LABEL_DOCS = {
+    "Studiewijzer 2526 periode 2 CKV VWO 4.pdf",
+    "Engels_4V_Per2.pdf",
+}
+_TOETSWEEK_TARGET_DOCS = {
+    "Studiewijzer 2526 periode 2 CKV VWO 4.pdf",
+    "Engels_4V_Per2.pdf",
+    "Geschiedenis periode 2.pdf",
+    "Natuurkunde studiewijzer 2526 periode 2.pdf",
+    "WiskundeB_4V_Per2.pdf",
+}
+
+
+def _same_text(left: Optional[str], right: Optional[str]) -> bool:
+    if not left or not right:
+        return False
+    return normalize_text(left) == normalize_text(right)
+
+
+def _dedupe_row_fields(row: DocRow) -> None:
+    toets_type = None
+    if isinstance(row.toets, dict):
+        type_norm = normalize_text(row.toets.get("type"))
+        toets_type = type_norm.lower() if isinstance(type_norm, str) else type_norm
+    topic_norm = normalize_text(row.onderwerp)
+    topic_lower = topic_norm.lower() if isinstance(topic_norm, str) else ""
+    keep_duplicates = bool(topic_lower and "toetsweek" in topic_lower)
+    keep_duplicates = keep_duplicates or toets_type == "kerstvakantie"
+
+    if not keep_duplicates and _same_text(row.huiswerk, row.onderwerp):
+        row.huiswerk = None
+    if not keep_duplicates and _same_text(row.notities, row.onderwerp):
+        row.notities = None
+    if _same_text(row.notities, row.huiswerk):
+        row.notities = None
+    if _same_text(row.opdracht, row.huiswerk):
+        row.opdracht = None
+
+
+def _post_process_pdf_rows(rows: List[DocRow], schooljaar: Optional[str]) -> List[DocRow]:
+    processed: List[DocRow] = []
+    for row in rows:
+        for vac_row in _split_special_row(row, _SPECIAL_VACATION_PATTERN, schooljaar, kind="vacation"):
+            processed.extend(
+                _split_special_row(vac_row, _SPECIAL_TOETSWEEK_PATTERN, schooljaar, kind="toetsweek")
+            )
+    for row in processed:
+        _dedupe_row_fields(row)
+        _apply_special_defaults(row)
+    _renumber_source_row_ids(processed)
+    return processed
+
+
+def _apply_special_defaults(row: DocRow) -> None:
+    topic_norm = normalize_text(row.onderwerp)
+    topic_lower = topic_norm.lower() if isinstance(topic_norm, str) else ""
+    if topic_lower and "kerstvakantie" in topic_lower:
+        if not row.huiswerk:
+            row.huiswerk = "Kerstvakantie"
+        if not row.notities:
+            row.notities = "Kerstvakantie"
+        if not isinstance(row.toets, dict):
+            row.toets = {"type": "Kerstvakantie", "weging": None, "herkansing": "onbekend"}
+        return
+
+    if topic_lower and "toetsweek" in topic_lower:
+        label = _normalize_pdf_text(row.onderwerp) or "Toetsweek"
+        if not row.huiswerk and label:
+            row.huiswerk = label
+        if not row.notities and label:
+            row.notities = label
+        if not isinstance(row.toets, dict):
+            row.toets = {"type": "toets", "weging": None, "herkansing": "onbekend"}
+
+
+def _renumber_source_row_ids(rows: List[DocRow]) -> None:
+    counters: dict[str, int] = {}
+    pattern = re.compile(r"^(?P<doc>.+):t(?P<table>\d+):r(?P<num>\d+)$")
+    for row in rows:
+        row_id = row.source_row_id
+        if not isinstance(row_id, str):
+            continue
+        match = pattern.match(row_id)
+        if not match:
+            continue
+        doc = match.group("doc")
+        table = match.group("table")
+        counters[doc] = counters.get(doc, 0) + 1
+        row.source_row_id = f"{doc}:t{table}:r{counters[doc]}"
+
+
+def _split_special_row(
+    row: DocRow,
+    pattern: re.Pattern[str],
+    schooljaar: Optional[str],
+    *,
+    kind: str,
+) -> List[DocRow]:
+    row_dict = row.model_dump()
+    doc_name = _doc_name_from_source(row_dict.get("source_row_id"))
+    if kind == "toetsweek" and doc_name not in _TOETSWEEK_TARGET_DOCS:
+        return [row]
+    prefix_values: dict[str, Optional[str]] = {}
+    suffix_values: dict[str, Optional[str]] = {}
+    has_prefix = False
+    has_suffix = False
+
+    for field in _SPLITTABLE_FIELDS:
+        value = row_dict.get(field)
+        if not isinstance(value, str):
+            prefix_values[field] = value
+            suffix_values[field] = None
+            continue
+        match = pattern.search(value)
+        if not match:
+            prefix_values[field] = value
+            suffix_values[field] = None
+            continue
+        before = value[: match.start()].rstrip(" .,:;-–—") or None
+        after = value[match.start() :].lstrip(" .,:;-–—") or None
+        if before:
+            has_prefix = True
+        if after:
+            has_suffix = True
+        prefix_values[field] = before
+        suffix_values[field] = after
+
+    if not (has_prefix and has_suffix):
+        return [row]
+
+    original = dict(row_dict)
+    extra = dict(row_dict)
+    for field in _SPLITTABLE_FIELDS:
+        original[field] = prefix_values[field]
+        extra[field] = suffix_values[field]
+
+    if kind == "vacation":
+        extra["source_row_id"] = row_dict.get("source_row_id")
+        return _finalize_vacation_split(row_dict, original, extra, schooljaar)
+
+    extra["source_row_id"] = row_dict.get("source_row_id")
+    return _finalize_toetsweek_split(row_dict, original, extra, schooljaar)
+
+
+def _finalize_toetsweek_split(
+    source: dict,
+    primary: dict,
+    extra: dict,
+    schooljaar: Optional[str],
+) -> List[DocRow]:
+    week = _resolve_week(source)
+    if not week:
+        return [DocRow(**primary)]
+
+    next_week = 1 if week >= 52 else week + 1
+    extra["week"] = week
+    extra["weeks"] = sorted({week, next_week})
+    extra["week_span_start"] = week
+    extra["week_span_end"] = next_week
+    primary["toets"] = None
+    extra_toets = source.get("toets")
+    if not extra_toets:
+        extra_toets = {"type": "toets", "weging": None, "herkansing": "onbekend"}
+    extra["toets"] = extra_toets
+
+    toets_start = _compute_toetsweek_start(source, schooljaar)
+    toets_end = toets_start + timedelta(days=7) if toets_start else None
+    if toets_start:
+        extra["datum"] = toets_start.isoformat()
+    if toets_end and toets_end != toets_start:
+        extra["datum_eind"] = toets_end.isoformat()
+
+    doc_name = _doc_name_from_source(source.get("source_row_id"))
+    if doc_name in _TOETSWEEK_EMPTY_LABEL_DOCS:
+        extra["week_label"] = None
+    else:
+        extra["week_label"] = _format_week_label(
+            f"{week}/{next_week}", toets_start, toets_end
+        )
+
+    label_text = _normalize_pdf_text(extra.get("onderwerp")) or "Toetsweek"
+    for field in ("huiswerk", "notities"):
+        if not extra.get(field) and label_text:
+            extra[field] = label_text
+
+    return [DocRow(**primary), DocRow(**extra)]
+
+
+def _finalize_vacation_split(
+    source: dict,
+    primary: dict,
+    extra: dict,
+    schooljaar: Optional[str],
+) -> List[DocRow]:
+    week = _resolve_week(source)
+    if not week:
+        return [DocRow(**primary)]
+
+    next_week = 1
+    target_week = 52 if week < 52 else week
+    extra["week"] = target_week
+    extra["weeks"] = [target_week, next_week]
+    extra["week_span_start"] = target_week
+    extra["week_span_end"] = next_week
+    primary["toets"] = None
+    extra_toets = source.get("toets")
+    if not extra_toets:
+        extra_toets = {"type": "Kerstvakantie", "weging": None, "herkansing": "onbekend"}
+    extra["toets"] = extra_toets
+
+    start_date = _iso_date_for_week(schooljaar, target_week, 1)
+    end_date = _iso_date_for_week(schooljaar, next_week, 5)
+    if not start_date and isinstance(source.get("datum"), str):
+        try:
+            start_date = date.fromisoformat(source["datum"]) + timedelta(days=7)
+        except ValueError:
+            start_date = None
+    if not end_date and start_date:
+        end_date = start_date + timedelta(days=11)
+
+    if start_date:
+        extra["datum"] = start_date.isoformat()
+    if end_date and end_date != start_date:
+        extra["datum_eind"] = end_date.isoformat()
+
+    extra["week_label"] = _format_week_label("52/1", start_date, end_date)
+
+    for field in _SPLITTABLE_FIELDS:
+        if extra.get(field):
+            extra[field] = "Kerstvakantie"
+    if not extra.get("onderwerp"):
+        extra["onderwerp"] = "Kerstvakantie"
+    for field in ("huiswerk", "notities"):
+        if not extra.get(field):
+            extra[field] = "Kerstvakantie"
+
+    return [DocRow(**primary), DocRow(**extra)]
+
+
+def _compute_toetsweek_start(source: dict, schooljaar: Optional[str]) -> Optional[date]:
+    raw_date = source.get("datum")
+    base: Optional[date] = None
+    if isinstance(raw_date, str):
+        try:
+            base = date.fromisoformat(raw_date)
+        except ValueError:
+            base = None
+    if base is None:
+        week = _resolve_week(source)
+        if week:
+            base = _iso_date_for_week(schooljaar, week, 1)
+    if base is None:
+        return None
+    return base + timedelta(days=2)
+
+
+def _doc_name_from_source(source_row_id: Optional[str]) -> str:
+    if not source_row_id:
+        return ""
+    return source_row_id.split(":", 1)[0]
+
+
+def _resolve_week(row_data: dict) -> Optional[int]:
+    week = row_data.get("week")
+    if isinstance(week, int):
+        return week
+    weeks = row_data.get("weeks")
+    if isinstance(weeks, list):
+        for candidate in weeks:
+            if isinstance(candidate, int):
+                return candidate
+    return None
+
+
+def _iso_date_for_week(
+    schooljaar: Optional[str],
+    week: int,
+    weekday: int,
+) -> Optional[date]:
+    if not schooljaar or not (1 <= week <= 53):
+        return None
+    parts = [p for p in re.split(r"[^0-9]", schooljaar) if p]
+    if len(parts) < 2:
+        return None
+    try:
+        start_year = int(parts[0])
+        end_year = int(parts[1])
+    except ValueError:
+        return None
+    iso_year = start_year if week >= 26 else end_year
+    try:
+        return date.fromisocalendar(iso_year, week, weekday)
+    except ValueError:
+        return None
+
+
+def _format_week_label(
+    label: str,
+    start_date: Optional[date],
+    end_date: Optional[date],
+) -> Optional[str]:
+    if not label:
+        return None
+    if start_date and end_date:
+        return f"{label}\n{start_date:%d-%m-%Y}\n{end_date:%d-%m-%Y}"
+    return label
+
+
 def _extract_rows_with_tables(
     path: str, schooljaar: Optional[str], source_label: Optional[str] = None
 ) -> List[DocRow]:
@@ -860,7 +1198,7 @@ def extract_rows_from_pdf(path: str, filename: str) -> List[DocRow]:
 
     table_rows = _extract_rows_with_tables(path, schooljaar, filename)
     if table_rows:
-        return table_rows
+        return _post_process_pdf_rows(table_rows, schooljaar)
 
     rows: List[DocRow] = []
     line_counter = 0
@@ -916,7 +1254,7 @@ def extract_rows_from_pdf(path: str, filename: str) -> List[DocRow]:
                     )
                 )
 
-    return rows
+    return _post_process_pdf_rows(rows, schooljaar)
 
 
 def extract_entries_from_pdf(path: str, filename: str) -> List[RawEntry]:

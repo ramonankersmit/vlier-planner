@@ -648,6 +648,7 @@ def _extract_rows_from_context(
 
             final_week_info = _make_week_result(accepted_weeks, week_info.label)
             anchor_week = final_week_info.week_span_start
+            topic_value = base.get("onderwerp") or base.get("les")
             dr = DocRow(
                 week=anchor_week,
                 weeks=final_week_info.weeks or None,
@@ -656,8 +657,8 @@ def _extract_rows_from_context(
                 week_label=final_week_info.label,
                 datum=datum,
                 datum_eind=datum_eind,
-                les=base.get("les"),
-                onderwerp=base.get("onderwerp"),
+                les=None,
+                onderwerp=topic_value,
                 leerdoelen=base_list.get("leerdoelen"),
                 huiswerk=base.get("huiswerk"),
                 opdracht=base.get("opdracht"),
