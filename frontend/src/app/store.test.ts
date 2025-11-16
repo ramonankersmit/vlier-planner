@@ -307,6 +307,43 @@ describe("useAppStore", () => {
     expect(data01?.opmerkingen).toContain("Kerstvakantie");
   });
 
+  it("behoudt een doorlopende vakantie met alleen een startdatum over de jaarwisseling", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-label", // hergebruik bestaand ID voor eenvoud
+      guideId: "guide-label",
+      beginWeek: 52,
+      eindWeek: 2,
+      schooljaar: "2025/2026",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows(meta.fileId, [
+      {
+        week: 52,
+        weeks: [52, 1],
+        week_span_start: 52,
+        week_span_end: 1,
+        week_label: "52/1 Kerstvakantie",
+        onderwerp: "Kerstvakantie",
+        datum: "2025-12-22",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const week52 = state.weekData.weeks?.find((info) => info.nr === 52);
+    const week01 = state.weekData.weeks?.find((info) => info.nr === 1);
+
+    expect(week52).toBeDefined();
+    expect(week01).toBeDefined();
+
+    const data52 = week52 ? state.weekData.byWeek?.[week52.id]?.[meta.vak] : undefined;
+    const data01 = week01 ? state.weekData.byWeek?.[week01.id]?.[meta.vak] : undefined;
+
+    expect(data52?.huiswerk).toContain("Kerstvakantie");
+    expect(data01?.huiswerk).toContain("Kerstvakantie");
+  });
+
   it("laat reguliere huiswerktaken intact wanneer het weeklabel een algemene notitie bevat", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({
