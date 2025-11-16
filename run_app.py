@@ -20,6 +20,14 @@ import uvicorn
 from uvicorn.config import LOGGING_CONFIG
 from uvicorn.main import STARTUP_FAILURE
 
+from backend.logging_setup import (
+    FILE_FORMAT,
+    LOG_HANDLER_NAME,
+    announce_log_destination,
+    configure_file_logging,
+    get_file_handler_settings,
+)
+
 try:  # pragma: no cover - afhankelijk van platform
     import pystray
 except Exception:  # pragma: no cover - afhankelijk van platform
@@ -36,11 +44,7 @@ if TYPE_CHECKING:  # pragma: no cover - alleen voor type checkers
 else:
     TrayIcon = Any  # type: ignore[assignment]
 
-LOG_HANDLER_NAME = "vlier-planner-file"
-LOG_LEVEL_ENV_VAR = "VLIER_LOG_LEVEL"
 TRAY_THREAD_NAME = "vlier-planner-tray"
-FILE_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-_FILE_HANDLER_SETTINGS: dict[str, Any] | None = None
 _ICON_FILENAMES = ("favicon.ico", "logo.png")
 _ICON_SEARCH_DIRECTORIES = (
     "",
@@ -52,93 +56,6 @@ _ICON_SEARCH_DIRECTORIES = (
     "backend/static",
     "backend/static/dist",
 )
-
-
-def _get_configured_log_level(default: int = logging.WARNING) -> int:
-    """Resolve the desired log level from the environment."""
-
-    value = os.getenv(LOG_LEVEL_ENV_VAR)
-    if not value:
-        return default
-
-    value = value.strip()
-    if not value:
-        return default
-
-    # Allow numeric levels ("10") as well as textual levels ("DEBUG").
-    try:
-        numeric_level = int(value)
-    except ValueError:
-        level_name = value.upper()
-        resolved = getattr(logging, level_name, None)
-        if isinstance(resolved, int):
-            return resolved
-        return default
-    else:
-        return numeric_level
-
-
-def _default_log_path() -> Path:
-    override = os.getenv("VLIER_LOG_FILE")
-    if override:
-        return Path(override).expanduser()
-
-    if getattr(sys, "frozen", False):
-        exe_path = Path(sys.executable).resolve()
-        return exe_path.parent / "vlier-planner.log"
-
-    return Path(__file__).resolve().parent / "vlier-planner.log"
-
-
-def _store_file_handler_settings(path: Path, level: int) -> None:
-    global _FILE_HANDLER_SETTINGS
-    _FILE_HANDLER_SETTINGS = {"path": path, "level": level}
-
-
-def _configure_logging() -> None:
-    root_logger = logging.getLogger()
-    for handler in root_logger.handlers:
-        if getattr(handler, "name", "") == LOG_HANDLER_NAME:
-            if isinstance(handler, logging.FileHandler):
-                _store_file_handler_settings(Path(handler.baseFilename), handler.level)
-            return
-
-    log_path = _default_log_path()
-    try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_path, encoding="utf-8")
-    except Exception as exc:  # pragma: no cover - afhankelijk van IO
-        logging.getLogger(__name__).warning("Kon logbestand niet initialiseren: %s", exc)
-        return
-
-    file_handler.set_name(LOG_HANDLER_NAME)
-    log_level = _get_configured_log_level()
-
-    file_handler.setLevel(log_level)
-    file_handler.setFormatter(logging.Formatter(FILE_FORMAT))
-    root_logger.addHandler(file_handler)
-    if root_logger.level > log_level:
-        root_logger.setLevel(log_level)
-
-_store_file_handler_settings(log_path, log_level)
-logging.getLogger(__name__).info("Logbestand: %s", log_path)
-
-
-def _announce_log_destination() -> None:
-    """Echo the configured log destination so devs know where to look."""
-
-    settings = _FILE_HANDLER_SETTINGS
-    if not settings:
-        print("[logging] Console logging actief (geen logbestand geconfigureerd).")
-        return
-
-    path = settings["path"]
-    level = logging.getLevelName(settings["level"])
-    print(
-        "[logging] Backendlogs worden naar"
-        f" {path} geschreven (niveau {level})."
-        " Zet VLIER_LOG_LEVEL=DEBUG voor extra details."
-    )
 
 
 def get_uvicorn_log_config() -> dict[str, Any]:
@@ -154,7 +71,8 @@ def get_uvicorn_log_config() -> dict[str, Any]:
             formatter = {**formatter, "use_colors": False}
             formatters[formatter_name] = formatter
 
-    if _FILE_HANDLER_SETTINGS is not None:
+    file_handler_settings = get_file_handler_settings()
+    if file_handler_settings is not None:
         formatters.setdefault(
             "vlier-planner-file",
             {"()": "logging.Formatter", "fmt": FILE_FORMAT},
@@ -164,9 +82,9 @@ def get_uvicorn_log_config() -> dict[str, Any]:
         handlers[LOG_HANDLER_NAME] = {
             "class": "logging.FileHandler",
             "formatter": "vlier-planner-file",
-            "filename": str(_FILE_HANDLER_SETTINGS["path"]),
+            "filename": str(file_handler_settings["path"]),
             "encoding": "utf-8",
-            "level": logging.getLevelName(_FILE_HANDLER_SETTINGS["level"]),
+            "level": logging.getLevelName(file_handler_settings["level"]),
         }
 
         loggers_config = log_config.setdefault("loggers", {})
@@ -239,8 +157,8 @@ def _ensure_version_env() -> None:
 
 
 _ensure_version_env()
-_configure_logging()
-_announce_log_destination()
+configure_file_logging()
+announce_log_destination()
 
 from backend import app as backend_app
 from backend import updater as backend_updater
