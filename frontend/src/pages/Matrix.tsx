@@ -629,6 +629,9 @@ export default function Matrix() {
       ),
     [activeDocs]
   );
+  const showNiveauFilter = niveauOptions.length > 1;
+  const showLeerjaarFilter = leerjaarOptions.length > 1;
+  const showPeriodeFilter = periodeOptions.length > 1;
 
   React.useEffect(() => {
     if (!hasAnyDocs && niveau !== "ALLE") {
@@ -833,53 +836,59 @@ export default function Matrix() {
           ))}
         </select>
 
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
-          value={niveau}
-          onChange={(e) => setNiveau(e.target.value as any)}
-          aria-label="Filter niveau"
-          title="Filter op niveau"
-          disabled={!hasAnyDocs}
-        >
-          <option value="ALLE">Alle niveaus</option>
-          {niveauOptions.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
+        {showNiveauFilter && (
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+            value={niveau}
+            onChange={(e) => setNiveau(e.target.value as any)}
+            aria-label="Filter niveau"
+            title="Filter op niveau"
+            disabled={!hasAnyDocs}
+          >
+            <option value="ALLE">Alle niveaus</option>
+            {niveauOptions.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        )}
 
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
-          value={leerjaar}
-          onChange={(e) => setLeerjaar(e.target.value)}
-          aria-label="Filter leerjaar"
-          title="Filter op leerjaar"
-          disabled={!hasAnyDocs}
-        >
-          <option value="ALLE">Alle leerjaren</option>
-          {leerjaarOptions.map((j) => (
-            <option key={j} value={j}>
-              Leerjaar {j}
-            </option>
-          ))}
-        </select>
+        {showLeerjaarFilter && (
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+            value={leerjaar}
+            onChange={(e) => setLeerjaar(e.target.value)}
+            aria-label="Filter leerjaar"
+            title="Filter op leerjaar"
+            disabled={!hasAnyDocs}
+          >
+            <option value="ALLE">Alle leerjaren</option>
+            {leerjaarOptions.map((j) => (
+              <option key={j} value={j}>
+                Leerjaar {j}
+              </option>
+            ))}
+          </select>
+        )}
 
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
-          value={periode}
-          onChange={(e) => setPeriode(e.target.value)}
-          aria-label="Filter periode"
-          title="Filter op periode"
-          disabled={!hasAnyDocs}
-        >
-          <option value="ALLE">Alle periodes</option>
-          {periodeOptions.map((p) => (
-            <option key={p} value={p}>
-              Periode {p}
-            </option>
-          ))}
-        </select>
+        {showPeriodeFilter && (
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+            value={periode}
+            onChange={(e) => setPeriode(e.target.value)}
+            aria-label="Filter periode"
+            title="Filter op periode"
+            disabled={!hasAnyDocs}
+          >
+            <option value="ALLE">Alle periodes</option>
+            {periodeOptions.map((p) => (
+              <option key={p} value={p}>
+                Periode {p}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {!hasAnyDocs ? (

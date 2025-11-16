@@ -48,6 +48,8 @@ export default function Deadlines() {
       ),
     [activeDocs]
   );
+  const showPeriodeFilter = periodeOptions.length > 1;
+  const showVakFilter = mijnVakken.length > 1;
 
   React.useEffect(() => {
     if (!activeDocs.length && eventsPeriode !== "ALLE") {
@@ -255,37 +257,41 @@ export default function Deadlines() {
           ))}
         </select>
 
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
-          value={eventsPeriode}
-          onChange={(e) => setEventsPeriode(e.target.value)}
-          aria-label="Filter periode"
-          title="Filter op periode"
-          disabled={!hasActiveDocs}
-        >
-          <option value="ALLE">Alle periodes</option>
-          {periodeOptions.map((p) => (
-            <option key={p} value={p}>
-              Periode {p}
-            </option>
-          ))}
-        </select>
+        {showPeriodeFilter && (
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+            value={eventsPeriode}
+            onChange={(e) => setEventsPeriode(e.target.value)}
+            aria-label="Filter periode"
+            title="Filter op periode"
+            disabled={!hasActiveDocs}
+          >
+            <option value="ALLE">Alle periodes</option>
+            {periodeOptions.map((p) => (
+              <option key={p} value={p}>
+                Periode {p}
+              </option>
+            ))}
+          </select>
+        )}
 
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
-          value={vak}
-          onChange={(e) => setVak(e.target.value)}
-          aria-label="Filter vak"
-          title="Filter op vak"
-          disabled={!hasFilteredDocs}
-        >
-          <option value="ALLE">Alle vakken</option>
-          {mijnVakken.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
+        {showVakFilter && (
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+            value={vak}
+            onChange={(e) => setVak(e.target.value)}
+            aria-label="Filter vak"
+            title="Filter op vak"
+            disabled={!hasFilteredDocs}
+          >
+            <option value="ALLE">Alle vakken</option>
+            {mijnVakken.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div
