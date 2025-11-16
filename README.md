@@ -176,7 +176,8 @@ Handige omgevingsvariabelen:
 - `SERVE_FRONTEND=0` – forceert API-only modus (bijvoorbeeld voor lokale ontwikkeling met Vite).
 
 ## Windows distributie
-Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers:
+Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers (een
+uitgebreide checklist staat in [`docs/windows-build.md`](docs/windows-build.md)):
 
 1. Zorg dat de frontend-build beschikbaar is in de backend:
    ```bash
