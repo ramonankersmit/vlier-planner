@@ -31,8 +31,11 @@ from .config import get_keyword_config
 RE_ANY_BRACKET_VAK = re.compile(r"\[\s*([A-Za-zÀ-ÿ0-9\s\-\&]+?)\s*\]")
 RE_AFTER_DASH = re.compile(r"Studiewijzer\s*[-–]\s*(.+)", re.I)
 RE_DATE_TOKEN = re.compile(r"\b\d{1,2}[\-/]\d{1,2}(?:[\-/](?:\d{2}|\d{4}))?\b")
+_DATE_SEQUENCE = (
+    rf"{RE_DATE_TOKEN.pattern}(?:\s*(?:t\/?m|tm|tot\s+en\s+met)\s*{RE_DATE_TOKEN.pattern})?"
+)
 RE_DATE_SUFFIX = re.compile(
-    rf"(?:[\s,;:()\-]*{RE_DATE_TOKEN.pattern})+[\s,.;:()\-]*$", re.I
+    rf"(?:[\s,;:()\-]*{_DATE_SEQUENCE})+[\s,.;:()\-]*$", re.I
 )
 
 PDF_TABLE_SETTINGS = {
@@ -548,8 +551,10 @@ def _cell_text_with_neighbors(
         normalized = normalize_text(text)
         if not normalized:
             continue
-        if col != idx and RE_DATE_SUFFIX.fullmatch(normalized):
-            continue
+        if col != idx:
+            stripped = _strip_date_suffix(normalized)
+            if stripped is None:
+                continue
         return text
 
     if 0 <= idx < width:

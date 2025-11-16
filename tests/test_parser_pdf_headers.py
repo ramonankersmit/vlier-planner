@@ -132,3 +132,34 @@ def test_pdf_parser_ignores_date_only_neighbor_columns_for_work():
     row = rows[0]
     assert row.huiswerk is None
     assert row.opdracht is None
+
+
+def test_pdf_parser_ignores_tm_date_neighbor_columns_for_work():
+    table = [
+        ["Week", "Huiswerk", "", "Opdracht", ""],
+        [
+            "46",
+            "",
+            "10-11-2025 t/m 14-11-2025",
+            "",
+            "22-11-2025 tot en met 23-11-2025",
+        ],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "scheikunde.pdf")
+    assert rows, "Expected rows to be parsed"
+    row = rows[0]
+    assert row.huiswerk is None
+    assert row.opdracht is None
+
+
+def test_pdf_parser_strips_tm_date_suffix_from_work_columns():
+    table = [
+        ["Week", "Huiswerk"],
+        ["46", "Maken: paragraaf 1 en 2. 10-11-2025 t/m 14-11-2025"],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "scheikunde.pdf")
+    assert rows, "Expected rows to be parsed"
+    row = rows[0]
+    assert row.huiswerk == "Maken: paragraaf 1 en 2"
