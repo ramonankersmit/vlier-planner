@@ -23,3 +23,11 @@ def test_parse_week_cell_details_handles_slash_with_spaces():
     assert details.weeks == [52, 1]
     assert details.week_span_start == 52
     assert details.week_span_end == 1
+
+
+def test_parse_week_cell_supports_ampersand_connector():
+    assert parse_week_cell("Week 51 & 1") == [51, 1]
+
+
+def test_parse_week_cell_supports_dutch_en_connector():
+    assert parse_week_cell("Week 1 en 2") == [1, 2]
