@@ -374,7 +374,7 @@ describe("useAppStore", () => {
     expect(data?.opmerkingen).toContain("Kerstvakantie");
   });
 
-  it("kopieert algemene toetsweekregels naar alle kolommen", () => {
+  it("laat algemene toetsweekregels ongemoeid zolang er geen rijspan is", () => {
     const store = useAppStore.getState();
     const meta = makeMeta({
       fileId: "guide-general",
@@ -401,9 +401,46 @@ describe("useAppStore", () => {
 
     const data = week ? state.weekData.byWeek?.[week.id]?.[meta.vak] : undefined;
     expect(data?.lesstof).toContain("Toetsweek 2");
-    expect(data?.huiswerk).toContain("Toetsweek 2");
+    expect(data?.huiswerk).toBeUndefined();
     expect(data?.deadlines).toContain("Toetsweek 2");
     expect(data?.opmerkingen).toContain("Toetsweek 2");
+  });
+
+  it("kopieert algemene toetsweekregels alleen naar huiswerk als de rij alle kolommen beslaat", () => {
+    const store = useAppStore.getState();
+    const meta = makeMeta({
+      fileId: "guide-general-span",
+      guideId: "guide-general-span",
+      beginWeek: 4,
+      eindWeek: 5,
+      schooljaar: "2025/2026",
+      vak: "Duits",
+    });
+
+    store.setDocs([meta]);
+    store.setDocRows("guide-general-span", [
+      {
+        weeks: [4, 5],
+        week_span_start: 4,
+        week_span_end: 5,
+        week_label: "wk 4/5 Toetsweek 2",
+        onderwerp: "Toetsweek 2",
+      },
+    ]);
+
+    const state = useAppStore.getState();
+    const weekFour = state.weekData.weeks?.find((info) => info.nr === 4);
+    const weekFive = state.weekData.weeks?.find((info) => info.nr === 5);
+    expect(weekFour).toBeDefined();
+    expect(weekFive).toBeDefined();
+
+    const weekFourData = weekFour ? state.weekData.byWeek?.[weekFour.id]?.[meta.vak] : undefined;
+    const weekFiveData = weekFive ? state.weekData.byWeek?.[weekFive.id]?.[meta.vak] : undefined;
+
+    expect(weekFourData?.huiswerk).toContain("Toetsweek 2");
+    expect(weekFiveData?.huiswerk).toContain("Toetsweek 2");
+    expect(weekFourData?.deadlines).toContain("Toetsweek 2");
+    expect(weekFiveData?.deadlines).toContain("Toetsweek 2");
   });
 
   it("laat toetsen niet als huiswerk zien wanneer er echte taken zijn", () => {
@@ -526,13 +563,13 @@ describe("useAppStore", () => {
 
     const week48 = findWeekData(48);
     expect(week48?.lesstof).toContain("Groen licht formulier laten ondertekenen.");
-    expect(week48?.huiswerk).toContain("Groen licht formulier laten ondertekenen.");
-    expect(week48?.deadlines).toContain("Groen licht formulier laten ondertekenen.");
-    expect(week48?.opmerkingen).toContain("Groen licht formulier laten ondertekenen.");
+    expect(week48?.huiswerk).toBeUndefined();
+    expect(week48?.deadlines).toBeUndefined();
+    expect(week48?.opmerkingen).toBeUndefined();
 
     const week51 = findWeekData(51);
-    expect(week51?.huiswerk).toContain("Inleveren Ruwe versie");
-    expect(week51?.deadlines).toContain("Inleveren Ruwe versie");
+    expect(week51?.huiswerk).toBeUndefined();
+    expect(week51?.deadlines).toBeUndefined();
 
     const week52 = findWeekData(52);
     const week01 = findWeekData(1);
@@ -540,13 +577,9 @@ describe("useAppStore", () => {
     expect(week01?.huiswerk).toContain("Kerstvakantie");
 
     const week02 = findWeekData(2);
-    expect(week02?.huiswerk).toContain("Inleveren opdracht 3");
-    expect(week02?.huiswerk).toContain("Deadline definitieve film");
-    expect(week02?.deadlines).toContain("Inleveren opdracht 3");
-    expect(week02?.deadlines).toContain("Deadline definitieve film");
-    expect(week02?.huiswerkItems).toEqual(
-      expect.arrayContaining(["Inleveren opdracht 3", "Deadline definitieve film"]),
-    );
+    expect(week02?.huiswerk).toBeUndefined();
+    expect(week02?.deadlines).toBeUndefined();
+    expect(week02?.huiswerkItems).toBeUndefined();
   });
 
   it("laat pdf-lesstof ongemoeid zodra het document echte huiswerkvelden bevat", () => {
