@@ -16,3 +16,10 @@ def test_parse_week_cell_details_returns_span_metadata():
     assert details.week_span_start == 3
     assert details.week_span_end == 4
     assert details.label == "Week 3/4"
+
+
+def test_parse_week_cell_details_handles_slash_with_spaces():
+    details = parse_week_cell_details("52 / 1")
+    assert details.weeks == [52, 1]
+    assert details.week_span_start == 52
+    assert details.week_span_end == 1

@@ -304,12 +304,18 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
         if entry.end_date:
             week_dates[week_numbers[-1]] = entry.end_date
 
-        for wk in week_numbers:
+        multi_week_holiday = entry.is_holiday and len(week_numbers) > 1
+
+        def _reference_for_week(wk: int) -> Optional[str]:
             ref = week_dates.get(wk)
-            if ref is None and entry.end_date and wk == week_numbers[-1]:
-                ref = entry.end_date
-            if ref is None:
-                ref = entry.start_date
+            if ref is not None:
+                return ref
+            if multi_week_holiday and wk != anchor_week:
+                return None
+            return entry.start_date
+
+        for wk in week_numbers:
+            ref = _reference_for_week(wk)
             _ensure_weeks(weeks, [wk], school_year, ref)
 
         session_type = "lecture"
@@ -339,11 +345,7 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
 
         session_dates: Dict[int, str] = {}
         for wk in week_numbers:
-            ref = week_dates.get(wk)
-            if ref is None and entry.end_date and wk == week_numbers[-1]:
-                ref = entry.end_date
-            if ref is None:
-                ref = entry.start_date
+            ref = _reference_for_week(wk)
             iso_year = _resolve_year_for_week(wk, school_year, ref)
             start, _ = _week_bounds(iso_year, wk)
             session_date = ref or start
