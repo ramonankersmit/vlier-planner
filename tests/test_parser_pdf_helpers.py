@@ -52,7 +52,7 @@ def test_toetsweek_rows_are_split_into_dedicated_entries() -> None:
     assert toetsweek.weeks == [3, 4]
     assert toetsweek.week_label and "3/4" in toetsweek.week_label
     assert toetsweek.datum == "2026-01-14"
-    assert toetsweek.datum_eind == "2026-01-21"
+    assert toetsweek.datum_eind is None
     assert normal.toets is None
     assert toetsweek.toets == base_row.toets
     assert toetsweek.huiswerk == "Toetsweek 2"
@@ -83,7 +83,7 @@ def test_kerstvakantie_rows_gain_extra_week_52_entry() -> None:
     assert vakantie.weeks == [52, 1]
     assert vakantie.datum == "2025-12-22"
     assert vakantie.datum_eind == "2026-01-02"
-    assert vakantie.week_label == "52/1\n22-12-2025\n02-01-2026"
+    assert vakantie.week_label == "52/1 \n22-12-2025 \n02-01-2026"
     assert normal.toets is None
     assert vakantie.toets == base_row.toets
     assert vakantie.huiswerk == "Kerstvakantie"
