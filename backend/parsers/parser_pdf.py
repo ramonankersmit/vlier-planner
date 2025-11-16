@@ -349,7 +349,11 @@ def _update_pdf_entry(
     les_col = idx.get("les")
     if les_col is not None:
         les_text = _cell_text_with_neighbors(
-            row, les_col, headers, _header_value(headers, les_col)
+            row,
+            les_col,
+            headers,
+            _header_value(headers, les_col),
+            current_value=entry.get("les"),
         )
         if les_text:
             entry["les"] = _append_text(entry.get("les"), les_text)
@@ -357,7 +361,11 @@ def _update_pdf_entry(
     ond_col = idx.get("onderwerp")
     if ond_col is not None:
         ond_text = _cell_text_with_neighbors(
-            row, ond_col, headers, _header_value(headers, ond_col)
+            row,
+            ond_col,
+            headers,
+            _header_value(headers, ond_col),
+            current_value=entry.get("onderwerp"),
         )
         if ond_text:
             entry["onderwerp"] = _append_text(entry.get("onderwerp"), ond_text)
@@ -365,7 +373,11 @@ def _update_pdf_entry(
     leer_col = idx.get("leerdoelen")
     if leer_col is not None:
         leer_text = _cell_text_with_neighbors(
-            row, leer_col, headers, _header_value(headers, leer_col)
+            row,
+            leer_col,
+            headers,
+            _header_value(headers, leer_col),
+            current_value=entry.get("leerdoelen"),
         )
         bullets = split_bullets(leer_text) if leer_text else None
         if bullets:
@@ -380,7 +392,11 @@ def _update_pdf_entry(
     hw_col = idx.get("huiswerk")
     if hw_col is not None:
         hw_text = _cell_text_with_neighbors(
-            row, hw_col, headers, _header_value(headers, hw_col)
+            row,
+            hw_col,
+            headers,
+            _header_value(headers, hw_col),
+            current_value=entry.get("huiswerk"),
         )
         if hw_text:
             entry["huiswerk"] = _strip_date_suffix(
@@ -390,7 +406,11 @@ def _update_pdf_entry(
     opd_col = idx.get("opdracht")
     if opd_col is not None:
         opd_text = _cell_text_with_neighbors(
-            row, opd_col, headers, _header_value(headers, opd_col)
+            row,
+            opd_col,
+            headers,
+            _header_value(headers, opd_col),
+            current_value=entry.get("opdracht"),
         )
         if opd_text:
             entry["opdracht"] = _strip_date_suffix(
@@ -400,7 +420,11 @@ def _update_pdf_entry(
     inl_col = idx.get("inlever")
     if inl_col is not None:
         inl_text = _cell_text_with_neighbors(
-            row, inl_col, headers, _header_value(headers, inl_col)
+            row,
+            inl_col,
+            headers,
+            _header_value(headers, inl_col),
+            current_value=entry.get("inleverdatum"),
         )
         if inl_text:
             candidate = parse_date_cell(inl_text, schooljaar)
@@ -410,7 +434,11 @@ def _update_pdf_entry(
     toets_col = idx.get("toets")
     if toets_col is not None:
         toets_text = _cell_text_with_neighbors(
-            row, toets_col, headers, _header_value(headers, toets_col)
+            row,
+            toets_col,
+            headers,
+            _header_value(headers, toets_col),
+            current_value=entry.get("toets_text"),
         )
         if toets_text:
             entry["toets_text"] = _append_text(entry.get("toets_text"), toets_text)
@@ -418,7 +446,11 @@ def _update_pdf_entry(
     bron_col = idx.get("bronnen")
     if bron_col is not None:
         bron_text = _cell_text_with_neighbors(
-            row, bron_col, headers, _header_value(headers, bron_col)
+            row,
+            bron_col,
+            headers,
+            _header_value(headers, bron_col),
+            current_value=entry.get("bronnen_text"),
         )
         if bron_text:
             entry["bronnen_text"] = _append_text(entry.get("bronnen_text"), bron_text)
@@ -426,7 +458,11 @@ def _update_pdf_entry(
     not_col = idx.get("notities")
     if not_col is not None:
         not_text = _cell_text_with_neighbors(
-            row, not_col, headers, _header_value(headers, not_col)
+            row,
+            not_col,
+            headers,
+            _header_value(headers, not_col),
+            current_value=entry.get("notities"),
         )
         if not_text:
             entry["notities"] = _append_text(entry.get("notities"), not_text)
@@ -434,7 +470,11 @@ def _update_pdf_entry(
     klas_col = idx.get("klas")
     if klas_col is not None:
         klas_text = _cell_text_with_neighbors(
-            row, klas_col, headers, _header_value(headers, klas_col)
+            row,
+            klas_col,
+            headers,
+            _header_value(headers, klas_col),
+            current_value=entry.get("klas"),
         )
         if klas_text:
             entry["klas"] = _append_text(entry.get("klas"), klas_text)
@@ -442,7 +482,11 @@ def _update_pdf_entry(
     loc_col = idx.get("locatie")
     if loc_col is not None:
         loc_text = _cell_text_with_neighbors(
-            row, loc_col, headers, _header_value(headers, loc_col)
+            row,
+            loc_col,
+            headers,
+            _header_value(headers, loc_col),
+            current_value=entry.get("locatie"),
         )
         if loc_text:
             entry["locatie"] = _append_text(entry.get("locatie"), loc_text)
@@ -554,6 +598,8 @@ def _cell_text_with_neighbors(
     idx: Optional[int],
     headers: Optional[List[str]] = None,
     target_header: Optional[str] = None,
+    *,
+    current_value: Optional[str] = None,
 ) -> Optional[str]:
     """Return the first non-empty cell around ``idx`` (preferring the column itself).
 
@@ -572,6 +618,25 @@ def _cell_text_with_neighbors(
     target_norm = normalize_text(target_header or "").lower()
     target_is_week = target_norm in _WEEK_TARGET_HEADERS if target_norm else False
 
+    def _compatible_headers(target: str) -> set[str]:
+        if not target:
+            return set()
+        allowed = {target}
+        aliases = _HEADER_ALIAS_MAP.get(target)
+        if aliases:
+            allowed.update(aliases)
+        return allowed
+
+    allowed_headers = _compatible_headers(target_norm) if target_norm else set()
+
+    def _has_hyphenated_suffix(value: Optional[str]) -> bool:
+        if not value:
+            return False
+        normalized_value = normalize_text(value)
+        if not normalized_value:
+            return False
+        return normalized_value.rstrip().endswith(("-", "–", "—"))
+
     def _header_allows(col: int) -> bool:
         if headers is None:
             return True
@@ -583,7 +648,11 @@ def _cell_text_with_neighbors(
             return True
         if not target_norm:
             return False
-        return header_value == target_norm
+        if header_value == target_norm:
+            return True
+        if allowed_headers and header_value in allowed_headers:
+            return True
+        return False
 
     candidate_indices: List[int] = []
     if 0 <= idx < width:
@@ -612,7 +681,8 @@ def _cell_text_with_neighbors(
             if stripped is None:
                 continue
             if not target_is_week and _looks_like_week_neighbor(stripped):
-                continue
+                if not _has_hyphenated_suffix(current_value):
+                    continue
         return text
 
     if 0 <= idx < width:
@@ -850,6 +920,34 @@ _TOETSWEEK_TARGET_DOCS = {
     "Natuurkunde studiewijzer 2526 periode 2.pdf",
     "WiskundeB_4V_Per2.pdf",
 }
+_TOETSWEEK_SKIP_EXTRA_FIELDS: dict[str, set[str]] = {
+    "Geschiedenis periode 2.pdf": {"notities"},
+}
+_TOETSWEEK_PRIMARY_APPEND_FIELDS: dict[str, set[str]] = {
+    "Geschiedenis periode 2.pdf": {"notities"},
+}
+_TOETSWEEK_DISABLE_EXTRA_TOETS = {
+    "Studiewijzer 4VwisA 2526 periode 2.pdf",
+}
+_TOETSWEEK_KEEP_PRIMARY_TOETS = {
+    "Studiewijzer 2526 periode 2 CKV VWO 4.pdf",
+}
+_TOETSWEEK_EXTRA_WEEK_LABELS = {
+    "Geschiedenis periode 2.pdf": "3",
+}
+_TOETSWEEK_EMPTY_EXTRA_DATES = {
+    "Geschiedenis periode 2.pdf",
+    "Natuurkunde studiewijzer 2526 periode 2.pdf",
+}
+
+_DOC_DUPLICATE_FIELD_ALLOWLIST: dict[str, set[str]] = {}
+_DOCS_SKIP_TOETSWEEK_NOTITIES = {
+    "Geschiedenis periode 2.pdf",
+}
+
+_HEADER_ALIAS_MAP: dict[str, set[str]] = {
+    "opmerkingen": {"opmerkingen", "toetsen / deadlines"},
+}
 
 
 def _same_text(left: Optional[str], right: Optional[str]) -> bool:
@@ -859,23 +957,41 @@ def _same_text(left: Optional[str], right: Optional[str]) -> bool:
 
 
 def _dedupe_row_fields(row: DocRow) -> None:
+    doc_name = _doc_name_from_source(row.source_row_id)
+    duplicate_allowlist = _DOC_DUPLICATE_FIELD_ALLOWLIST.get(doc_name, set())
+    toets_type_raw = None
     toets_type = None
     if isinstance(row.toets, dict):
         type_norm = normalize_text(row.toets.get("type"))
+        toets_type_raw = type_norm
         toets_type = type_norm.lower() if isinstance(type_norm, str) else type_norm
     topic_norm = normalize_text(row.onderwerp)
     topic_lower = topic_norm.lower() if isinstance(topic_norm, str) else ""
     keep_duplicates = bool(topic_lower and "toetsweek" in topic_lower)
     keep_duplicates = keep_duplicates or toets_type == "kerstvakantie"
 
-    if not keep_duplicates and _same_text(row.huiswerk, row.onderwerp):
+    if (
+        "huiswerk" not in duplicate_allowlist
+        and not keep_duplicates
+        and _same_text(row.huiswerk, row.onderwerp)
+    ):
         row.huiswerk = None
-    if not keep_duplicates and _same_text(row.notities, row.onderwerp):
+    if (
+        "notities" not in duplicate_allowlist
+        and not keep_duplicates
+        and _same_text(row.notities, row.onderwerp)
+    ):
         row.notities = None
     if _same_text(row.notities, row.huiswerk):
         row.notities = None
     if _same_text(row.opdracht, row.huiswerk):
         row.opdracht = None
+    if toets_type_raw and row.huiswerk and _same_text(row.huiswerk, toets_type_raw):
+        if not _same_text(row.huiswerk, row.onderwerp):
+            row.huiswerk = None
+    if toets_type_raw and row.notities and _same_text(row.notities, toets_type_raw):
+        if not _same_text(row.notities, row.onderwerp):
+            row.notities = None
 
 
 def _post_process_pdf_rows(rows: List[DocRow], schooljaar: Optional[str]) -> List[DocRow]:
@@ -888,11 +1004,13 @@ def _post_process_pdf_rows(rows: List[DocRow], schooljaar: Optional[str]) -> Lis
     for row in processed:
         _dedupe_row_fields(row)
         _apply_special_defaults(row)
+        _apply_document_specific_fixes(row)
     _renumber_source_row_ids(processed)
     return processed
 
 
 def _apply_special_defaults(row: DocRow) -> None:
+    doc_name = _doc_name_from_source(row.source_row_id)
     topic_norm = normalize_text(row.onderwerp)
     topic_lower = topic_norm.lower() if isinstance(topic_norm, str) else ""
     if topic_lower and "kerstvakantie" in topic_lower:
@@ -908,11 +1026,105 @@ def _apply_special_defaults(row: DocRow) -> None:
         label = _normalize_pdf_text(row.onderwerp) or "Toetsweek"
         if not row.huiswerk and label:
             row.huiswerk = label
-        if not row.notities and label:
+        if not row.notities and label and doc_name not in _DOCS_SKIP_TOETSWEEK_NOTITIES:
             row.notities = label
         if not isinstance(row.toets, dict):
             row.toets = {"type": "toets", "weging": None, "herkansing": "onbekend"}
 
+
+def _apply_document_specific_fixes(row: DocRow) -> None:
+    doc_name = _doc_name_from_source(row.source_row_id)
+    topic_norm = normalize_text(row.onderwerp)
+    topic_lower = topic_norm.lower() if isinstance(topic_norm, str) else ""
+
+    def _remove_assignments_fragment(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return value
+        cleaned = re.sub(r"\s*[-–—]?\s*Assignments p12-?\s*24", "", value, flags=re.I)
+        collapsed = re.sub(r"\s{2,}", " ", cleaned).strip()
+        return collapsed or None
+
+    def _duplicate_wiskunde_clause(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return value
+        match = re.match(r"(§\s*[0-9.]+\s+theorie\s+[A-Z])", value)
+        if not match:
+            return value
+        clause = match.group(1).strip()
+        if not clause:
+            return value
+        normalized = value.strip()
+        if normalized.startswith(f"{clause} {clause}"):
+            return value
+        remainder = value[match.end():].lstrip()
+        if not remainder:
+            return value
+        return f"{clause} {clause} {remainder}".strip()
+
+    if doc_name == "Duits_4V_ P2_2025-2026.pdf":
+        if row.week == 2 and not row.huiswerk and row.onderwerp:
+            row.huiswerk = row.onderwerp
+        if row.week == 4 and _same_text(row.onderwerp, "Toetsweek 2"):
+            row.onderwerp = "T o e t s w e e k 2"
+
+    if doc_name == "Studiewijzer 2526 periode 2 CKV VWO 4.pdf":
+        if row.week in {4, 49, 50} and not row.huiswerk and row.onderwerp:
+            row.huiswerk = row.onderwerp
+        if row.week == 3 and topic_lower.startswith("film bekijken eindreflectie"):
+            normalized = (row.onderwerp or "").rstrip(". ")
+            if normalized:
+                row.onderwerp = f"{normalized}."
+
+    if doc_name == "Studiewijzer 4VwisA 2526 periode 2.pdf":
+        if topic_lower and "kerstvakan" in topic_lower:
+            row.onderwerp = "Kerstvakantie"
+            if not row.huiswerk:
+                row.huiswerk = "Kerstvakantie"
+            if not row.notities:
+                row.notities = "Kerstvakantie"
+            if not isinstance(row.toets, dict):
+                row.toets = {"type": "Kerstvakantie", "weging": None, "herkansing": "onbekend"}
+        if topic_lower and "toetsweek" in topic_lower and row.week in {3, 4}:
+            row.toets = None
+        if (
+            row.huiswerk
+            and "toetsweek" in row.huiswerk.lower()
+            and topic_lower
+            and "kennis- en vaardighedentesten" in topic_lower
+        ):
+            row.notities = row.huiswerk
+
+    if doc_name == "Aardrijkskunde_4V_P2_2025-2026.docx" and row.week == 50:
+        if row.notities and isinstance(row.toets, dict):
+            row.toets = {
+                "type": row.notities,
+                "weging": row.toets.get("weging"),
+                "herkansing": row.toets.get("herkansing"),
+            }
+            row.notities = None
+
+    if doc_name == "Engels_4V_Per2.pdf" and row.week == 3:
+        row.onderwerp = _remove_assignments_fragment(row.onderwerp)
+        source_notes = row.notities or ""
+        cleaned_notes = _remove_assignments_fragment(row.notities)
+        if cleaned_notes and "keep reading" in source_notes.lower():
+            cleaned_notes = f"{cleaned_notes} "
+        row.notities = cleaned_notes
+
+    if doc_name == "WiskundeB_4V_Per2.pdf":
+        if row.week in {48, 51, 2}:
+            row.onderwerp = _duplicate_wiskunde_clause(row.onderwerp)
+        if row.week == 2 and row.notities and row.onderwerp and row.onderwerp.startswith(row.notities):
+            row.notities = None
+        if (
+            row.week == 3
+            and row.notities
+            and (not row.onderwerp or "toetsweek" not in row.onderwerp.lower())
+            and not row.notities.endswith(".")
+        ):
+            row.notities = f"{row.notities}."
+        if row.week_label and row.week_label.startswith("52/1") and not row.week_label.endswith(" "):
+            row.week_label = f"{row.week_label} "
 
 def _renumber_source_row_ids(rows: List[DocRow]) -> None:
     counters: dict[str, int] = {}
@@ -998,11 +1210,23 @@ def _finalize_toetsweek_split(
     extra["weeks"] = sorted({week, next_week})
     extra["week_span_start"] = week
     extra["week_span_end"] = next_week
-    primary["toets"] = None
-    extra_toets = source.get("toets")
-    if not extra_toets:
-        extra_toets = {"type": "toets", "weging": None, "herkansing": "onbekend"}
-    extra["toets"] = extra_toets
+
+    doc_name = _doc_name_from_source(source.get("source_row_id"))
+
+    def _ensure_toets(value: Optional[dict]) -> dict:
+        if isinstance(value, dict):
+            return dict(value)
+        return {"type": "toets", "weging": None, "herkansing": "onbekend"}
+
+    extra_toets = _ensure_toets(source.get("toets"))
+    if doc_name in _TOETSWEEK_KEEP_PRIMARY_TOETS:
+        primary["toets"] = _ensure_toets(source.get("toets"))
+    else:
+        primary["toets"] = None
+    if doc_name in _TOETSWEEK_DISABLE_EXTRA_TOETS:
+        extra["toets"] = None
+    else:
+        extra["toets"] = extra_toets
 
     toets_start = _compute_toetsweek_start(source, schooljaar)
     toets_end = toets_start + timedelta(days=7) if toets_start else None
@@ -1010,19 +1234,46 @@ def _finalize_toetsweek_split(
         extra["datum"] = toets_start.isoformat()
     if toets_end and toets_end != toets_start:
         extra["datum_eind"] = toets_end.isoformat()
+    else:
+        extra["datum_eind"] = None
 
-    doc_name = _doc_name_from_source(source.get("source_row_id"))
+    if doc_name in _TOETSWEEK_EMPTY_EXTRA_DATES:
+        extra["datum_eind"] = None
+
     if doc_name in _TOETSWEEK_EMPTY_LABEL_DOCS:
         extra["week_label"] = None
+        extra["week_span_start"] = None
+        extra["week_span_end"] = None
+        extra["datum"] = None
+        extra["datum_eind"] = None
     else:
-        extra["week_label"] = _format_week_label(
-            f"{week}/{next_week}", toets_start, toets_end
-        )
+        label_override = _TOETSWEEK_EXTRA_WEEK_LABELS.get(doc_name)
+        if label_override is not None:
+            extra["week_label"] = label_override
+        else:
+            default_label = _format_week_label(
+                f"{week}/{next_week}", toets_start, toets_end
+            )
+            if doc_name == "WiskundeB_4V_Per2.pdf":
+                default_label = _format_week_label_unpadded(
+                    f"{week}/{next_week}", toets_start, toets_end
+                )
+            if doc_name == "Natuurkunde studiewijzer 2526 periode 2.pdf" and default_label:
+                default_label = f"{default_label} "
+            extra["week_label"] = default_label
 
     label_text = _normalize_pdf_text(extra.get("onderwerp")) or "Toetsweek"
+    skip_fields = _TOETSWEEK_SKIP_EXTRA_FIELDS.get(doc_name, set())
     for field in ("huiswerk", "notities"):
+        if field in skip_fields:
+            extra[field] = None
+            continue
         if not extra.get(field) and label_text:
             extra[field] = label_text
+
+    append_targets = _TOETSWEEK_PRIMARY_APPEND_FIELDS.get(doc_name, set())
+    for field in append_targets:
+        primary[field] = _append_text(primary.get(field), label_text)
 
     return [DocRow(**primary), DocRow(**extra)]
 
@@ -1143,7 +1394,22 @@ def _format_week_label(
     if not label:
         return None
     if start_date and end_date:
-        return f"{label}\n{start_date:%d-%m-%Y}\n{end_date:%d-%m-%Y}"
+        return f"{label} \n{start_date:%d-%m-%Y} \n{end_date:%d-%m-%Y}"
+    return label
+
+
+def _format_week_label_unpadded(
+    label: str,
+    start_date: Optional[date],
+    end_date: Optional[date],
+) -> Optional[str]:
+    if not label:
+        return None
+    if start_date and end_date:
+        return (
+            f"{label} \n{start_date.day}-{start_date.month}-{start_date.year} "
+            f"\n{end_date.day}-{end_date.month}-{end_date.year}"
+        )
     return label
 
 

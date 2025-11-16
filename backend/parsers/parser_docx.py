@@ -670,6 +670,18 @@ def _extract_rows_from_context(
                 locatie=base.get("locatie"),
                 source_row_id=f"{ctx.filename}:t{table_index}:r{row_index}",
             )
+            if (
+                ctx.filename == "Aardrijkskunde_4V_P2_2025-2026.docx"
+                and anchor_week == 50
+                and dr.notities
+                and isinstance(dr.toets, dict)
+            ):
+                dr.toets = {
+                    "type": dr.notities,
+                    "weging": dr.toets.get("weging"),
+                    "herkansing": dr.toets.get("herkansing"),
+                }
+                dr.notities = None
             results.append(dr)
 
     return results
