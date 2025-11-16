@@ -1,14 +1,20 @@
 """PDF parsing utilities.
 
-Deze module probeert eerst `pdfplumber` te gebruiken voor het uitlezen van
-PDF-bestanden. Als dat pakket niet beschikbaar is, valt het terug op
-`PyPDF2`. Hierdoor blijven de hulpscripts werken zonder extra
-installatiestap, al levert `pdfplumber` doorgaans betere resultaten op.
+Deze module probeert eerst `camelot` te gebruiken voor het uitlezen van
+PDF-tabellen. Als dat pakket geen bruikbare tabellen oplevert valt het
+terug op `pdfplumber` en daarna op `PyPDF2`. Hierdoor blijven de
+hulpscripts werken zonder extra installatiestap, terwijl de
+cel-detectie robuuster wordt zodra Camelot beschikbaar is.
 """
 
 import re
 from datetime import date
 from typing import Generator, Iterable, List, Optional, Tuple
+
+try:  # Camelot levert in veel gevallen de meest robuuste tabellen
+    import camelot  # type: ignore
+except Exception:  # pragma: no cover - optionele dependency
+    camelot = None  # type: ignore
 
 try:  # pdfplumber levert vaak de beste tekstextractie
     import pdfplumber  # type: ignore
@@ -37,6 +43,12 @@ PDF_TABLE_SETTINGS = {
     "snap_tolerance": 3,
     "join_tolerance": 3,
     "edge_min_length": 40,
+}
+
+CAMELOT_FLAVORS = ("lattice", "stream")
+CAMELOT_KWARGS = {
+    "lattice": {"line_scale": 35},
+    "stream": {"edge_tol": 200},
 }
 
 VACATION_PATTERN = re.compile(r"(?i)vakantie")
@@ -223,7 +235,54 @@ def _guess_schooljaar(text: str, filename: str) -> Optional[str]:
     return extract_schooljaar_from_text(text) or extract_schooljaar_from_text(filename)
 
 
+def _normalize_camelot_cell(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    if not text:
+        return ""
+    text = text.replace("\r", "\n").strip()
+    return text
+
+
+def _iter_camelot_tables(path: str) -> Generator[List[List[str]], None, None]:
+    if camelot is None:
+        return
+
+    for flavor in CAMELOT_FLAVORS:
+        kwargs = CAMELOT_KWARGS.get(flavor, {})
+        try:
+            tables = camelot.read_pdf(  # type: ignore[attr-defined]
+                path,
+                pages="all",
+                flavor=flavor,
+                strip_text="\n",
+                **kwargs,
+            )
+        except Exception:  # pragma: no cover - afhankelijk van pdf inhoud
+            continue
+
+        for table in tables:
+            dataframe = getattr(table, "df", None)
+            if dataframe is None:
+                continue
+            values = dataframe.values.tolist()
+            if not values:
+                continue
+            rows: List[List[str]] = []
+            for raw_row in values:
+                rows.append([_normalize_camelot_cell(cell) for cell in raw_row])
+            if rows:
+                yield rows
+
+
 def _iter_pdf_tables(path: str):
+    camelot_tables = list(_iter_camelot_tables(path))
+    if camelot_tables:
+        for tbl in camelot_tables:
+            yield tbl
+        return
+
     if pdfplumber is None:
         return
     with pdfplumber.open(path) as pdf:  # type: ignore[arg-type]
@@ -236,8 +295,6 @@ def _iter_pdf_tables(path: str):
 
 def _collect_weeks_from_pdf_tables(path: str) -> List[int]:
     weeks: List[int] = []
-    if pdfplumber is None:
-        return weeks
     for tbl in _iter_pdf_tables(path):
         headers = [normalize_text(c or "") for c in tbl[0]]
         week_col = find_header_idx(headers, WEEK_HEADER_KEYWORDS)
@@ -726,10 +783,11 @@ def _extract_rows_from_tables(
 def _extract_rows_with_tables(
     path: str, schooljaar: Optional[str], source_label: Optional[str] = None
 ) -> List[DocRow]:
-    if pdfplumber is None:
+    tables = list(_iter_pdf_tables(path))
+    if not tables:
         return []
 
-    return _extract_rows_from_tables(_iter_pdf_tables(path), schooljaar, source_label or path)
+    return _extract_rows_from_tables(tables, schooljaar, source_label or path)
 
 
 def extract_meta_from_pdf(path: str, filename: str) -> DocMeta:
