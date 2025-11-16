@@ -509,6 +509,16 @@ class BaseParser:
             cleaned,
         )
 
+        # Zet verbindingswoorden zoals "en" of "&" tussen getallen om naar
+        # een slash zodat combinaties als "51 en 1" of "1 & 2" dezelfde route
+        # volgen als reguliere "1/2"-notatie.
+        cleaned = re.sub(
+            r"(?<=\d)\s*(?:&|\+|en)\s*(?=\d)",
+            "/",
+            cleaned,
+            flags=re.I,
+        )
+
         weeks: List[int] = []
 
         lead = RE_WEEK_LEADING.search(cleaned)
