@@ -700,6 +700,9 @@ export default function WeekOverview() {
       ),
     [activeDocs]
   );
+  const showNiveauFilter = niveauOptions.length > 1;
+  const showLeerjaarFilter = leerjaarOptions.length > 1;
+  const showPeriodeFilter = periodeOptions.length > 1;
 
   React.useEffect(() => {
     if (!hasActiveDocs && niveauWO !== "ALLE") {
@@ -882,53 +885,59 @@ export default function WeekOverview() {
           ▶
         </button>
 
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
-          value={niveauWO}
-          onChange={(e) => setNiveauWO(e.target.value as any)}
-          aria-label="Filter niveau"
-          title="Filter op niveau"
-          disabled={!hasActiveDocs}
-        >
-          <option value="ALLE">Alle niveaus</option>
-          {niveauOptions.map((niveau) => (
-            <option key={niveau} value={niveau}>
-              {niveau}
-            </option>
-          ))}
-        </select>
+        {showNiveauFilter && (
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+            value={niveauWO}
+            onChange={(e) => setNiveauWO(e.target.value as any)}
+            aria-label="Filter niveau"
+            title="Filter op niveau"
+            disabled={!hasActiveDocs}
+          >
+            <option value="ALLE">Alle niveaus</option>
+            {niveauOptions.map((niveau) => (
+              <option key={niveau} value={niveau}>
+                {niveau}
+              </option>
+            ))}
+          </select>
+        )}
 
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
-          value={leerjaarWO}
-          onChange={(e) => setLeerjaarWO(e.target.value)}
-          aria-label="Filter leerjaar"
-          title="Filter op leerjaar"
-          disabled={!hasActiveDocs}
-        >
-          <option value="ALLE">Alle leerjaren</option>
-          {leerjaarOptions.map((j) => (
-            <option key={j} value={j}>
-              Leerjaar {j}
-            </option>
-          ))}
-        </select>
+        {showLeerjaarFilter && (
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+            value={leerjaarWO}
+            onChange={(e) => setLeerjaarWO(e.target.value)}
+            aria-label="Filter leerjaar"
+            title="Filter op leerjaar"
+            disabled={!hasActiveDocs}
+          >
+            <option value="ALLE">Alle leerjaren</option>
+            {leerjaarOptions.map((j) => (
+              <option key={j} value={j}>
+                Leerjaar {j}
+              </option>
+            ))}
+          </select>
+        )}
 
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
-          value={weekPeriode}
-          onChange={(e) => setWeekPeriode(e.target.value)}
-          aria-label="Filter periode"
-          title="Filter op periode"
-          disabled={!hasActiveDocs}
-        >
-          <option value="ALLE">Alle periodes</option>
-          {periodeOptions.map((p) => (
-            <option key={p} value={p}>
-              Periode {p}
-            </option>
-          ))}
-        </select>
+        {showPeriodeFilter && (
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1 text-sm"
+            value={weekPeriode}
+            onChange={(e) => setWeekPeriode(e.target.value)}
+            aria-label="Filter periode"
+            title="Filter op periode"
+            disabled={!hasActiveDocs}
+          >
+            <option value="ALLE">Alle periodes</option>
+            {periodeOptions.map((p) => (
+              <option key={p} value={p}>
+                Periode {p}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {vacationsForWeek.length > 0 && (
