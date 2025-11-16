@@ -516,6 +516,28 @@ def _weeks_from_week_cell(text: str) -> List[int]:
     return BASE_PARSER.parse_week_cell(text)
 
 
+def _note_contains_exam_hint(text: str) -> bool:
+    normalized = (text or "").strip().lower()
+    if not normalized:
+        return False
+    return any(keyword in normalized for keyword in ("toets", "pta", "tentamen", "examen"))
+
+
+def _apply_vak_specific_row_postprocessing(ctx: _DocParseContext, row: DocRow) -> None:
+    if not row.notities or not isinstance(row.toets, dict):
+        return
+    if row.toets.get("type"):
+        return
+
+    if ctx.vak.lower() == "aardrijkskunde" and _note_contains_exam_hint(row.notities):
+        row.toets = {
+            "type": row.notities,
+            "weging": row.toets.get("weging"),
+            "herkansing": row.toets.get("herkansing"),
+        }
+        row.notities = None
+
+
 def _extract_rows_from_context(
     ctx: _DocParseContext, target_periode: Optional[int] = None
 ) -> List[DocRow]:
@@ -670,18 +692,7 @@ def _extract_rows_from_context(
                 locatie=base.get("locatie"),
                 source_row_id=f"{ctx.filename}:t{table_index}:r{row_index}",
             )
-            if (
-                ctx.filename == "Aardrijkskunde_4V_P2_2025-2026.docx"
-                and anchor_week == 50
-                and dr.notities
-                and isinstance(dr.toets, dict)
-            ):
-                dr.toets = {
-                    "type": dr.notities,
-                    "weging": dr.toets.get("weging"),
-                    "herkansing": dr.toets.get("herkansing"),
-                }
-                dr.notities = None
+            _apply_vak_specific_row_postprocessing(ctx, dr)
             results.append(dr)
 
     return results
