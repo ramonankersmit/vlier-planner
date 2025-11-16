@@ -163,3 +163,34 @@ def test_pdf_parser_strips_tm_date_suffix_from_work_columns():
     assert rows, "Expected rows to be parsed"
     row = rows[0]
     assert row.huiswerk == "Maken: paragraaf 1 en 2"
+
+
+def test_pdf_parser_buffers_vacation_rows_without_week_numbers():
+    table = [
+        ["Week", "Huiswerk", ""],
+        ["51", "Maken: paragraaf 2", ""],
+        ["Kerstvakantie", "Kerstvakantie", ""],
+        ["52/1", "", ""],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "scheikunde.pdf")
+    assert rows and len(rows) == 2
+    first, second = rows
+    assert first.week == 51
+    assert first.huiswerk == "Maken: paragraaf 2"
+    assert second.week == 52
+    assert second.weeks == [52, 1]
+    assert second.huiswerk == "Kerstvakantie"
+
+
+def test_pdf_parser_skips_week_number_neighbors_for_work_columns():
+    table = [
+        ["Week", "", "Huiswerk", ""],
+        ["4", "4", "", "Maken: paragraaf 3"],
+    ]
+
+    rows = parser_pdf._extract_rows_from_tables([table], "2025/2026", "scheikunde.pdf")
+    assert rows, "Expected rows to be parsed"
+    row = rows[0]
+    assert row.week == 4
+    assert row.huiswerk == "Maken: paragraaf 3"
