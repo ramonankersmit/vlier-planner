@@ -86,6 +86,7 @@ function Card({
   const updateCustomHomework = useAppStore((s) => s.updateCustomHomework);
   const enableHomeworkEditing = useAppStore((s) => s.enableHomeworkEditing);
   const enableCustomHomework = useAppStore((s) => s.enableCustomHomework);
+  const showDeletedHomework = useAppStore((s) => s.showDeletedHomework);
   const multiWeekSpans = Array.isArray(data?.multiWeekSpans) ? data!.multiWeekSpans : [];
   const startSpanMessages = multiWeekSpans.filter((span) => span.role === "start");
   const continueSpanMessages = multiWeekSpans.filter((span) => span.role === "continue");
@@ -535,7 +536,7 @@ function Card({
           </div>
         )}
   
-        {hiddenAutoItems.length > 0 && (
+        {hiddenAutoItems.length > 0 && showDeletedHomework && (
           <div className="rounded-md border border-dashed theme-border px-2 py-1 text-xs theme-muted">
             <div className="font-semibold uppercase tracking-wide text-[0.65rem]">Verborgen huiswerk</div>
             <ul className="mt-1 space-y-1">
