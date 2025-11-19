@@ -16,7 +16,8 @@ Vlier Planner helpt leerlingen en docenten om studiewijzers uit het voortgezet o
 8. [Frontend-build koppelen](#frontend-build-koppelen)
 9. [Alles-in-één backend](#alles-in-één-backend)
 10. [Windows distributie](#windows-distributie)
-11. [Licentie](#licentie)
+11. [ChromeOS distributie](#chromeos-distributie)
+12. [Licentie](#licentie)
 
 ## Functioneel overzicht
 ### Belangrijkste schermen
@@ -203,6 +204,25 @@ uitgebreide checklist staat in [`docs/windows-build.md`](docs/windows-build.md))
    Pas opties als `--add-data` of `--collect-all` aan wanneer extra pakketten of assets nodig zijn. Je kunt ook `pyinstaller VlierPlanner.spec` gebruiken; dezelfde version resource wordt dan automatisch toegevoegd.
 5. Het resultaat vind je in `dist/VlierPlanner.exe`. Kopieer dit bestand naar een Windows-machine en start het met een dubbelklik; de app opent automatisch op `http://127.0.0.1:8000`.
 6. (Optioneel) Gebruik Inno en "installer.iss" file voor het maken van een installer executable. Deze komt dan in "buils/installer/VlierPlanner-Setup-[version].exe" te staan.
+
+## ChromeOS distributie
+
+Chromebooks met Linux-ondersteuning kunnen dezelfde PyInstaller-build draaien.
+Gebruik `tools/build_chromeos_release.py` om zowel een `.deb`-installer als een
+handmatig uit te pakken bundel (`tar.gz`) te maken. Het `.deb`-bestand wordt met
+`dpkg-deb` gebouwd wanneer dat hulpprogramma beschikbaar is; ontbreekt het, dan
+zet het script automatisch een Python-fallback in zodat je ook op Windows een
+installatiepakket kunt opbouwen.
+
+```bash
+python tools/build_chromeos_release.py
+```
+
+Het script plaatst de output in `build/chromeos/`. Zie
+[`docs/chromeos-release.md`](docs/chromeos-release.md) voor een stap-voor-stap
+handleiding, inclusief installatie op het doelapparaat met een
+dubbelklik-installer. De ingebouwde updatecontrole downloadt op ChromeOS
+automatisch het `.deb`-pakket en opent het via de standaard pakketbeheerder.
 
 ## Licentie
 MIT

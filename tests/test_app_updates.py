@@ -10,15 +10,9 @@ from backend.version import __version__
 
 @pytest.fixture()
 def api_client(tmp_path):
-    original_storage_base = backend_app.STORAGE_BASE
-    original_storage = backend_app.STORAGE
-    original_state_file = backend_app.STATE_FILE
-    original_pending = backend_app.PENDING_DIR
+    original_base_path = backend_app.data_store.base_path
 
-    backend_app.STORAGE_BASE = tmp_path
-    backend_app.STORAGE = tmp_path / "uploads"
-    backend_app.STATE_FILE = tmp_path / "state.json"
-    backend_app.PENDING_DIR = tmp_path / "pending"
+    backend_app.data_store.set_base_path(tmp_path)
     backend_app._ensure_state_dir()
     backend_app.GUIDES.clear()
     backend_app.DOCS.clear()
@@ -31,10 +25,7 @@ def api_client(tmp_path):
     backend_app.GUIDES.clear()
     backend_app.DOCS.clear()
     backend_app.PENDING_PARSES.clear()
-    backend_app.STORAGE = original_storage
-    backend_app.STATE_FILE = original_state_file
-    backend_app.PENDING_DIR = original_pending
-    backend_app.STORAGE_BASE = original_storage_base
+    backend_app.data_store.set_base_path(original_base_path)
     backend_app._ensure_state_dir()
     backend_app._load_state()
     backend_app._load_pending()
