@@ -1205,6 +1205,8 @@ export default function Uploads() {
           type="button"
           onClick={() => void handleDeleteAll()}
           disabled={!hasDocs || isBulkDeleting}
+          aria-label="Alle bestanden verwijderen"
+          title="Alle geüploade bestanden verwijderen"
           className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 shadow-sm transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70"
         >
           <Trash2 size={16} />
