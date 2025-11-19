@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from backend.models import DocMeta
 from backend.parsers import RawEntry, extract_meta_from_docx, extract_entries_from_docx
+from backend.parsers.vwo_study_guide_postprocess import StudyEntry, postprocess_entries
 
 try:  # pragma: no cover - pdf parsing is optional in CI
     from backend.parsers import extract_meta_from_pdf, extract_entries_from_pdf
@@ -127,10 +128,104 @@ def _week_in_meta_range(week: int, begin: int, end: int) -> bool:
     return week >= begin or week <= end
 
 
+def _safe_parse_iso_date(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _study_entries_from_raw_entries(entries: Iterable[RawEntry], subject: str) -> List[StudyEntry]:
+    subject_hint = subject or ""
+    study_entries: List[StudyEntry] = []
+    for raw in entries:
+        weeks = list(raw.weeks or [])
+        extra_texts: List[str] = []
+        if raw.topic:
+            extra_texts.append(raw.topic)
+        meta: dict[str, object] = {
+            "raw_entry": raw,
+            "lesson_text": raw.lesson or "",
+            "topic_text": raw.topic or "",
+            "assignment_text": raw.assignment or "",
+            "deadline_text": raw.deadline_text or "",
+            "extra_texts": extra_texts,
+            "weeks": weeks,
+        }
+        assessment_parts = [part for part in (raw.assignment, raw.deadline_text) if part]
+        assessment_text = " ".join(assessment_parts).strip()
+        study_entries.append(
+            StudyEntry(
+                subject=subject_hint,
+                week=(weeks[0] if weeks else raw.week_span_start or raw.week_span_end),
+                start_date=_safe_parse_iso_date(raw.start_date),
+                end_date=_safe_parse_iso_date(raw.end_date),
+                lesson_text=raw.lesson or "",
+                homework_text=raw.homework or "",
+                assessment_text=assessment_text,
+                remarks_text=raw.notes or "",
+                is_vacation=raw.is_holiday,
+                is_exam=bool(raw.exam),
+                meta=meta,
+            )
+        )
+    return study_entries
+
+
+def _raw_entries_from_study_entries(entries: Iterable[StudyEntry]) -> List[RawEntry]:
+    normalized: List[RawEntry] = []
+    for entry in entries:
+        meta = entry.meta if isinstance(entry.meta, dict) else {}
+        raw = meta.get("raw_entry") if isinstance(meta, dict) else None
+        if not isinstance(raw, RawEntry):
+            continue
+        original_lesson = meta.get("lesson_text") if isinstance(meta, dict) else None
+        original_topic = meta.get("topic_text") if isinstance(meta, dict) else None
+        original_assignment = meta.get("assignment_text") if isinstance(meta, dict) else None
+        original_deadline = meta.get("deadline_text") if isinstance(meta, dict) else None
+        raw.lesson = entry.lesson_text or (original_lesson if isinstance(original_lesson, str) and original_lesson else None)
+        if entry.is_vacation and entry.lesson_text:
+            raw.topic = entry.lesson_text
+        elif isinstance(original_topic, str) and original_topic:
+            raw.topic = original_topic
+        raw.homework = entry.homework_text or None
+        if entry.assessment_text and entry.assessment_text.strip():
+            raw.assignment = entry.assessment_text.strip()
+        elif isinstance(original_assignment, str) and original_assignment:
+            raw.assignment = original_assignment
+        else:
+            raw.assignment = None
+        if isinstance(original_deadline, str) and original_deadline:
+            raw.deadline_text = original_deadline
+        else:
+            raw.deadline_text = None
+        raw.notes = entry.remarks_text or None
+        raw.is_holiday = entry.is_vacation
+        if entry.is_exam:
+            label = entry.assessment_text or entry.homework_text or entry.lesson_text
+            if not label and isinstance(original_assignment, str):
+                label = original_assignment
+            if label and not raw.exam:
+                raw.exam = {"type": label}
+        normalized.append(raw)
+    return normalized
+
+
+def _postprocess_raw_entries(entries: List[RawEntry], subject: Optional[str]) -> List[RawEntry]:
+    if not entries:
+        return []
+    study_entries = _study_entries_from_raw_entries(entries, subject or "")
+    cleaned = postprocess_entries(study_entries)
+    return _raw_entries_from_study_entries(cleaned)
+
+
 def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
     source_path = Path(path)
     source = source_path.name
     parsed_at = datetime.now(timezone.utc).isoformat()
+    fallback_name = source_path.stem or source
 
     meta: Optional[DocMeta] = None
     entries: List[RawEntry] = []
@@ -167,6 +262,9 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
             )
         )
 
+    subject_hint = meta.vak if meta and meta.vak else fallback_name
+    entries = _postprocess_raw_entries(entries, subject_hint)
+
     if meta is None:
         warnings.append(
             Warning(
@@ -202,7 +300,6 @@ def parse_to_normalized(path: str) -> Tuple[str, NormalizedModel]:
             )
         )
     else:
-        fallback_name = source_path.stem or source
         study_units.append(
             StudyUnit(
                 id=study_unit_id,
