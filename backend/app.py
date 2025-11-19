@@ -69,6 +69,19 @@ except ImportError:  # pragma: no cover
         write_pending_parse,
     )
 
+try:  # pragma: no cover - fallback for legacy execution styles
+    from .logging_setup import (
+        announce_log_destination,
+        configure_file_logging,
+        get_file_handler_settings,
+    )
+except ImportError:  # pragma: no cover
+    from logging_setup import (  # type: ignore
+        announce_log_destination,
+        configure_file_logging,
+        get_file_handler_settings,
+    )
+
 try:
     from .version import __version__
     from . import updater, update_checker
@@ -90,6 +103,11 @@ except ImportError:  # pragma: no cover
 app = FastAPI(title="Vlier Planner API")
 
 logger = logging.getLogger(__name__)
+
+_existing_log_settings = get_file_handler_settings()
+configure_file_logging()
+if _existing_log_settings is None:
+    announce_log_destination()
 
 serve_frontend = os.getenv("SERVE_FRONTEND", "0").lower() in {
     "1",

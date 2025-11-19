@@ -175,6 +175,10 @@ Handige omgevingsvariabelen:
 - `VLIER_OPEN_BROWSER=0` – onderdrukt het automatisch openen van een browser.
 - `SERVE_FRONTEND=0` – forceert API-only modus (bijvoorbeeld voor lokale ontwikkeling met Vite).
 
+### Logging tijdens ontwikkeling
+- **Uvicorn-sessies** – start `uvicorn backend.app:app --reload --log-level info` zodat de `parser_pdf`-logs rechtstreeks in je terminal verschijnen. Gebruik `--log-level debug` als je ook de `LOGGER.debug`-regels wilt zien. Tegelijkertijd wordt dezelfde uitvoer naar `vlier-planner.log` in de projectroot geschreven.
+- **Alles-in-één backend (`run_app.py`)** – de backend schrijft automatisch naar `vlier-planner.log` in de projectroot (of naar het pad uit `VLIER_LOG_FILE`). Houd het bestand bij met `tail -f vlier-planner.log` (macOS/Linux) of `Get-Content -Path vlier-planner.log -Wait` (PowerShell). Zet `VLIER_LOG_LEVEL=DEBUG` om extra parserdetails zoals Camelot-flavorwissels te zien.
+
 ## Windows distributie
 Volg deze stappen om een enkel `.exe`-bestand te maken voor Windows-gebruikers (een
 uitgebreide checklist staat in [`docs/windows-build.md`](docs/windows-build.md)):

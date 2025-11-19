@@ -1,14 +1,21 @@
 """PDF parsing utilities.
 
-Deze module probeert eerst `pdfplumber` te gebruiken voor het uitlezen van
-PDF-bestanden. Als dat pakket niet beschikbaar is, valt het terug op
-`PyPDF2`. Hierdoor blijven de hulpscripts werken zonder extra
-installatiestap, al levert `pdfplumber` doorgaans betere resultaten op.
+Deze module probeert eerst `camelot` te gebruiken voor het uitlezen van
+PDF-tabellen. Als dat pakket geen bruikbare tabellen oplevert valt het
+terug op `pdfplumber` en daarna op `PyPDF2`. Hierdoor blijven de
+hulpscripts werken zonder extra installatiestap, terwijl de
+cel-detectie robuuster wordt zodra Camelot beschikbaar is.
 """
 
+import logging
 import re
 from datetime import date, timedelta
 from typing import Generator, Iterable, List, Optional, Tuple
+
+try:  # Camelot levert in veel gevallen de meest robuuste tabellen
+    import camelot  # type: ignore
+except Exception:  # pragma: no cover - optionele dependency
+    camelot = None  # type: ignore
 
 try:  # pdfplumber levert vaak de beste tekstextractie
     import pdfplumber  # type: ignore
@@ -49,6 +56,12 @@ PDF_TABLE_SETTINGS = {
     "edge_min_length": 40,
 }
 
+CAMELOT_FLAVORS = ("lattice", "stream")
+CAMELOT_KWARGS = {
+    "lattice": {"line_scale": 35},
+    "stream": {"edge_tol": 200},
+}
+
 VACATION_PATTERN = re.compile(r"(?i)vakantie")
 _SPECIAL_VACATION_PATTERN = re.compile(r"(?i)kerst\s*vak[a-z0-9()?:]*")
 _SPECIAL_TOETSWEEK_PATTERN = re.compile(r"(?i)toetsweek\s*\d*")
@@ -56,6 +69,8 @@ DEADLINE_TOETS_PATTERN = re.compile(r"(?i)\b(inlever(?:en|datum|moment)|deadline
 
 KEYWORDS = get_keyword_config()
 BASE_PARSER = BaseParser(KEYWORDS)
+
+LOGGER = logging.getLogger(__name__)
 
 WEEK_HEADER_KEYWORDS = KEYWORDS.week_headers
 DATE_HEADER_KEYWORDS = KEYWORDS.date_headers
@@ -274,9 +289,87 @@ def _guess_schooljaar(text: str, filename: str) -> Optional[str]:
     return extract_schooljaar_from_text(text) or extract_schooljaar_from_text(filename)
 
 
-def _iter_pdf_tables(path: str):
-    if pdfplumber is None:
+def _normalize_camelot_cell(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    if not text:
+        return ""
+    text = text.replace("\r", "\n").strip()
+    return text
+
+
+def _iter_camelot_tables(path: str) -> Generator[List[List[str]], None, None]:
+    if camelot is None:
+        LOGGER.info(
+            "Camelot niet beschikbaar; sla Camelot-parsing over voor %s", path
+        )
         return
+
+    any_rows = False
+    for flavor in CAMELOT_FLAVORS:
+        kwargs = CAMELOT_KWARGS.get(flavor, {})
+        LOGGER.debug("Probeer Camelot flavor '%s' voor %s", flavor, path)
+        try:
+            tables = camelot.read_pdf(  # type: ignore[attr-defined]
+                path,
+                pages="all",
+                flavor=flavor,
+                strip_text="\n",
+                **kwargs,
+            )
+        except Exception as exc:  # pragma: no cover - afhankelijk van pdf inhoud
+            LOGGER.warning(
+                "Camelot faalde met flavor '%s' voor %s: %s", flavor, path, exc
+            )
+            continue
+
+        flavor_tables = 0
+        for table in tables:
+            dataframe = getattr(table, "df", None)
+            if dataframe is None:
+                continue
+            values = dataframe.values.tolist()
+            if not values:
+                continue
+            rows: List[List[str]] = []
+            for raw_row in values:
+                rows.append([_normalize_camelot_cell(cell) for cell in raw_row])
+            if rows:
+                any_rows = True
+                flavor_tables += 1
+                yield rows
+
+        if flavor_tables:
+            LOGGER.info(
+                "Camelot gebruikte flavor '%s' en vond %d tabellen in %s",
+                flavor,
+                flavor_tables,
+                path,
+            )
+
+    if not any_rows:
+        LOGGER.info(
+            "Camelot leverde geen tabellen voor %s; val terug op pdfplumber/PyPDF2",
+            path,
+        )
+
+
+def _iter_pdf_tables(path: str):
+    camelot_tables = list(_iter_camelot_tables(path))
+    if camelot_tables:
+        for tbl in camelot_tables:
+            yield tbl
+        return
+
+    if pdfplumber is None:
+        LOGGER.warning(
+            "pdfplumber niet geïnstalleerd; kan geen tabellen uit %s extraheren",
+            path,
+        )
+        return
+
+    LOGGER.info("Val terug op pdfplumber voor tabellen in %s", path)
     with pdfplumber.open(path) as pdf:  # type: ignore[arg-type]
         for page in pdf.pages:
             tables = page.extract_tables(PDF_TABLE_SETTINGS)
@@ -287,8 +380,6 @@ def _iter_pdf_tables(path: str):
 
 def _collect_weeks_from_pdf_tables(path: str) -> List[int]:
     weeks: List[int] = []
-    if pdfplumber is None:
-        return weeks
     for tbl in _iter_pdf_tables(path):
         headers = [normalize_text(c or "") for c in tbl[0]]
         week_col = find_header_idx(headers, WEEK_HEADER_KEYWORDS)
@@ -1468,10 +1559,11 @@ def _has_trailing_space(value: Optional[str]) -> bool:
 def _extract_rows_with_tables(
     path: str, schooljaar: Optional[str], source_label: Optional[str] = None
 ) -> List[DocRow]:
-    if pdfplumber is None:
+    tables = list(_iter_pdf_tables(path))
+    if not tables:
         return []
 
-    return _extract_rows_from_tables(_iter_pdf_tables(path), schooljaar, source_label or path)
+    return _extract_rows_from_tables(tables, schooljaar, source_label or path)
 
 
 def extract_meta_from_pdf(path: str, filename: str) -> DocMeta:
@@ -1588,6 +1680,7 @@ def _page_texts(path: str) -> Generator[Tuple[int, int, str], None, None]:
     """
 
     if pdfplumber is not None:  # voorkeursoptie
+        LOGGER.debug("Lees paginatest met pdfplumber uit %s", path)
         with pdfplumber.open(path) as pdf:  # type: ignore[arg-type]
             total_pages = len(pdf.pages)
             for idx, page in enumerate(pdf.pages, start=1):
@@ -1595,6 +1688,10 @@ def _page_texts(path: str) -> Generator[Tuple[int, int, str], None, None]:
         return
 
     if PdfReader is not None:  # eenvoudige fallback
+        LOGGER.info(
+            "Val terug op PyPDF2 voor paginatest omdat pdfplumber ontbreekt (%s)",
+            path,
+        )
         reader = PdfReader(path)
         total_pages = len(reader.pages)
         for idx, page in enumerate(reader.pages, start=1):
