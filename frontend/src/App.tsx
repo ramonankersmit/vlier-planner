@@ -109,7 +109,7 @@ function AppContent({ hasHydratedStore }: AppContentProps) {
       return;
     }
 
-    if (prev !== hasDocs) {
+    if (!prev && hasDocs) {
       setInitialRouteHandled(false);
     }
   }, [hasDocs, docsInitialized, hasHydratedStore]);
