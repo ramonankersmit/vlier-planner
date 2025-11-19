@@ -900,6 +900,14 @@ const computeWeekAggregation = (
           }
         }
 
+        const weekLabelNote = extractWeekLabelNote(row.week_label);
+        const spansEntireRow = Boolean(
+          weekLabelNote ||
+            resolvedWeeks.length > 1 ||
+            typeof row.week_span_start === "number" ||
+            typeof row.week_span_end === "number",
+        );
+
         const mirrorLesstofToAllColumns = (text: string, rawSource?: string | null) => {
           const homeworkSource = rawSource
             ? normalizeText(rawSource, { preserveLineBreaks: true })
@@ -984,6 +992,7 @@ const computeWeekAggregation = (
 
         if (
           normalizedLesstof &&
+          spansEntireRow &&
           docIsPdf &&
           !docContainsStructuredHomework &&
           !hasStructuredHomeworkData
@@ -991,14 +1000,13 @@ const computeWeekAggregation = (
           mirrorLesstofToAllColumns(normalizedLesstof, rawLesstofSource);
         }
 
-        const weekLabelNote = extractWeekLabelNote(row.week_label);
         if (weekLabelNote) {
           const normalizedLabel = normalizeText(weekLabelNote);
           if (normalizedLabel) {
             applyToAccumulators((accum) => {
               addUnique(accum.lesstof, normalizedLabel);
               addUnique(accum.opmerkingen, normalizedLabel);
-              if (!hasHomeworkOrDeadlines) {
+              if (spansEntireRow && !hasHomeworkOrDeadlines) {
                 addUnique(accum.huiswerk, normalizedLabel);
               }
             });
@@ -1011,10 +1019,14 @@ const computeWeekAggregation = (
 
         const generalNotes = Array.from(new Set(generalNoteCandidates.filter(Boolean)));
         if (generalNotes.length) {
+          const allowNotesAsHomework = spansEntireRow && !hasHomeworkOrDeadlines;
+          const allowNotesAsDeadlines = !hasHomeworkOrDeadlines;
           applyToAccumulators((accum) => {
             for (const note of generalNotes) {
-              if (!hasHomeworkOrDeadlines) {
+              if (allowNotesAsHomework) {
                 addUnique(accum.huiswerk, note);
+              }
+              if (allowNotesAsDeadlines) {
                 addUnique(accum.deadlines, note);
               }
               addUnique(accum.opmerkingen, note);
