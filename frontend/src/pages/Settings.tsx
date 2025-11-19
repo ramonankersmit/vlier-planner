@@ -8,6 +8,8 @@ export default function Settings() {
     setMijnVakken,
     huiswerkWeergave,
     setHuiswerkWeergave,
+    showDeletedHomework,
+    setShowDeletedHomework,
     themePresets,
     activeThemeId,
     setActiveTheme,
@@ -345,6 +347,20 @@ export default function Settings() {
               <div className="text-sm font-medium theme-text">Bewerken en verwijderen toestaan</div>
               <div className="text-xs leading-snug theme-muted">
                 Verberg de potlood- en prullenbakknoppen bij huiswerk wanneer dit is uitgeschakeld.
+              </div>
+            </div>
+          </label>
+          <label className="flex items-start gap-3 rounded-md border theme-border theme-soft p-3">
+            <input
+              type="checkbox"
+              checked={showDeletedHomework}
+              onChange={(event) => setShowDeletedHomework(event.target.checked)}
+              className="mt-1"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-medium theme-text">Verwijderd huiswerk tonen</div>
+              <div className="text-xs leading-snug theme-muted">
+                Laat verborgen opdrachten onderaan kaarten en in de matrix zien zodat je ze kunt herstellen.
               </div>
             </div>
           </label>

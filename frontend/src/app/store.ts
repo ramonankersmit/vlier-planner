@@ -265,6 +265,8 @@ type State = {
   setMijnVakken: (v: string[]) => void;
   huiswerkWeergave: "perOpdracht" | "gecombineerd";
   setHuiswerkWeergave: (mode: "perOpdracht" | "gecombineerd") => void;
+  showDeletedHomework: boolean;
+  setShowDeletedHomework: (value: boolean) => void;
   themePresets: ThemePreset[];
   activeThemeId: string;
   setActiveTheme: (id: string) => void;
@@ -1156,6 +1158,7 @@ type InitialStateKeys =
   | "homeworkAdjustments"
   | "mijnVakken"
   | "huiswerkWeergave"
+  | "showDeletedHomework"
   | "themePresets"
   | "activeThemeId"
   | "theme"
@@ -1198,6 +1201,7 @@ export const createInitialState = (): Pick<State, InitialStateKeys> => {
     homeworkAdjustments: {},
     mijnVakken: [],
     huiswerkWeergave: "perOpdracht",
+    showDeletedHomework: false,
     themePresets: presets,
     activeThemeId,
     theme,
@@ -1871,6 +1875,7 @@ export const useAppStore = create<State>()(
       // ----------------------------
       setMijnVakken: (v) => set({ mijnVakken: v }),
       setHuiswerkWeergave: (mode) => set({ huiswerkWeergave: mode }),
+      setShowDeletedHomework: (value) => set({ showDeletedHomework: !!value }),
       setActiveTheme: (id) =>
         set((state) => {
           const preset = state.themePresets.find((item) => item.id === id);
@@ -2160,7 +2165,7 @@ export const useAppStore = create<State>()(
     }),
     {
       name: "vlier-planner-state",
-      version: 6,
+      version: 7,
       partialize: (state) => ({
         docs: state.docs,
         docRows: state.docRows,
@@ -2170,6 +2175,7 @@ export const useAppStore = create<State>()(
         homeworkAdjustments: state.homeworkAdjustments,
         mijnVakken: state.mijnVakken,
         huiswerkWeergave: state.huiswerkWeergave,
+        showDeletedHomework: state.showDeletedHomework,
         themePresets: state.themePresets,
         activeThemeId: state.activeThemeId,
         theme: state.theme,
@@ -2195,8 +2201,13 @@ export const useAppStore = create<State>()(
         if (!persistedState) {
           return createInitialState();
         }
+        const ensureShowDeleted = <T extends Partial<State>>(value: T):
+          T & Pick<State, "showDeletedHomework"> => ({
+            ...value,
+            showDeletedHomework: value.showDeletedHomework ?? false,
+          });
         if (version >= 5) {
-          const state = persistedState as State;
+          const state = ensureShowDeleted(persistedState as State);
           const withDefaults = {
             ...state,
             matrixPeriode: state.matrixPeriode ?? "ALLE",
@@ -2210,17 +2221,17 @@ export const useAppStore = create<State>()(
               ? state.schoolVacations.map((entry) => ({ ...entry, active: entry.active ?? true }))
               : []
           );
-          return {
+          return ensureShowDeleted({
             ...withDefaults,
             themePresets: resolved.presets,
             activeThemeId: resolved.activeThemeId,
             theme: resolved.theme,
             backgroundImage: resolved.backgroundImage,
             surfaceOpacity: resolved.surfaceOpacity,
-          };
+          });
         }
         if (version >= 4) {
-          const state = persistedState as State;
+          const state = ensureShowDeleted(persistedState as State);
           const withDefaults = {
             ...state,
             matrixPeriode: state.matrixPeriode ?? "ALLE",
@@ -2229,7 +2240,12 @@ export const useAppStore = create<State>()(
           };
           const presets = createThemePresets(withDefaults.themePresets);
           const resolved = resolveActiveThemeState(presets, withDefaults.activeThemeId);
-          return {
+          const normalizedVacations = sortVacations(
+            Array.isArray(state.schoolVacations)
+              ? state.schoolVacations.map((entry) => ({ ...entry, active: entry.active ?? true }))
+              : []
+          );
+          return ensureShowDeleted({
             ...withDefaults,
             themePresets: resolved.presets,
             activeThemeId: resolved.activeThemeId,
@@ -2242,7 +2258,7 @@ export const useAppStore = create<State>()(
               state.docRows ?? {},
               normalizedVacations
             ),
-          };
+          });
         }
         const legacy = persistedState as State & {
           themePresets?: ThemePreset[];
@@ -2307,6 +2323,7 @@ export const useAppStore = create<State>()(
         const resolved = resolveActiveThemeState(nextPresets, activeThemeId);
         const migrated = {
           ...legacy,
+          showDeletedHomework: legacy.showDeletedHomework ?? false,
           themePresets: resolved.presets,
           activeThemeId: resolved.activeThemeId,
           theme: resolved.theme,
@@ -2321,7 +2338,7 @@ export const useAppStore = create<State>()(
             ? migrated.schoolVacations.map((entry) => ({ ...entry, active: entry.active ?? true }))
             : []
         );
-        return {
+        return ensureShowDeleted({
           ...migrated,
           schoolVacations: normalizedVacations,
           weekData: computeWeekAggregation(
@@ -2329,7 +2346,7 @@ export const useAppStore = create<State>()(
             migrated.docRows ?? {},
             normalizedVacations
           ),
-        };
+        });
       },
     }
   )
