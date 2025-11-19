@@ -270,6 +270,7 @@ export default function Uploads() {
   const [detailDoc, setDetailDoc] = React.useState<DocRecord | null>(null);
   const [isUploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = React.useState(false);
   const [page, setPage] = React.useState(1);
   const [activeTab, setActiveTab] = React.useState<"documents" | "vacations">("documents");
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -320,6 +321,7 @@ export default function Uploads() {
   }, [docRows, pendingReviewList]);
 
   const meta = useMetadata([...docs, ...pendingDocRecords], docRowsForMetadata);
+  const hasDocs = docs.length > 0;
 
   const uploadEntries = React.useMemo<UploadListEntry[]>(() => {
     const guideMap = new Map(studyGuides.map((guide) => [guide.guideId, guide]));
@@ -579,6 +581,32 @@ export default function Uploads() {
     } catch (e: any) {
       console.warn(e);
       setError(e?.message || "Verwijderen mislukt");
+    }
+  }
+
+  async function handleDeleteAll() {
+    if (!docs.length) {
+      return;
+    }
+    const confirmed = window.confirm(
+      "Weet je zeker dat je alle geüploade bestanden wilt verwijderen? Dit kan niet ongedaan worden gemaakt."
+    );
+    if (!confirmed) {
+      return;
+    }
+    setIsBulkDeleting(true);
+    setError(null);
+    setDetailDoc(null);
+    try {
+      for (const doc of docs) {
+        await apiDeleteDoc(doc.fileId);
+        removeDoc(doc.fileId);
+      }
+    } catch (e: any) {
+      console.warn(e);
+      setError(e?.message || "Verwijderen mislukt");
+    } finally {
+      setIsBulkDeleting(false);
     }
   }
 
@@ -1107,70 +1135,83 @@ export default function Uploads() {
       </div>
 
       {/* Filters */}
-      <div
-        data-tour-id="search-filters"
-        role="region"
-        aria-labelledby="upload-filter-heading"
-        className="flex flex-wrap items-center gap-2 text-sm"
-      >
-        <span id="upload-filter-heading" className="sr-only">
-          Filters voor uploads
-        </span>
-        <input
-          placeholder="Zoek vak…"
-          aria-label="Zoek op vak"
-          value={filters.vak}
-          onChange={(e) => setFilters((f) => ({ ...f, vak: e.target.value }))}
-          className="rounded-md border theme-border theme-surface px-2 py-1"
-        />
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1"
-          value={filters.niveau}
-          aria-label="Filter op niveau"
-          onChange={(e) => setFilters((f) => ({ ...f, niveau: e.target.value }))}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div
+          data-tour-id="search-filters"
+          role="region"
+          aria-labelledby="upload-filter-heading"
+          className="flex flex-wrap items-center gap-2 text-sm"
         >
-          <option value="">Alle niveaus</option>
-          {meta.niveaus.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1"
-          value={filters.leerjaar}
-          aria-label="Filter op leerjaar"
-          onChange={(e) => setFilters((f) => ({ ...f, leerjaar: e.target.value }))}
-        >
-          <option value="">Alle leerjaren</option>
-          {meta.leerjaren.map((j) => (
-            <option key={j} value={j}>
-              {j}
-            </option>
-          ))}
-        </select>
-        <select
-          className="rounded-md border theme-border theme-surface px-2 py-1"
-          value={filters.periode}
-          aria-label="Filter op periode"
-          onChange={(e) => setFilters((f) => ({ ...f, periode: e.target.value }))}
-        >
-          <option value="">Alle periodes</option>
-          {meta.periodes.map((p) => (
-            <option key={p} value={String(p)}>
-              P{p}
-            </option>
-          ))}
-        </select>
-        {(filters.vak || filters.niveau || filters.leerjaar || filters.periode) && (
-          <button
-            onClick={reset}
-            className="ml-2 inline-flex items-center gap-1 rounded-md border theme-border theme-surface px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)]"
-            title="Reset filters"
+          <span id="upload-filter-heading" className="sr-only">
+            Filters voor uploads
+          </span>
+          <input
+            placeholder="Zoek vak…"
+            aria-label="Zoek op vak"
+            value={filters.vak}
+            onChange={(e) => setFilters((f) => ({ ...f, vak: e.target.value }))}
+            className="rounded-md border theme-border theme-surface px-2 py-1"
+          />
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1"
+            value={filters.niveau}
+            aria-label="Filter op niveau"
+            onChange={(e) => setFilters((f) => ({ ...f, niveau: e.target.value }))}
           >
-            <XCircle size={14} /> Reset
-          </button>
-        )}
+            <option value="">Alle niveaus</option>
+            {meta.niveaus.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1"
+            value={filters.leerjaar}
+            aria-label="Filter op leerjaar"
+            onChange={(e) => setFilters((f) => ({ ...f, leerjaar: e.target.value }))}
+          >
+            <option value="">Alle leerjaren</option>
+            {meta.leerjaren.map((j) => (
+              <option key={j} value={j}>
+                {j}
+              </option>
+            ))}
+          </select>
+          <select
+            className="rounded-md border theme-border theme-surface px-2 py-1"
+            value={filters.periode}
+            aria-label="Filter op periode"
+            onChange={(e) => setFilters((f) => ({ ...f, periode: e.target.value }))}
+          >
+            <option value="">Alle periodes</option>
+            {meta.periodes.map((p) => (
+              <option key={p} value={String(p)}>
+                P{p}
+              </option>
+            ))}
+          </select>
+          {(filters.vak || filters.niveau || filters.leerjaar || filters.periode) && (
+            <button
+              onClick={reset}
+              className="ml-2 inline-flex items-center gap-1 rounded-md border theme-border theme-surface px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--app-border)]"
+              title="Reset filters"
+            >
+              <XCircle size={14} /> Reset
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleDeleteAll()}
+          disabled={!hasDocs || isBulkDeleting}
+          aria-label="Alle bestanden verwijderen"
+          title="Alle geüploade bestanden verwijderen"
+          className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 shadow-sm transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <Trash2 size={16} />
+          {isBulkDeleting ? "Bezig met verwijderen…" : "Alle bestanden verwijderen"}
+        </button>
       </div>
 
       {/* Tabel */}
