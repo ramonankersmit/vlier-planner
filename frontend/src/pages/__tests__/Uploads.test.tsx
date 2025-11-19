@@ -22,6 +22,7 @@ vi.mock("../../lib/api", async () => {
     apiCommitReview: vi.fn(),
     apiDeleteReview: vi.fn(),
     apiCreateReviewFromVersion: vi.fn(),
+    apiDeleteDoc: vi.fn(),
   };
 });
 
@@ -625,5 +626,33 @@ describe("Uploads page flow", () => {
     );
     expect(mockedApi.apiCreateReviewFromVersion).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByText(/Review pagina/)).toBeInTheDocument());
+  });
+
+  it("verwijdert alle bestanden tegelijk na bevestiging", async () => {
+    const first = makeMeta({ fileId: "guide-a", bestand: "a.docx" });
+    const second = makeMeta({ fileId: "guide-b", bestand: "b.docx" });
+    mockedApi.apiDeleteDoc.mockResolvedValue(undefined);
+
+    await act(async () => {
+      useAppStore.getState().setDocs([first, second]);
+    });
+
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={["/uploads"]}>
+        <Routes>
+          <Route path="/uploads" element={<Uploads />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const button = screen.getByRole("button", { name: /Alle bestanden verwijderen/i });
+    await user.click(button);
+    confirmSpy.mockRestore();
+
+    await waitFor(() => expect(mockedApi.apiDeleteDoc).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(useAppStore.getState().docs).toHaveLength(0));
   });
 });
